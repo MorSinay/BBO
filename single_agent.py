@@ -8,7 +8,7 @@ import torch.nn as nn
 from collections import defaultdict
 
 from config import consts, args, DirsAndLocksSingleton
-from model_ddpg import DuelNet, ResNet
+from model_ddpg import DuelNet, ResNet, DerivativeNet
 
 from environment import Env
 import os
@@ -37,6 +37,7 @@ class BBOAgent(object):
         self.value_lr = args.value_lr
         self.budget = args.budget * self.problem.dimension
         self.checkpoint = checkpoint
+        self.use_grad_net = args.grad
 
         self.env = Env(self.problem)
         self.frame = 0
@@ -46,33 +47,42 @@ class BBOAgent(object):
         self.device = torch.device("cuda" if use_cuda else "cpu")
 
         self.init = torch.tensor(self.problem.initial_solution, dtype=torch.float).to(self.device)
-        self.beta_net = nn.Parameter(self.init)
-        self.value_net = DuelNet()
-        self.value_net.to(self.device)
+        if self.use_grad_net:
+            self.beta_net = self.init
+            self.derivative_net = DerivativeNet()
+            self.derivative_net.to(self.device)
+            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
+            self.optimizer_derivative = torch.optim.Adam(self.derivative_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
+
+        else:
+            self.beta_net = nn.Parameter(self.init)
+            self.value_net = DuelNet()
+            self.value_net.to(self.device)
+            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
+            self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
+            self.optimizer_beta = torch.optim.Adam([self.beta_net], lr=self.beta_lr, eps=1.5e-4, weight_decay=0)
+
         self.q_loss = nn.SmoothL1Loss(reduction='none')
-
-        # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
-        #self.optimizer_value = torch.optim.SGD(self.value_net.parameters(), lr=self.value_lr)
-        self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-
-        self.optimizer_beta = torch.optim.Adam([self.beta_net], lr=self.beta_lr, eps=1.5e-4, weight_decay=0)
-        # self.optimizer_beta = torch.optim.Adam([self.beta_net], lr=0.00025/4, eps=1.5e-4, weight_decay=0)
 
     def reset_beta(self):
         self.beta_net.data = self.init
 
     def save_checkpoint(self, path, aux=None):
-
-        state = {'beta_net': self.beta_net,
-                 'value_net': self.value_net.state_dict(),
-                 'optimizer_value': self.optimizer_value.state_dict(),
-                 'optimizer_beta': self.optimizer_beta.state_dict(),
-                 'aux': aux}
+        if self.use_grad_net:
+            state = {'beta_net': self.beta_net,
+                     'derivative_net': self.derivative_net.state_dict(),
+                     'optimizer_derivative': self.optimizer_derivative.state_dict(),
+                     'aux': aux}
+        else:
+            state = {'beta_net': self.beta_net,
+                     'value_net': self.value_net.state_dict(),
+                     'optimizer_value': self.optimizer_value.state_dict(),
+                     'optimizer_beta': self.optimizer_beta.state_dict(),
+                     'aux': aux}
 
         torch.save(state, path)
 
     def load_checkpoint(self, path):
-
         if not os.path.exists(path):
             #return {'n':0}
             assert False, "load_checkpoint"
@@ -80,10 +90,14 @@ class BBOAgent(object):
         state = torch.load(path, map_location="cuda:%d" % self.cuda_id)
 
         self.beta_net = state['beta_net'].to(self.device)
-        self.value_net.load_state_dict(state['value_net'])
+        if self.use_grad_net:
+            self.derivative_net.load_state_dict(state['derivative_net'])
+            self.optimizer_derivative.load_state_dict(state['optimizer_derivative'])
+        else:
+            self.value_net.load_state_dict(state['value_net'])
+            self.optimizer_beta.load_state_dict(state['optimizer_beta'])
+            self.optimizer_value.load_state_dict(state['optimizer_value'])
 
-        self.optimizer_beta.load_state_dict(state['optimizer_beta'])
-        self.optimizer_value.load_state_dict(state['optimizer_value'])
         self.n_offset = state['aux']['n']
 
         return state['aux']
@@ -122,13 +136,14 @@ class BBOAgent(object):
             len_replay_buffer = len(replay_buffer_rewards)
             minibatches = 20*int(len_replay_buffer / self.batch)
 
-            tensor_replay_reward = torch.tensor(self.norm(replay_buffer_rewards), dtype=torch.float).to(self.device,
-                                                                                              non_blocking=True)
-            tensor_replay_policy = torch.tensor(replay_buffer_policy, dtype=torch.float).to(self.device,
-                                                                                             non_blocking=True)
+            tensor_replay_reward = torch.tensor(self.norm(replay_buffer_rewards), dtype=torch.float).to(self.device, non_blocking=True)
+            tensor_replay_policy = torch.tensor(replay_buffer_policy, dtype=torch.float).to(self.device, non_blocking=True)
+
+            if minibatches < 2:
+                continue
 
             self.value_net.train()
-            for iter in itertools.count():
+            for it in itertools.count():
                 avg_loss = torch.tensor(0, dtype=torch.float)
                 shuffle_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch),
                                                    replace=True)
@@ -136,8 +151,6 @@ class BBOAgent(object):
                     samples = shuffle_indexes[i]
                     r = tensor_replay_reward[samples]
                     pi_explore = tensor_replay_policy[samples]
-                    #r = torch.tensor(replay_buffer_rewards[samples], dtype=torch.float).to(self.device, non_blocking=True)
-                    #pi_explore = torch.tensor(replay_buffer_policy[samples], dtype=torch.float).to(self.device, non_blocking=True)
 
                     self.optimizer_value.zero_grad()
                     q_value = -self.value_net(pi_explore).view(-1)
@@ -147,12 +160,10 @@ class BBOAgent(object):
                     self.optimizer_value.step()
 
                 avg_loss /= minibatches
-                if iter >= 1 or avg_loss < 0.1:
+                if it >= 1:
                     break
 
-
             self.value_net.eval()
-
             for _ in range(10):
                 self.optimizer_beta.zero_grad()
                 loss_beta = self.value_net(self.beta_net)
@@ -186,6 +197,100 @@ class BBOAgent(object):
             if self.frame >= self.budget:
                 print("FAILED")
                 break
+
+    def find_min_grad_eval(self, n_explore):
+
+        results = defaultdict(list)
+
+        self.reset_beta()
+        self.env.reset()
+
+        self.derivative_net.eval()
+
+        grads = self.derivative_net(self.beta_net).detach().cpu().numpy().copy()
+
+        for self.frame in tqdm(itertools.count()):
+            self.derivative_net.eval()
+
+            beta = self.beta_net.detach().data.cpu().numpy()
+            beta = np.clip(beta, self.problem.lower_bounds, self.problem.upper_bounds)
+
+            explore_factor = self.delta * grads + self.epsilon * np.random.randn(n_explore, self.action_space)
+            explore_factor *= 0.9 ** (2 * np.array(range(n_explore))).reshape(n_explore, 1)
+            beta_explore = beta + explore_factor #gradient decent
+            beta_explore = np.clip(beta_explore, self.problem.lower_bounds, self.problem.upper_bounds)
+
+            self.env.step_policy(beta_explore)
+
+            results['explore_policies'].append(beta_explore)
+            results['rewards'].append(self.env.reward)
+
+            replay_buffer_rewards = np.hstack(results['rewards'])[-self.replay_memory_size:]
+            replay_buffer_policy = np.vstack(results['explore_policies'])[-self.replay_memory_size:]
+            len_replay_buffer = len(replay_buffer_rewards)
+            minibatches = len_replay_buffer // self.batch
+
+            tensor_replay_reward = torch.tensor(self.norm(replay_buffer_rewards), dtype=torch.float).to(self.device, non_blocking=True)
+            tensor_replay_policy = torch.tensor(replay_buffer_policy, dtype=torch.float).to(self.device, non_blocking=True)
+
+            if minibatches < 2:
+                continue
+
+            for it in itertools.count():
+                shuffle_index = np.random.randint(self.batch)
+
+                r_1 = tensor_replay_reward[shuffle_index::self.batch].unsqueeze(1).repeat(1, self.batch)
+                r_2 = tensor_replay_reward.view(minibatches, self.batch)
+                pi_1 = tensor_replay_policy[shuffle_index::self.batch]
+                pi_tag_1 = self.derivative_net(pi_1).unsqueeze(1).repeat(1, self.batch, 1)
+                pi_1 = pi_1.unsqueeze(1).repeat(1, self.batch, 1)
+                pi_2 = tensor_replay_policy.view(minibatches, self.batch, -1)
+                w = 1 # (1 / (torch.norm(pi_2-pi_1, p=2, dim=2) + 1e-4)).flatten()
+
+                value = ((pi_2 - pi_1) * pi_tag_1).sum(dim=2).flatten()
+                target = (r_2 - r_1).flatten()
+
+                self.optimizer_derivative.zero_grad()
+                loss_q = (w*self.q_loss(value, target)).mean()
+                loss = loss_q.item()
+                loss_q.backward()
+                self.optimizer_derivative.step()
+
+                if it >= 200:
+                    break
+
+            self.derivative_net.eval()
+            for _ in range(10):
+                self.beta_net += self.beta_lr*self.derivative_net(self.beta_net).detach().squeeze(0)
+
+            grads = self.derivative_net(self.beta_net).detach().cpu().numpy().copy()
+            self.save_checkpoint(self.checkpoint, {'n': self.frame})
+
+            results['grads'].append(grads)
+            results['policies'].append(beta)
+            results['best_observed'].append(self.env.best_observed)
+            results['ts'].append(self.env.t)
+            results['q_loss'].append(loss)
+
+            results['value'].append(float(value.mean()))
+            results['target'].append(float(target.mean()))
+
+            yield results
+
+            if len(results['best_observed']) > 700 and results['best_observed'][-1] == results['best_observed'][-700]:
+                self.save_checkpoint(self.checkpoint, {'n': self.frame})
+                print("VALUE IS NOT CHANGING - FRAME %d" % self.frame)
+                break
+
+            if results['ts'][-1]:
+                self.save_checkpoint(self.checkpoint, {'n': self.frame})
+                print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
+                break
+
+            if self.frame >= self.budget:
+                print("FAILED")
+                break
+
 
     def norm(self, x):
         mean = x.mean()

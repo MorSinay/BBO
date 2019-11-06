@@ -6,6 +6,18 @@ import cocoex
 import pandas as pd
 import os
 import pwd
+import random
+import numpy as np
+
+
+def set_seed(seed):
+    if seed > 0:
+        random.seed(seed)
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
 
 def reset_data_dic():
     return {
@@ -13,7 +25,10 @@ def reset_data_dic():
         'upper_bound': [], 'lower_bound': [], 'number_of_evaluations': []
         }
 
+
 def main():
+
+    set_seed(args.seed)
     username = pwd.getpwuid(os.geteuid()).pw_name
 
     base_dir = os.path.join('/data/', username, 'gan_rl', 'baseline')
@@ -38,17 +53,12 @@ def main():
 
         if problem_index == -1:
             with Experiment(logger.filename, problem, suite_name) as exp:
-                if args.scipy_fmin:
-                    logger.info("Scipy fmin Session")
-                    exp.benchmarked_compare_scipy_fmin()
-                elif args.scipy_fmin_slsqp:
-                    logger.info("Scipy fmin slsqp Session")
-                    exp.benchmarked_compare_scipy_fmin_slsqp()
-                elif args.bbo:
-                    logger.info("BBO Session, it might take a while")
-                    exp.bbo()
+                if args.grad:
+                    logger.info("BBO Session with GRADS net, it might take a while")
+                    exp.bbo_with_grads()
                 else:
-                    raise NotImplementedError
+                    logger.info("BBO Session with VALUE net, it might take a while")
+                    exp.bbo()
 
             data['index'].append(problem.index)
             data['hit'].append(problem.final_target_hit)
@@ -66,17 +76,12 @@ def main():
 
         elif problem_index == i:
             with Experiment(logger.filename, problem, suite_name) as exp:
-                if args.scipy_fmin:
-                    logger.info("Scipy fmin Session")
-                    exp.benchmarked_compare_scipy_fmin()
-                elif args.scipy_fmin_slsqp:
-                    logger.info("Scipy fmin slsqp Session")
-                    exp.benchmarked_compare_scipy_fmin_slsqp()
-                elif args.bbo:
-                    logger.info("BBO Session, it might take a while")
-                    exp.bbo()
+                if args.grad:
+                    logger.info("BBO Session with GRADS net, it might take a while")
+                    exp.bbo_with_grads()
                 else:
-                    raise NotImplementedError
+                    logger.info("BBO Session with VALUE net, it might take a while")
+                    exp.bbo()
 
     logger.info("End of simulation")
 

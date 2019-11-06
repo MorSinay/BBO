@@ -41,6 +41,38 @@ class DuelNet(nn.Module):
         return x
 
 
+class DerivativeNet(nn.Module):
+
+    def __init__(self):
+
+        super(DerivativeNet, self).__init__()
+
+        layer = args.layer
+
+        self.fc = nn.Sequential(nn.Linear(action_space, 2*layer, bias=False),
+                                nn.BatchNorm1d(2*layer),
+                                nn.LeakyReLU(),
+                                nn.Dropout(drop),
+                                nn.Linear(2*layer, 2*layer, bias=False),
+                                nn.BatchNorm1d(2*layer),
+                                nn.LeakyReLU(),
+                                nn.Dropout(drop),
+                                nn.Linear(2*layer, layer, bias=False),
+                                nn.BatchNorm1d(layer),
+                                nn.LeakyReLU(),
+                                nn.Dropout(drop),
+                                nn.Linear(layer, action_space))
+
+    def reset(self):
+        for weight in self.parameters():
+            nn.init.xavier_uniform(weight.data)
+
+    def forward(self, pi):
+        pi = pi.view(-1, action_space)
+        x = self.fc(pi)
+
+        return x
+
 class ResNet(nn.Module):
 
     def __init__(self):

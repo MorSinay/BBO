@@ -40,9 +40,7 @@ parser.add_argument('--algorithm', type=str, default='reinforce', help='[reinfor
 
 # # booleans
 boolean_feature("load-last-model", False, 'Load the last saved model')
-boolean_feature("bbo", False, 'BBO optimizer')
-boolean_feature("scipy_fmin", False, 'scipy fmin optimizer')
-boolean_feature("scipy_fmin_slsqp", False, 'scipy fmin slsqp optimizer')
+boolean_feature("grad", False, 'Use derivative net')
 boolean_feature("tensorboard", False, "Log results to tensorboard")
 parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
 # parameters
@@ -68,7 +66,7 @@ parser.add_argument('--beta-lr', type=float, default=1e-3, metavar='LR', help='b
 parser.add_argument('--value-lr', type=float, default=1e-3, metavar='LR', help='value learning rate')
 parser.add_argument('--action-space', type=int, default=10, metavar='dimension', help='Problem dimension')
 parser.add_argument('--layer', type=int, default=128, metavar='layer', help='Value hidden layer size')
-
+parser.add_argument('--seed', type=int, default=150, metavar='seed', help='Set seed')
 parser.add_argument('--exploration', type=str, default='GRAD', metavar='N', help='GRAD|UNIFORM')
 
 # distributional learner
