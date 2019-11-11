@@ -22,7 +22,7 @@ class Env(object):
 
     def step_policy(self, policy):
 
-        assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error"
+        assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
         if len(policy.shape) == 2:
             assert(policy.shape[1] == self.output_size), "action error"

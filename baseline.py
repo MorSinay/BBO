@@ -21,6 +21,7 @@ else:
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)
 
+epsilon = 2
 
 def reset_data_dic():
     return {
@@ -109,22 +110,27 @@ def merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', '
 
 def merge_bbo(dim=['2', '3', '5', '10', '20', '40'], optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', 'fmin_cobyla']):
 
-    df = pd.read_csv(os.path.join(base_dir, "bbo_"+dim[0]+".csv"))
+    #bbo_options = ["bbo"] #["bbo", "grad"]
+    bbo_options = ["bbo", "grad"]
+    df = [[] for _ in bbo_options]
+    baseline_df = pd.read_csv(os.path.join(base_dir, 'baselines.csv'))
+    best_observed = [op + '_best_observed' for op in optimizers]
 
-    for d in dim[1:]:
-        df_d = pd.read_csv(os.path.join(base_dir, "bbo_"+d+".csv"))
-        df = df.append(df_d, ignore_index=True)
+    for i, op in enumerate(bbo_options):
+        df[i] = pd.read_csv(os.path.join(base_dir, op+'_'+dim[0]+".csv"))
 
+        for d in dim[1:]:
+            df_d = pd.read_csv(os.path.join(base_dir, op+'_'+d+".csv"))
+            df[i] = df[i].append(df_d, ignore_index=True)
 
-    baseline_df = pd.read_csv(os.path.join(base_dir,'baselines.csv'))
-    df = df.rename(columns={"hit": "bbo_hit", "best_observed": "bbo_best_observed",
-                            "number_of_evaluations": "bbo_number_of_evaluations"})
-    df = df[['id', 'bbo_hit', 'bbo_best_observed', 'bbo_number_of_evaluations']]
-    baseline_df = baseline_df.merge(df, on='id')
-    best_observed = [op+'_best_observed' for op in optimizers]
-    best_observed.append('bbo_best_observed')
-    baseline_df['dist_from_min'] = np.abs(baseline_df[best_observed].min(axis=1) - baseline_df['bbo_best_observed'])
-    baseline_df['bbo__dist_hit'] = baseline_df['dist_from_min'] < 2
+        df[i] = df[i].rename(columns={"hit": op+'_hit', "best_observed": op + '_best_observed', "number_of_evaluations": op + '_number_of_evaluations'})
+        df[i] = df[i][['id', op+'_hit', op + '_best_observed', op + '_number_of_evaluations']]
+
+        baseline_df = baseline_df.merge(df[i], on='id')
+        best_observed.append(op + '_best_observed')
+
+        baseline_df[op + '_dist_from_min'] = np.abs(baseline_df[best_observed].min(axis=1) - baseline_df[op + '_best_observed'])
+        baseline_df[op + '_dist_hit'] = baseline_df[op + '_dist_from_min'] < epsilon
 
     file = os.path.join(base_dir, 'compare.csv')
     baseline_df.to_csv(file)
@@ -141,16 +147,16 @@ def plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', 'fmin_c
         for n, op in enumerate(optimizers):
             res[n].append(1 - len(df_temp[df_temp[op+'_hit'] == 0])/dim_size)
 
-    X = [5*i for i in range(len(dimension))]
+    X = [10*i for i in range(len(dimension))]
     ax = plt.subplot(111)
-    w = 0.4
+    w = 1
 
     for i in range(len(optimizers)):
         ax.bar([x + i*w for x in X], res[i], width=w, color=color[i], align='center', label=optimizers[i])
 
-    ax.set_xticks([i + int(len(dimension)/2) for i in X])
+    ax.set_xticks([i + len(dimension)//2 for i in X])
     ax.set_xticklabels(dimension)
-    ax.autoscale(tight=True)
+   # ax.autoscale(tight=True)
     ax.legend()
 
     plt.show()
@@ -162,4 +168,5 @@ if __name__ == '__main__':
     merge_bbo(dim=['2', '3', '5', '10', '20', '40'],
               optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
 
-    plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo', 'bbo__dist'])
+    #plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist'])
+    plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist', 'grad_dist'])

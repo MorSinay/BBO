@@ -30,13 +30,14 @@ def boolean_feature(feature, default, help):
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 
-parser.add_argument('--batch', type=int, default=32, help='Mini-Batch Size')
-
+parser.add_argument('--batch', type=int, default=30, help='Mini-Batch Size')
 
 # strings
 parser.add_argument('--game', type=str, default='bbo', help='bbo | net')
 parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
 parser.add_argument('--algorithm', type=str, default='reinforce', help='[reinforce]')
+
+boolean_feature('debug', False, 'debug flag')
 
 # # booleans
 boolean_feature("load-last-model", False, 'Load the last saved model')
@@ -48,6 +49,9 @@ parser.add_argument('--resume', type=int, default=-1, help='Resume experiment nu
 
 # #exploration parameters
 parser.add_argument('--epsilon', type=float, default=0.05, metavar='ε', help='exploration parameter before behavioral period')
+parser.add_argument('--explore', type=str, default='rand', metavar='explore', help='exploration option - rand | direct')
+parser.add_argument('--grad-steps', type=int, default=10, metavar='grad', help='Gradient step')
+
 #
 # #dataloader
 parser.add_argument('--cpu-workers', type=int, default=24, help='How many CPUs will be used for the data loading')
@@ -56,9 +60,9 @@ parser.add_argument('--cuda-default', type=int, default=0, help='Default GPU')
 # #train parameters
 parser.add_argument('--checkpoint-interval', type=int, default=1000, metavar='STEPS', help='Number of training steps between evaluations')
 parser.add_argument('--replay-updates-interval', type=int, default=50, metavar='STEPS', help='Number of training iterations between q-target updates')
-parser.add_argument('--replay-memory-size', type=int, default=320, help='Total replay exploit memory size')
+parser.add_argument('--replay-memory-factor', type=int, default=10, help='Replay factor')
 parser.add_argument('--delta', type=float, default=0.1, metavar='delta', help='Total variation constraint')
-parser.add_argument('--drop', type=float, default=0.25, metavar='drop out', help='Drop out')
+parser.add_argument('--drop', type=float, default=0.1, metavar='drop out', help='Drop out')
 #
 # #actors parameters
 parser.add_argument('--problem-index', type=int, default=-1, help='Problem Index or -1 for all')

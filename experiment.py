@@ -14,10 +14,9 @@ import scipy.optimize  # to define the solver to be benchmarked
 
 class Experiment(object):
 
-    def __init__(self, logger_file, problem, suite_name):
+    def __init__(self, logger_file, problem):
 
         # parameters
-        self.suite_name = suite_name
         self.action_space = args.action_space
         dirs = os.listdir(consts.outdir)
 
@@ -98,7 +97,10 @@ class Experiment(object):
         agent = BBOAgent(self.exp_name, self.problem, checkpoint=self.checkpoint)
 
         n_explore = args.batch
-        player = agent.find_min(n_explore)
+        if args.debug:
+            player = agent.find_min_temp(n_explore)
+        else:
+            player = agent.find_min(n_explore)
 
         for n, bbo_results in (enumerate(player)):
             beta = bbo_results['policies'][-1]
@@ -153,7 +155,7 @@ class Experiment(object):
             value = bbo_results['value'][-1]
             target = bbo_results['target'][-1]
             best_observe = bbo_results['best_observed'][-1]
-            grads = bbo_results['grads'][-1]
+            grads = bbo_results['grads'][-1].flatten()
             beta_evaluate = self.problem(beta)
             loss = bbo_results['q_loss'][-1]
 
