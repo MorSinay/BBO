@@ -51,6 +51,8 @@ parser.add_argument('--resume', type=int, default=-1, help='Resume experiment nu
 parser.add_argument('--epsilon', type=float, default=0.05, metavar='ε', help='exploration parameter before behavioral period')
 parser.add_argument('--explore', type=str, default='rand', metavar='explore', help='exploration option - rand | direct')
 parser.add_argument('--grad-steps', type=int, default=10, metavar='grad', help='Gradient step')
+parser.add_argument('--stop-con', type=int, default=200, metavar='stop', help='Stopping Condition')
+
 
 #
 # #dataloader

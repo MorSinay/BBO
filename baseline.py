@@ -162,11 +162,40 @@ def plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', 'fmin_c
     plt.show()
 
 
+def compare_beta_evaluate():
+    compare_file = 'beta_evaluate.npy'
+    analysis_path = os.path.join(base_dir, 'analysis')
+    dirs = os.listdir(analysis_path)
+    compare_dict = {}
+    for dir in dirs:
+        try:
+            path = os.path.join(analysis_path, dir)
+            files = os.listdir(path)
+            if compare_file in files:
+                compare_dict[dir] = np.load(os.path.join(path, compare_file))
+        except:
+            continue
+
+    color = ['b', 'g', 'r', 'y', 'c', 'm', 'k', '0.75']
+    res_keys = compare_dict.keys()
+    if len(res_keys) is 0:
+        return
+
+    plt.subplot(111)
+
+    for i, key in enumerate(res_keys):
+        plt.plot(range(compare_dict[key].size), compare_dict[key], color=color[i], label=key)
+
+    plt.legend()
+    plt.show()
+
 
 if __name__ == '__main__':
-    merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
-    merge_bbo(dim=['2', '3', '5', '10', '20', '40'],
-              optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
+    # merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
+    # merge_bbo(dim=['2', '3', '5', '10', '20', '40'],
+    #           optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
+    #
+    # #plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist'])
+    # plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist', 'grad_dist'])
 
-    #plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist'])
-    plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist', 'grad_dist'])
+    compare_beta_evaluate()

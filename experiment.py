@@ -109,7 +109,7 @@ class Experiment(object):
             reward = np.average(bbo_results['rewards'][-1])
             best_observe = bbo_results['best_observed'][-1]
             grads = bbo_results['grads'][-1]
-            beta_evaluate = self.problem(beta)
+            beta_evaluate = bbo_results['beta_evaluate'][-1]
             loss = bbo_results['q_loss'][-1]
             r_mean = bbo_results['reward_mean'][-1]
 
@@ -156,7 +156,7 @@ class Experiment(object):
             target = bbo_results['target'][-1]
             best_observe = bbo_results['best_observed'][-1]
             grads = bbo_results['grads'][-1].flatten()
-            beta_evaluate = self.problem(beta)
+            beta_evaluate = bbo_results['beta_evaluate'][-1]
             loss = bbo_results['q_loss'][-1]
 
             if not n % 20:

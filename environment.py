@@ -13,6 +13,16 @@ class Env(object):
         self.reset()
         self.upper_bounds = self.problem.upper_bounds
         self.lower_bounds = self.problem.lower_bounds
+        self.initial_solution = self.problem.initial_solution
+
+    def get_problem_dim(self):
+        return self.problem.dimension
+
+    def constrains(self):
+        return self.lower_bounds, self.upper_bounds
+
+    def get_initial_solution(self):
+        return self.initial_solution
 
     def reset(self):
         self.best_observed = None

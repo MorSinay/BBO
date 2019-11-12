@@ -24,6 +24,9 @@ class BBOAgent(object):
         #TODO:
         # Need to add upper_bound and lower bound and dim and initial_solution
         # Need to fix env class to support VAE
+        # Update momentum to SGD < 0.9
+        # Work on Graphs and compare between the algorithms
+        # Compare with diffrent exploration - rand
 
         reward_str = "BBO"
         print("Learning POLICY method using {} with BBOAgent".format(reward_str))
@@ -43,6 +46,11 @@ class BBOAgent(object):
         self.checkpoint = checkpoint
         self.use_grad_net = args.grad
         self.grad_steps = args.grad_steps
+        self.stop_con = args.stop_con
+
+        self.analysis_dir = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
+        if not os.path.exists(self.analysis_dir):
+            os.makedirs(self.analysis_dir)
 
         self.env = Env(self.problem)
         self.frame = 0
@@ -73,9 +81,17 @@ class BBOAgent(object):
             self.value_net.to(self.device)
             # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
             self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-            self.optimizer_beta = torch.optim.Adam([self.beta_net], lr=self.beta_lr, eps=1.5e-4, weight_decay=0)
+            self.optimizer_beta = torch.optim.SGD([self.beta_net], lr=self.beta_lr)
+            #self.optimizer_beta = torch.optim.Adam([self.beta_net], lr=self.beta_lr, eps=1.5e-4, weight_decay=0)
 
         self.q_loss = nn.SmoothL1Loss(reduction='none')
+
+    def save_results(self, results):
+        os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
+
+        for k in results.keys():
+            path = os.path.join(self.analysis_dir, k +'.npy')
+            np.save(path, results[k])
 
     def reset_beta(self):
         self.beta_net.data = self.init
@@ -199,22 +215,26 @@ class BBOAgent(object):
             q_value = self.value_net(torch.tensor(beta_explore, dtype=torch.float).to(self.device))
             results['q_value'].append(q_value.data.cpu().numpy())
             results['best_observed'].append(self.env.best_observed)
+            results['beta_evaluate'].append(self.problem(beta))
             results['ts'].append(self.env.t)
             results['q_loss'].append(avg_loss.numpy())
 
             yield results
 
-            if len(results['best_observed']) > 700 and results['best_observed'][-1] == results['best_observed'][-700]:
+            if len(results['best_observed']) > self.stop_con and results['best_observed'][-1] == results['best_observed'][-self.stop_con]:
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
+                self.save_results(results)
                 print("VALUE IS NOT CHANGING - FRAME %d" % self.frame)
                 break
 
             if results['ts'][-1]:
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
+                self.save_results(results)
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
                 break
 
             if self.frame >= self.budget:
+                self.save_results(results)
                 print("FAILED")
                 break
 
@@ -299,99 +319,28 @@ class BBOAgent(object):
             q_value = self.value_net(torch.tensor(beta_explore, dtype=torch.float).to(self.device))
             results['q_value'].append(q_value.data.cpu().numpy())
             results['best_observed'].append(self.env.best_observed)
+            results['beta_evaluate'].append(self.problem(beta))
             results['ts'].append(self.env.t)
             results['q_loss'].append(avg_loss.numpy())
 
             yield results
 
-            if len(results['best_observed']) > 700 and results['best_observed'][-1] == results['best_observed'][-700]:
+            if len(results['best_observed']) > self.stop_con and results['best_observed'][-1] == results['best_observed'][-self.stop_con]:
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
                 print("VALUE IS NOT CHANGING - FRAME %d" % self.frame)
+                self.save_results(results)
                 break
 
             if results['ts'][-1]:
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
+                self.save_results(results)
                 break
 
             if self.frame >= self.budget:
                 print("FAILED")
+                self.save_results(results)
                 break
-
-
-    def exploration_grad_rand(self, n_explore):
-
-        grads = self.get_grad().cpu().numpy().copy()
-
-        beta = self.beta_net.detach().data.cpu().numpy()
-        beta = np.clip(beta, self.problem.lower_bounds, self.problem.upper_bounds)
-
-        explore_factor = self.delta * grads + self.epsilon * np.random.randn(n_explore, self.action_space)
-        explore_factor *= 0.9 ** (2 * np.array(range(n_explore))).reshape(n_explore, 1)
-        beta_explore = beta + explore_factor  # gradient decent
-        beta_explore = np.clip(beta_explore, self.problem.lower_bounds, self.problem.upper_bounds)
-
-        return beta_explore
-
-
-    def exploration_grad_direct(self, n_explore):
-        beta_array = self.get_n_grad_ahead(self.grad_steps)
-        n_explore = (n_explore//self.grad_steps)
-
-        epsilon_array = 0.1 ** (3 - 2*np.arange(self.grad_steps)/(self.grad_steps - 1))
-        epsilon_array = np.expand_dims(epsilon_array, axis=1)
-        beta_explore = np.concatenate([beta_array + epsilon_array * np.random.randn(self.grad_steps, self.action_space) for _ in range(n_explore)])
-        beta_explore = np.clip(beta_explore, self.problem.lower_bounds, self.problem.upper_bounds)
-
-        return beta_explore
-
-    def get_grad(self):
-        if self.use_grad_net:
-            grad = self.derivative_net(self.beta_net).detach().squeeze(0)
-            return grad.detach()
-        else:
-            self.optimizer_beta.zero_grad()
-            loss_beta = self.value_net(self.beta_net)
-            loss_beta.backward()
-            return self.beta_net.grad.detach()
-
-    def get_n_grad_ahead(self, n):
-
-        optimizer_state = copy.deepcopy(self.optimizer_beta.state_dict())
-        beta = self.beta_net.detach()
-
-        beta_array = [self.beta_net.detach().cpu().numpy()]
-        for _ in range(n-1):
-            # self.optimizer_beta.zero_grad()
-            # loss_beta = self.value_net(self.beta_net)
-            # loss_beta.backward()
-            # self.optimizer_beta.step()
-            self.grad_step()
-            beta_array.append(self.beta_net.detach().cpu().numpy())
-
-        self.optimizer_beta.load_state_dict(optimizer_state)
-        with torch.no_grad():
-            self.beta_net.data = beta.data
-
-        beta_array = np.stack(beta_array)
-        return beta_array
-
-    def grad_step(self):
-        if self.use_grad_net:
-            grad = self.derivative_net(self.beta_net).detach().squeeze(0)
-            with torch.no_grad():
-                self.beta_net.grad = -grad.detach()
-        else:
-            self.optimizer_beta.zero_grad()
-            loss_beta = self.value_net(self.beta_net)
-            loss_beta.backward()
-
-        self.optimizer_beta.step()
-
-        with torch.no_grad():
-            beta = self.beta_net.detach().data.cpu().numpy()
-            beta = np.clip(beta, self.problem.lower_bounds, self.problem.upper_bounds)
-            self.beta_net.data = torch.tensor(beta, dtype=torch.float).to(self.device)
 
     def find_min_grad_eval(self, n_explore):
 
@@ -468,57 +417,106 @@ class BBOAgent(object):
             results['grads'].append(grads)
             results['policies'].append(beta)
             results['best_observed'].append(self.env.best_observed)
+            results['beta_evaluate'].append(self.problem(beta))
             results['ts'].append(self.env.t)
             results['q_loss'].append(loss)
-
             results['value'].append(float(value.mean()))
             results['target'].append(float(target.mean()))
 
             yield results
 
-            if len(results['best_observed']) > 200 and results['best_observed'][-1] == results['best_observed'][-200]:
+            if len(results['best_observed']) > self.stop_con and results['best_observed'][-1] == results['best_observed'][-self.stop_con]:
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
                 print("VALUE IS NOT CHANGING - FRAME %d" % self.frame)
+                self.save_results(results)
                 break
 
             if results['ts'][-1]:
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
+                self.save_results(results)
                 break
 
             if self.frame >= self.budget:
                 print("FAILED")
+                self.save_results(results)
                 break
 
+    def get_n_grad_ahead(self, n):
+
+        optimizer_state = copy.deepcopy(self.optimizer_beta.state_dict())
+        beta = self.beta_net.detach()
+
+        beta_array = [self.beta_net.detach().cpu().numpy()]
+        for _ in range(n-1):
+            # self.optimizer_beta.zero_grad()
+            # loss_beta = self.value_net(self.beta_net)
+            # loss_beta.backward()
+            # self.optimizer_beta.step()
+            self.grad_step()
+            beta_array.append(self.beta_net.detach().cpu().numpy())
+
+        self.optimizer_beta.load_state_dict(optimizer_state)
+        with torch.no_grad():
+            self.beta_net.data = beta.data
+
+        beta_array = np.stack(beta_array)
+        return beta_array
+
+    def grad_step(self):
+        if self.use_grad_net:
+            grad = self.derivative_net(self.beta_net).detach().squeeze(0)
+            with torch.no_grad():
+                self.beta_net.grad = -grad.detach()
+        else:
+            self.optimizer_beta.zero_grad()
+            loss_beta = self.value_net(self.beta_net)
+            loss_beta.backward()
+
+        self.optimizer_beta.step()
+
+        with torch.no_grad():
+            beta = self.beta_net.detach().data.cpu().numpy()
+            beta = np.clip(beta, self.problem.lower_bounds, self.problem.upper_bounds)
+            self.beta_net.data = torch.tensor(beta, dtype=torch.float).to(self.device)
 
     def norm(self, x):
         mean = x.mean()
-        #std = x.std() + 1e-5
-        #x = (x-mean)/std
         x = x - mean
         return x
 
-    # def grad_explore(self, n_players):
-    #     self.optimizer_beta.zero_grad()
-    #     loss_beta = -self.value_net(self.beta_net)
-    #     loss_beta.backward()
-    #
-    #     grads = self.beta_net.grad.detach().cpu().numpy().copy()
-    #
-    #     explore_factor = self.delta * grads + self.epsilon * np.random.randn(n_players, self.action_space)
-    #     explore_factor *= 0.9 ** (2*np.array(range(n_players))).reshape(n_players,1)
-    #     beta_explore = self.beta_net.detach().cpu().numpy() + explore_factor
-    #
-    #     beta_explore = np.clip(beta_explore, self.problem.lower_bounds, self.problem.upper_bounds)
-    #
-    #     return (beta_explore, grads)
-    #
-    # def uniform_explore(self, n_players):
-    #
-    #     explore_factor = self.epsilon * np.random.randn(n_players, self.action_space)
-    #     explore_factor *= 0.9 ** (2 * np.array(range(n_players))).reshape(n_players, 1)
-    #     beta_explore = self.beta_net.detach().cpu().numpy() + explore_factor
-    #     pi_explore = np.exp(beta_explore) / np.sum(np.exp(beta_explore), axis=1).reshape(n_players, 1)
-    #
-    #     pi_explore = np.clip(pi_explore, self.problem.lower_bounds, self.problem.upper_bounds)
-    #     return pi_explore
+    def exploration_grad_rand(self, n_explore):
+
+        grads = self.get_grad().cpu().numpy().copy()
+
+        beta = self.beta_net.detach().data.cpu().numpy()
+        beta = np.clip(beta, self.problem.lower_bounds, self.problem.upper_bounds)
+
+        explore_factor = self.delta * grads + self.epsilon * np.random.randn(n_explore, self.action_space)
+        explore_factor *= 0.9 ** (2 * np.array(range(n_explore))).reshape(n_explore, 1)
+        beta_explore = beta + explore_factor  # gradient decent
+        beta_explore = np.clip(beta_explore, self.problem.lower_bounds, self.problem.upper_bounds)
+
+        return beta_explore
+
+    def exploration_grad_direct(self, n_explore):
+        beta_array = self.get_n_grad_ahead(self.grad_steps)
+        n_explore = (n_explore//self.grad_steps)
+
+        epsilon_array = 0.1 ** (3 - 2*np.arange(self.grad_steps)/(self.grad_steps - 1))
+        epsilon_array = np.expand_dims(epsilon_array, axis=1)
+        beta_explore = np.concatenate([beta_array + epsilon_array * np.random.randn(self.grad_steps, self.action_space) for _ in range(n_explore)])
+        beta_explore = np.clip(beta_explore, self.problem.lower_bounds, self.problem.upper_bounds)
+
+        return beta_explore
+
+    def get_grad(self):
+        if self.use_grad_net:
+            grad = self.derivative_net(self.beta_net).detach().squeeze(0)
+            return grad.detach()
+        else:
+            self.optimizer_beta.zero_grad()
+            loss_beta = self.value_net(self.beta_net)
+            loss_beta.backward()
+            return self.beta_net.grad.detach()
+

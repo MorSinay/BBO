@@ -128,6 +128,6 @@ def vae_simulation():
     logger.info("End of simulation")
 
 if __name__ == '__main__':
-    #main()
-    vae_simulation()
+    main()
+    #vae_simulation()
 
