@@ -38,6 +38,7 @@ parser.add_argument('--identifier', type=str, default='debug', help='The name of
 parser.add_argument('--algorithm', type=str, default='reinforce', help='[reinforce]')
 
 boolean_feature('debug', False, 'debug flag')
+boolean_feature('vae', False, 'run vae problem')
 
 # # booleans
 boolean_feature("load-last-model", False, 'Load the last saved model')
@@ -49,7 +50,7 @@ parser.add_argument('--resume', type=int, default=-1, help='Resume experiment nu
 
 # #exploration parameters
 parser.add_argument('--epsilon', type=float, default=0.05, metavar='ε', help='exploration parameter before behavioral period')
-parser.add_argument('--explore', type=str, default='rand', metavar='explore', help='exploration option - rand | direct')
+parser.add_argument('--explore', type=str, default='grad_rand', metavar='explore', help='exploration option - grad_rand | grad_direct | rand')
 parser.add_argument('--grad-steps', type=int, default=10, metavar='grad', help='Gradient step')
 parser.add_argument('--stop-con', type=int, default=200, metavar='stop', help='Stopping Condition')
 
@@ -69,6 +70,7 @@ parser.add_argument('--drop', type=float, default=0.1, metavar='drop out', help=
 # #actors parameters
 parser.add_argument('--problem-index', type=int, default=-1, help='Problem Index or -1 for all')
 parser.add_argument('--beta-lr', type=float, default=1e-3, metavar='LR', help='beta learning rate')
+parser.add_argument('--beta-optim', type=str, default='sgd', metavar='optim', help='beta optimizer sgd | adam')
 parser.add_argument('--value-lr', type=float, default=1e-3, metavar='LR', help='value learning rate')
 parser.add_argument('--action-space', type=int, default=10, metavar='dimension', help='Problem dimension')
 parser.add_argument('--layer', type=int, default=128, metavar='layer', help='Value hidden layer size')

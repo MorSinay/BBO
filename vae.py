@@ -169,17 +169,15 @@ class VaeProblem(object):
         else:
             assert False, "init problem {}".format(problem_index)
 
-        if self.problem.upper_bounds.min() != self.problem.upper_bounds.max():
-            assert False, "upper bound problem {}".format(self.problem.upper_bounds)
-        self.z_upper_bounds = self.problem.upper_bounds.min()
+        self.z_upper_bounds = self.problem.upper_bounds
+        self.z_lower_bounds = self.problem.lower_bounds
 
-        if self.problem.lower_bounds.min() != self.problem.lower_bounds.max():
-            assert False, "lower bound problem {}".format(self.problem.lower_bounds)
-        self.z_lower_bounds = self.problem.lower_bounds.min()
+        self.device = self.vae.device
         self.best_observed_fvalue1 = self.problem.best_observed_fvalue1
         self.index = self.problem.index
+        self.id = self.problem.id
         self.dimensions = 784
-        self.initial_solution = np.zeros(self.dimensions)
+        self.initial_solution = self.vae.model.decode(torch.tensor(self.problem.initial_solution, dtype=torch.float).to(self.device)).detach().cpu().numpy()
         self.lower_bounds = -np.ones(self.dimensions)
         self.upper_bounds = np.ones(self.dimensions)
         self.evaluations = 0
@@ -189,9 +187,10 @@ class VaeProblem(object):
         return None
 
     def func(self, x):
-
-        z = self.vae.model.reparameterize(self.vae.model.encode(x))
-        z = z.clamp(min=self.z_lower_bounds, max=self.z_upper_bounds)
+        x = torch.tensor(x, dtype=torch.float).to(self.device)
+        mu, logvar = self.vae.model.encode(x)
+        z = self.vae.model.reparameterize(mu, logvar).detach().cpu().numpy()
+        z = np.clip(z, self.z_lower_bounds, self.z_upper_bounds)
         f_val = self.problem(z)
 
         self.best_observed_fvalue1 = self.problem.best_observed_fvalue1
@@ -199,9 +198,6 @@ class VaeProblem(object):
         self.final_target_hit = self.problem.final_target_hit
 
         return f_val
-
-    def get_vae_func(self):
-        return self.func
 
 
 if __name__ == "__main__":

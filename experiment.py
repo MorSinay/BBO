@@ -14,7 +14,7 @@ import scipy.optimize  # to define the solver to be benchmarked
 
 class Experiment(object):
 
-    def __init__(self, logger_file, problem):
+    def __init__(self, logger_file, env):
 
         # parameters
         self.action_space = args.action_space
@@ -23,10 +23,11 @@ class Experiment(object):
         self.load_model = args.load_last_model
         self.load_last = args.load_last_model
         self.resume = args.resume
-        self.problem = problem
-        self.problem_index = self.problem.index
+        self.env = env
+        self.problem_index = self.env.get_problem_index()
+        self.problem_id = self.env.get_problem_id()
 
-        temp_name = "%s_%s_%s_bbo_%s" % (args.game, args.algorithm, args.identifier, args.problem_index)
+        temp_name = "%s_%s_%s_bbo_%s" % (args.game, args.algorithm, args.identifier, str(args.action_space))
         self.exp_name = ""
         if self.load_model:
             if self.resume >= 0:
@@ -50,13 +51,17 @@ class Experiment(object):
             self.load_model = False
             self.exp_num = n
 
+        self.exp_name = "%s_%s_%s_bbo_%s" % (args.game, args.algorithm, args.identifier, str(args.action_space))
         # init experiment parameters
         self.dirs_locks = DirsAndLocksSingleton(self.exp_name)
 
         self.root = self.dirs_locks.root
 
         # set dirs
-        self.tensorboard_dir = os.path.join(self.dirs_locks.tensorboard_dir, problem.id)
+        self.tensorboard_dir = os.path.join(self.dirs_locks.tensorboard_dir, self.problem_id)
+        if not os.path.exists(self.tensorboard_dir):
+            os.makedirs(self.tensorboard_dir)
+
         self.checkpoints_dir = self.dirs_locks.checkpoints_dir
         self.results_dir = self.dirs_locks.results_dir
         self.code_dir = self.dirs_locks.code_dir
@@ -94,7 +99,7 @@ class Experiment(object):
 
     def bbo(self):
 
-        agent = BBOAgent(self.exp_name, self.problem, checkpoint=self.checkpoint)
+        agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
 
         n_explore = args.batch
         if args.debug:
@@ -144,7 +149,7 @@ class Experiment(object):
 
     def bbo_with_grads(self):
 
-        agent = BBOAgent(self.exp_name, self.problem, checkpoint=self.checkpoint)
+        agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
 
         n_explore = args.batch
         player = agent.find_min_grad_eval(n_explore)

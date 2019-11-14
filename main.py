@@ -9,6 +9,7 @@ import pwd
 import random
 import numpy as np
 from vae import VaeProblem, VAE
+from environment import EnvCoco, EnvVae
 
 
 def set_seed(seed):
@@ -53,7 +54,7 @@ def main():
     is_grad = args.grad
     for i, problem in enumerate(suite):
         if problem_index == -1:
-            with Experiment(logger.filename, problem) as exp:
+            with Experiment(logger.filename, EnvCoco(problem)) as exp:
                 if is_grad:
                     logger.info("BBO Session with GRADS net, it might take a while")
                     exp.bbo_with_grads()
@@ -79,7 +80,7 @@ def main():
             df.to_csv(fmin_file)
 
         elif problem_index == i:
-            with Experiment(logger.filename, problem) as exp:
+            with Experiment(logger.filename, EnvCoco(problem)) as exp:
                 if args.grad:
                     logger.info("BBO Session with GRADS net, it might take a while")
                     exp.bbo_with_grads()
@@ -101,7 +102,6 @@ def vae_simulation():
 
     torch.set_num_threads(1000)
     print("Torch %d" % torch.get_num_threads())
-    args.action_space = 784
     if args.problem_index == -1:
         args.problem_index = 0
 
@@ -114,10 +114,9 @@ def vae_simulation():
     #data = reset_data_dic()
     problem_index = args.problem_index
     vae_problem = VaeProblem(problem_index)
-    problem = vae_problem.get_vae_func()
     is_grad = args.grad
 
-    with Experiment(logger.filename, problem) as exp:
+    with Experiment(logger.filename, EnvVae(vae_problem)) as exp:
         if is_grad:
             logger.info("BBO Session with GRADS net, it might take a while")
             exp.bbo_with_grads()
@@ -128,6 +127,10 @@ def vae_simulation():
     logger.info("End of simulation")
 
 if __name__ == '__main__':
-    main()
-    #vae_simulation()
+    if args.vae:
+        if args.action_space != 784:
+            assert False, "args.action_space is not 784"
+        vae_simulation()
+    else:
+        main()
 

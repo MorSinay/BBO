@@ -21,7 +21,13 @@ else:
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)
 
-epsilon = 2
+epsilon = 1
+
+compare_grad = 0
+compare_value = 0
+
+dim = 5
+index = 0
 
 def reset_data_dic():
     return {
@@ -110,8 +116,15 @@ def merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', '
 
 def merge_bbo(dim=['2', '3', '5', '10', '20', '40'], optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', 'fmin_cobyla']):
 
-    #bbo_options = ["bbo"] #["bbo", "grad"]
-    bbo_options = ["bbo", "grad"]
+    if compare_grad and compare_value:
+        bbo_options = ["bbo", "grad"]
+    elif compare_value:
+        bbo_options = ["bbo"]
+    elif compare_grad:
+        bbo_options = ["grad"]
+    else:
+        return
+
     df = [[] for _ in bbo_options]
     baseline_df = pd.read_csv(os.path.join(base_dir, 'baselines.csv'))
     best_observed = [op + '_best_observed' for op in optimizers]
@@ -163,20 +176,21 @@ def plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', 'fmin_c
 
 
 def compare_beta_evaluate():
-    compare_file = 'beta_evaluate.npy'
-    analysis_path = os.path.join(base_dir, 'analysis')
+    compare_file = 'beta_evaluate.npy'#'best_observed.npy'
+    analysis_path = os.path.join(base_dir, 'analysis', str(dim))
     dirs = os.listdir(analysis_path)
     compare_dict = {}
     for dir in dirs:
         try:
-            path = os.path.join(analysis_path, dir)
+            path = os.path.join(analysis_path, dir, str(index))
             files = os.listdir(path)
             if compare_file in files:
                 compare_dict[dir] = np.load(os.path.join(path, compare_file))
         except:
             continue
 
-    color = ['b', 'g', 'r', 'y', 'c', 'm', 'k', '0.75']
+    color = ['b', 'g', 'r', 'y', 'c', 'm', 'k', 'lime', 'gold', 'slategray', 'indigo', 'maroon', 'plum', 'pink', 'tan', 'khaki', 'silver',
+             'navy', 'skyblue', 'teal', 'darkkhaki', 'indianred', 'orchid', 'lightgrey', 'dimgrey']
     res_keys = compare_dict.keys()
     if len(res_keys) is 0:
         return
@@ -186,16 +200,21 @@ def compare_beta_evaluate():
     for i, key in enumerate(res_keys):
         plt.plot(range(compare_dict[key].size), compare_dict[key], color=color[i], label=key)
 
+    plt.title('dim: {} index: {} compare: {}'.format(dim, index, compare_file))
     plt.legend()
     plt.show()
 
 
 if __name__ == '__main__':
-    # merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
-    # merge_bbo(dim=['2', '3', '5', '10', '20', '40'],
-    #           optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
-    #
-    # #plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist'])
-    # plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist', 'grad_dist'])
+
+    merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
+    merge_bbo(dim=['2', '3', '5', '10', '20', '40'], optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
+
+    if compare_grad and compare_value:
+        plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist', 'grad_dist'])
+    elif compare_value:
+        plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist'])
+    elif compare_grad:
+        plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'grad_dist'])
 
     compare_beta_evaluate()
