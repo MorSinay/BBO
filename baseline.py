@@ -11,46 +11,35 @@ import pwd
 import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from collections import defaultdict
 
 username = pwd.getpwuid(os.geteuid()).pw_name
 
 if username == 'morsi':
     base_dir = os.path.join('/Users', username, 'Desktop', 'baseline')
 else:
+    from vae import VaeProblem, VAE
     base_dir = os.path.join('/data/', username, 'gan_rl', 'baseline')
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)
 
 epsilon = 1
 
-compare_grad = 0
-compare_value = 0
+compare_grad = 1
+compare_value = 1
 
 dim = 5
 index = 0
 
-def reset_data_dic():
-    return {
-        'index': [], 'hit': [], 'id': [], 'dimension': [], 'best_observed': [], 'initial_solution': [],
-        'upper_bound': [], 'lower_bound': [], 'number_of_evaluations': []
-        }
-
-def random_search(f, lbounds, ubounds, evals):
-    """Won't work (well or at all) for `evals` much larger than 1e5"""
-    [f(x) for x in np.asarray(lbounds) + (np.asarray(ubounds) - lbounds)
-                               * np.random.rand(int(evals), len(ubounds))]
-
-
-def run_baseline(budget=100000):
+def run_baseline(budget=10000):
     suite_name = "bbob"
     suite_filter_options = ("dimensions: 2,3,5,10,20,40 ")  # "year:2019 " +  "instance_indices: 1-5 ")
     suite = cocoex.Suite(suite_name, "", suite_filter_options)
 
-    optimization_function = [scipy.optimize.fmin_slsqp, scipy.optimize.fmin, scipy.optimize.fmin_cobyla,
-                             cocoex.solvers.random_search, cma.fmin2]
+    optimization_function = [scipy.optimize.fmin_slsqp, scipy.optimize.fmin, scipy.optimize.fmin_cobyla, cma.fmin2]
 
     for fmin in optimization_function:
-        data = reset_data_dic()
+        data = defaultdict(list)
         suite = cocoex.Suite(suite_name, "", suite_filter_options)
         fmin_name = fmin.__name__
 
@@ -64,9 +53,6 @@ def run_baseline(budget=100000):
                 output = fmin(problem, problem.initial_solution,
                               maxfun=budget * problem.dimension, disp=False, full_output=True)
 
-            elif fmin_name is 'random_search':
-                fmin(problem, problem.dimension * [-5], problem.dimension * [5], budget * problem.dimension)
-
             elif fmin_name is 'fmin2':
                 xopt, es = fmin(problem, problem.initial_solution, 2,
                                 {'maxfevals':budget * problem.dimension, 'verbose':-9}, restarts=9)
@@ -74,8 +60,6 @@ def run_baseline(budget=100000):
             elif fmin_name is 'fmin_cobyla':
                 fmin(problem, problem.initial_solution, cons=lambda x: problem.constraint(x), maxfun=budget * problem.dimension,
                      disp=0, rhoend=1e-9)
-
-
             else:
                 raise NotImplementedError
 
@@ -90,11 +74,55 @@ def run_baseline(budget=100000):
             data['number_of_evaluations'].append(problem.evaluations)
 
         df = pd.DataFrame(data)
-        fmin_file = os.path.join(base_dir, fmin_name+'.csv')
+        fmin_file = os.path.join(base_dir, 'coco_'+fmin_name+'.csv')
+        df.to_csv(fmin_file)
+
+def run_vae_baseline(budget=10000):
+
+    optimization_function = [scipy.optimize.fmin_slsqp, scipy.optimize.fmin, scipy.optimize.fmin_cobyla, cma.fmin2]
+
+    for fmin in optimization_function:
+        data = defaultdict(list)
+        fmin_name = fmin.__name__
+
+        for i in tqdm(range(360)):
+            vae_problem = VaeProblem(i)
+            if fmin_name is 'fmin_slsqp':
+                output = fmin(vae_problem.func, vae_problem.initial_solution, iter=budget,  # very approximate way to respect budget
+                              full_output=True, iprint=-1)
+
+            elif fmin_name is 'fmin':
+                output = fmin(vae_problem.func, vae_problem.initial_solution,
+                              maxfun=budget, disp=False, full_output=True)
+
+            elif fmin_name is 'fmin2':
+                xopt, es = fmin(vae_problem.func, vae_problem.initial_solution, 2,
+                                {'maxfevals':budget, 'verbose':-9}, restarts=9)
+
+            elif fmin_name is 'fmin_cobyla':
+                fmin(vae_problem.func, vae_problem.initial_solution, cons=lambda x: vae_problem.constraint(x), maxfun=budget,
+                     disp=0, rhoend=1e-9)
+
+
+            else:
+                raise NotImplementedError
+
+            data['index'].append(i)
+            data['hit'].append(vae_problem.final_target_hit)
+            data['id'].append('vae' + str(i))
+            data['dimension'].append(vae_problem.dimension)
+            data['best_observed'].append(vae_problem.best_observed_fvalue1)
+            data['initial_solution'].append(vae_problem.initial_solution)
+            data['upper_bound'].append(vae_problem.upper_bounds)
+            data['lower_bound'].append(vae_problem.lower_bounds)
+            data['number_of_evaluations'].append(vae_problem.evaluations)
+
+        df = pd.DataFrame(data)
+        fmin_file = os.path.join(base_dir, 'vae_'+fmin_name+'.csv')
         df.to_csv(fmin_file)
 
 
-def merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', 'fmin_cobyla']):
+def merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'fmin2', 'fmin_cobyla']):
 
     data_fmin = pd.read_csv(os.path.join(base_dir, optimizers[0]+".csv"))
     data = data_fmin[['index', 'id', 'dimension', 'initial_solution', 'upper_bound', 'lower_bound']]
@@ -113,8 +141,17 @@ def merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', '
     fmin_file = os.path.join(base_dir, 'baselines.csv')
     data.to_csv(fmin_file)
 
+def merge_coco_vae(optimizers=['fmin', 'fmin_slsqp', 'fmin2', 'fmin_cobyla']):
 
-def merge_bbo(dim=['2', '3', '5', '10', '20', '40'], optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', 'fmin_cobyla']):
+    for i, op in enumerate(optimizers):
+        coco_df = pd.read_csv(os.path.join(base_dir, 'coco_'+op+".csv"))
+        vae_df = pd.read_csv(os.path.join(base_dir, 'vae_' + op + ".csv"))
+        op_df = coco_df.append(vae_df)
+        file = os.path.join(base_dir, op+'.csv')
+        op_df.to_csv(file)
+
+
+def merge_bbo(dim=['2', '3', '5', '10', '20', '40', '784'], optimizers=['fmin', 'fmin_slsqp', 'fmin2', 'fmin_cobyla']):
 
     if compare_grad and compare_value:
         bbo_options = ["bbo", "grad"]
@@ -136,10 +173,10 @@ def merge_bbo(dim=['2', '3', '5', '10', '20', '40'], optimizers=['fmin', 'fmin_s
             df_d = pd.read_csv(os.path.join(base_dir, op+'_'+d+".csv"))
             df[i] = df[i].append(df_d, ignore_index=True)
 
-        df[i] = df[i].rename(columns={"hit": op+'_hit', "best_observed": op + '_best_observed', "number_of_evaluations": op + '_number_of_evaluations'})
-        df[i] = df[i][['id', op+'_hit', op + '_best_observed', op + '_number_of_evaluations']]
+        df[i] = df[i].rename(columns={"id":op+"_id", "hit": op+'_hit', "best_observed": op + '_best_observed', "number_of_evaluations": op + '_number_of_evaluations'})
+        df[i] = df[i][[op+'_id', op+'_hit', op + '_best_observed', op + '_number_of_evaluations']]
 
-        baseline_df = baseline_df.merge(df[i], on='id')
+        baseline_df = baseline_df.merge(df[i], left_on='id', right_on=op+'_id')#on='id')
         best_observed.append(op + '_best_observed')
 
         baseline_df[op + '_dist_from_min'] = np.abs(baseline_df[best_observed].min(axis=1) - baseline_df[op + '_best_observed'])
@@ -148,17 +185,17 @@ def merge_bbo(dim=['2', '3', '5', '10', '20', '40'], optimizers=['fmin', 'fmin_s
     file = os.path.join(base_dir, 'compare.csv')
     baseline_df.to_csv(file)
 
-def plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin2', 'fmin_cobyla', 'bbo', 'bbo__dist']):
-    dimension = [2, 3, 5, 10, 20, 40]
+def plot_res(optimizers=['fmin', 'fmin_slsqp', 'fmin2', 'fmin_cobyla', 'bbo', 'bbo__dist']):
+    dimension = [2, 3, 5, 10, 20, 40, 784]
     color = ['b', 'g', 'r', 'y', 'c', 'm', 'k', '0.75']
     df = pd.read_csv(os.path.join(base_dir, "compare.csv"))
 
     res = [[] for _ in range (len(optimizers))]
     for _, dim in enumerate(dimension):
         df_temp = df[df['dimension'] == dim]
-        dim_size = 1.0*len(df_temp)
+        #dim_size = 1.0*len(df_temp)
         for n, op in enumerate(optimizers):
-            res[n].append(1 - len(df_temp[df_temp[op+'_hit'] == 0])/dim_size)
+            res[n].append(len(df_temp[df_temp[op+'_hit'] == 1]))
 
     X = [10*i for i in range(len(dimension))]
     ax = plt.subplot(111)
@@ -206,15 +243,19 @@ def compare_beta_evaluate():
 
 
 if __name__ == '__main__':
-
-    merge_baseline(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
-    merge_bbo(dim=['2', '3', '5', '10', '20', '40'], optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla'])
+    #optimizers = ['fmin', 'fmin_slsqp', 'fmin_cobyla']
+    optimizers = ['fmin', 'fmin_slsqp']
+    merge_coco_vae(optimizers=optimizers)
+    merge_baseline(optimizers=optimizers)
+    merge_bbo(dim=['2', '3', '5', '10', '20', '40', '784'], optimizers=optimizers)
 
     if compare_grad and compare_value:
-        plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist', 'grad_dist'])
+        plot_res(optimizers=optimizers + ['bbo_dist', 'grad_dist'])
     elif compare_value:
-        plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'bbo_dist'])
+        plot_res(optimizers=optimizers + ['bbo_dist'])
     elif compare_grad:
-        plot_res(optimizers=['fmin', 'fmin_slsqp', 'random_search', 'fmin_cobyla', 'grad_dist'])
+        plot_res(optimizers=optimizers + ['grad_dist'])
 
-    compare_beta_evaluate()
+  #  compare_beta_evaluate()
+
+    #run_vae_baseline()

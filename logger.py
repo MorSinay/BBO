@@ -28,7 +28,7 @@ class Logger(metaclass=Singleton):
     logger.addHandler(ch)
 
     # File Handler
-    filename = os.path.join(consts.logdir, "%s.log" % consts.exptime)
+    filename = os.path.join(consts.logdir, "%d_%s.log" % (args.action_space, consts.exptime))
     fh = logging.FileHandler(filename)
     fh.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')

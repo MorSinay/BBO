@@ -93,7 +93,7 @@ class EnvVae(Env):
         self.t = 0
         self.k = 0
         self.vae_problem = vae_problem
-        self.output_size = self.vae_problem.dimensions
+        self.output_size = self.vae_problem.dimension
 
         self.reset()
         self.upper_bounds = self.vae_problem.upper_bounds

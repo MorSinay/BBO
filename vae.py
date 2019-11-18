@@ -176,10 +176,10 @@ class VaeProblem(object):
         self.best_observed_fvalue1 = self.problem.best_observed_fvalue1
         self.index = self.problem.index
         self.id = self.problem.id
-        self.dimensions = 784
+        self.dimension = 784
         self.initial_solution = self.vae.model.decode(torch.tensor(self.problem.initial_solution, dtype=torch.float).to(self.device)).detach().cpu().numpy()
-        self.lower_bounds = -np.ones(self.dimensions)
-        self.upper_bounds = np.ones(self.dimensions)
+        self.lower_bounds = -np.ones(self.dimension)
+        self.upper_bounds = np.ones(self.dimension)
         self.evaluations = 0
         self.final_target_hit = self.problem.final_target_hit
 

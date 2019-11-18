@@ -50,7 +50,7 @@ parser.add_argument('--resume', type=int, default=-1, help='Resume experiment nu
 
 # #exploration parameters
 parser.add_argument('--epsilon', type=float, default=0.05, metavar='ε', help='exploration parameter before behavioral period')
-parser.add_argument('--explore', type=str, default='grad_rand', metavar='explore', help='exploration option - grad_rand | grad_direct | rand')
+parser.add_argument('--explore', type=str, default='grad_direct', metavar='explore', help='exploration option - grad_rand | grad_direct | rand')
 parser.add_argument('--grad-steps', type=int, default=10, metavar='grad', help='Gradient step')
 parser.add_argument('--stop-con', type=int, default=200, metavar='stop', help='Stopping Condition')
 
