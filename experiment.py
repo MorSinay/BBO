@@ -152,7 +152,10 @@ class Experiment(object):
         agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
 
         n_explore = args.batch
-        player = agent.find_min_grad_eval(n_explore)
+        if args.debug:
+            player = agent.find_min_grad_second_order(n_explore)
+        else:
+            player = agent.find_min_grad_eval(n_explore)
         divergence = 0
 
         for n, bbo_results in (enumerate(player)):

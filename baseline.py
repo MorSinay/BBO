@@ -28,8 +28,9 @@ epsilon = 1
 compare_grad = 1
 compare_value = 1
 
-dim = 5
+dim = 40
 index = 0
+in_dir = 'Compare'
 
 def run_baseline(budget=10000):
     suite_name = "bbob"
@@ -185,6 +186,30 @@ def merge_bbo(dim=['2', '3', '5', '10', '20', '40', '784'], optimizers=['fmin', 
     file = os.path.join(base_dir, 'compare.csv')
     baseline_df.to_csv(file)
 
+# def problem_hit_map(optimizers=['fmin', 'fmin_slsqp', 'fmin2', 'fmin_cobyla', 'bbo', 'grad']):
+#
+#     baseline_df = pd.read_csv(os.path.join(base_dir, 'compare.csv'))
+#     best_observed = [op + '_best_observed' for op in optimizers]
+#
+#     for i, op in enumerate(bbo_options):
+#         df[i] = pd.read_csv(os.path.join(base_dir, op+'_'+dim[0]+".csv"))
+#
+#         for d in dim[1:]:
+#             df_d = pd.read_csv(os.path.join(base_dir, op+'_'+d+".csv"))
+#             df[i] = df[i].append(df_d, ignore_index=True)
+#
+#         df[i] = df[i].rename(columns={"id":op+"_id", "hit": op+'_hit', "best_observed": op + '_best_observed', "number_of_evaluations": op + '_number_of_evaluations'})
+#         df[i] = df[i][[op+'_id', op+'_hit', op + '_best_observed', op + '_number_of_evaluations']]
+#
+#         baseline_df = baseline_df.merge(df[i], left_on='id', right_on=op+'_id')#on='id')
+#         best_observed.append(op + '_best_observed')
+#
+#         baseline_df[op + '_dist_from_min'] = np.abs(baseline_df[best_observed].min(axis=1) - baseline_df[op + '_best_observed'])
+#         baseline_df[op + '_dist_hit'] = baseline_df[op + '_dist_from_min'] < epsilon
+#
+#     file = os.path.join(base_dir, 'compare.csv')
+#     baseline_df.to_csv(file)
+
 def plot_res(optimizers=['fmin', 'fmin_slsqp', 'fmin2', 'fmin_cobyla', 'bbo', 'bbo__dist']):
     dimension = [2, 3, 5, 10, 20, 40, 784]
     color = ['b', 'g', 'r', 'y', 'c', 'm', 'k', '0.75']
@@ -214,7 +239,7 @@ def plot_res(optimizers=['fmin', 'fmin_slsqp', 'fmin2', 'fmin_cobyla', 'bbo', 'b
 
 def compare_beta_evaluate():
     compare_file = 'beta_evaluate.npy'#'best_observed.npy'
-    analysis_path = os.path.join(base_dir, 'analysis', str(dim))
+    analysis_path = os.path.join(base_dir, 'analysis', in_dir, str(dim))
     dirs = os.listdir(analysis_path)
     compare_dict = {}
     for dir in dirs:
@@ -235,16 +260,18 @@ def compare_beta_evaluate():
     plt.subplot(111)
 
     for i, key in enumerate(res_keys):
-        plt.plot(range(compare_dict[key].size), compare_dict[key], color=color[i], label=key)
+        v = compare_dict[key]-79.48
+        t = np.arange(1, compare_dict[key].size+1)
+        #plt.plot(t, v.cumsum()/t, color=color[i], label=key)
+        plt.plot(range(200), compare_dict[key][:200]-79.48, color=color[i], label=key)
 
-    plt.title('dim: {} index: {} compare: {}'.format(dim, index, compare_file))
+    plt.title('dir: {} dim: {} index: {} compare: {}'.format(in_dir, dim, index, compare_file))
     plt.legend()
+    plt.ylim([0, 200])
+    plt.xlim([0, 200])
     plt.show()
 
-
-if __name__ == '__main__':
-    #optimizers = ['fmin', 'fmin_slsqp', 'fmin_cobyla']
-    optimizers = ['fmin', 'fmin_slsqp']
+def compare_baseline(optimizers):
     merge_coco_vae(optimizers=optimizers)
     merge_baseline(optimizers=optimizers)
     merge_bbo(dim=['2', '3', '5', '10', '20', '40', '784'], optimizers=optimizers)
@@ -256,6 +283,12 @@ if __name__ == '__main__':
     elif compare_grad:
         plot_res(optimizers=optimizers + ['grad_dist'])
 
-  #  compare_beta_evaluate()
+
+if __name__ == '__main__':
+    #optimizers = ['fmin', 'fmin_slsqp', 'fmin_cobyla']
+    optimizers = ['fmin', 'fmin_slsqp']
+    #compare_baseline(optimizers)
+
+    compare_beta_evaluate()
 
     #run_vae_baseline()

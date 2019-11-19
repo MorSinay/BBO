@@ -152,9 +152,7 @@ def vae_simulation():
 
 
 if __name__ == '__main__':
-    if args.vae:
-        if args.action_space != 784:
-            assert False, "args.action_space is not 784"
+    if args.action_space == 784:
         vae_simulation()
     else:
         main()

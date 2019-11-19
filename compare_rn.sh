@@ -2,22 +2,21 @@
 
 dim=$1
 index=$2
+aux="${@:3}"
 
 echo dim $1 index $2
-args="--game=MOR --budget=20 --action-space=$dim --resume=0 --load-last-model --problem-index=$index"
+#args="--game=VALUE --budget=5 --action-space=$dim --resume=0 --load-last-model --problem-index=$index --no-bandage --explore=grad_direct --delta=0.1 --epsilon=0.1 --beta-optim=sgd"
+#args="--game=GRAD --grad --budget=5 --action-space=$dim --resume=0 --load-last-model --problem-index=$index --no-bandage --explore=grad_direct --delta=0.01 --epsilon=0.01 --beta-optim=sgd"
+args="--game=SEC_GRAD --grad --debug --budget=5 --action-space=$dim --resume=0 --load-last-model --problem-index=$index --no-bandage --explore=grad_direct --delta=0.01 --epsilon=0.01 --beta-optim=sgd"
 
-CUDA_VISIBLE_DEVICES=1, python main.py --identifier=sgd --algorithm=grad_direct_1 --grad --explore=grad_direct --delta=0.1 --epsilon=0.1 --beta-optim=sgd $args &
-CUDA_VISIBLE_DEVICES=1, python main.py --identifier=sgd --algorithm=grad_rand_1 --grad --explore=grad_rand --delta=0.1 --epsilon=0.1 --beta-optim=sgd $args &
-CUDA_VISIBLE_DEVICES=1, python main.py --identifier=sgd --algorithm=grad_uniform_1 --grad --explore=rand --delta=0.1 --epsilon=0.1 --beta-optim=sgd $args &
+#CUDA_VISIBLE_DEVICES=1, python main.py --identifier=sgd --grad --algorithm=grad_mid  --mid-val $args $aux &
 
-CUDA_VISIBLE_DEVICES=2, python main.py --identifier=sgd --algorithm=grad_direct_01 --grad --explore=grad_direct --delta=0.01 --epsilon=0.01 --beta-optim=sgd $args &
-CUDA_VISIBLE_DEVICES=2, python main.py --identifier=sgd --algorithm=grad_rand_01 --grad --explore=grad_rand --delta=0.01 --epsilon=0.01 --beta-optim=sgd $args &
-CUDA_VISIBLE_DEVICES=2, python main.py --identifier=sgd --algorithm=grad_uniform_01 --grad --explore=rand --delta=0.01 --epsilon=0.01 --beta-optim=sgd $args &
+CUDA_VISIBLE_DEVICES=0, python main.py --identifier=best_explore_update --algorithm=n_step --update-step=n_step --best-explore-update $args $aux &
+CUDA_VISIBLE_DEVICES=1, python main.py --identifier=best_explore_update --algorithm=best_step --update-step=best_step --best-explore-update $args $aux &
+CUDA_VISIBLE_DEVICES=2, python main.py --identifier=best_explore_update --algorithm=first_vs_last --update-step=first_vs_last --best-explore-update $args $aux &
+CUDA_VISIBLE_DEVICES=0, python main.py --identifier=best_explore_update --algorithm=no_update --update-step=no_update --best-explore-update $args $aux &
 
-CUDA_VISIBLE_DEVICES=3, python main.py --identifier=sgd --algorithm=value_direct_1 --explore=grad_direct --delta=0.1 --epsilon=0.1 --beta-optim=sgd $args &
-CUDA_VISIBLE_DEVICES=3, python main.py --identifier=sgd --algorithm=value_rand_1 --explore=grad_rand --delta=0.1 --epsilon=0.1 --beta-optim=sgd $args &
-CUDA_VISIBLE_DEVICES=3, python main.py --identifier=sgd --algorithm=value_uniform_1 --explore=rand --delta=0.1 --epsilon=0.1 --beta-optim=sgd $args &
-
-CUDA_VISIBLE_DEVICES=1, python main.py --identifier=sgd --algorithm=value_direct_01 --explore=grad_direct --delta=0.01 --epsilon=0.01 --beta-optim=sgd $args &
-CUDA_VISIBLE_DEVICES=2, python main.py --identifier=sgd --algorithm=value_rand_01 --explore=grad_rand --delta=0.01 --epsilon=0.01 --beta-optim=sgd $args &
-CUDA_VISIBLE_DEVICES=3, python main.py --identifier=sgd --algorithm=value_uniform_01 --explore=rand --delta=0.01 --epsilon=0.01 --beta-optim=sgd $args &
+CUDA_VISIBLE_DEVICES=1, python main.py --identifier=no_best_explore_update --algorithm=n_step --update-step=n_step --no-best-explore-update $args $aux &
+CUDA_VISIBLE_DEVICES=2, python main.py --identifier=no_best_explore_update --algorithm=best_step --update-step=best_step --no-best-explore-update $args $aux &
+CUDA_VISIBLE_DEVICES=0, python main.py --identifier=no_best_explore_update --algorithm=first_vs_last --update-step=first_vs_last --no-best-explore-update $args $aux &
+CUDA_VISIBLE_DEVICES=1, python main.py --identifier=no_best_explore_update --algorithm=no_update --update-step=no_update --no-best-explore-update $args $aux &
