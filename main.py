@@ -12,7 +12,7 @@ from vae import VaeProblem, VAE
 from environment import EnvCoco, EnvVae
 from collections import defaultdict
 
-
+filter_mod = 15
 def set_seed(seed):
     if seed > 0:
         random.seed(seed)
@@ -25,10 +25,7 @@ def main():
 
     set_seed(args.seed)
     username = pwd.getpwuid(os.geteuid()).pw_name
-
-    base_dir = os.path.join('/data/', username, 'gan_rl', 'baseline')
-    if not os.path.exists(base_dir):
-        os.makedirs(base_dir)
+    algorithm = args.algorithm
 
     torch.set_num_threads(1000)
     print("Torch %d" % torch.get_num_threads())
@@ -38,23 +35,28 @@ def main():
     for k, v in vars(args).items():
         logger.info(' ' * 26 + k + ': ' + str(v))
 
-    suite_name = "bbob"
-    suite_filter_options = ("dimensions: " + str(args.action_space)  #"year:2019 " +  "instance_indices: 1-5 "
-                        )
-    suite = cocoex.Suite(suite_name, "", suite_filter_options)
     data = defaultdict(list)
     problem_index = args.problem_index
-    is_grad = args.grad
     divergence = 0
-    for i, problem in enumerate(suite):
-        if problem_index == -1:
-            with Experiment(logger.filename, EnvCoco(problem)) as exp:
-                if is_grad:
-                    logger.info("BBO Session with GRADS net, it might take a while")
-                    divergence = exp.bbo_with_grads()
-                else:
-                    logger.info("BBO Session with VALUE net, it might take a while")
-                    divergence = exp.bbo()
+
+    suite_name = "bbob"
+    suite_filter_options = ("dimensions: " + str(args.action_space))
+    suite = cocoex.Suite(suite_name, "", suite_filter_options)
+
+    if problem_index != -1:
+        problem = suite.get_problem(problem_index)
+        divergence = run_exp(EnvCoco(problem))
+    else:
+        res_dir = os.path.join('/data/', username, 'gan_rl', 'baseline', 'results', algorithm)
+        if not os.path.exists(res_dir):
+            try:
+                os.makedirs(res_dir)
+            except:
+                pass
+
+        for i in range(0, 360, filter_mod):
+            problem = suite.get_problem(i)
+            divergence = run_exp(EnvCoco(problem))
 
             data['iter_index'].append(i)
             data['divergence'].append(divergence)
@@ -69,22 +71,17 @@ def main():
             data['number_of_evaluations'].append(problem.evaluations)
 
             df = pd.DataFrame(data)
-            if is_grad:
-                fmin_file = os.path.join(base_dir, 'grad_' + str(args.action_space) + '.csv')
-            else:
-                fmin_file = os.path.join(base_dir, 'bbo_' + str(args.action_space) + '.csv')
+            fmin_file = os.path.join(res_dir, algorithm + '_' + str(args.action_space) + '.csv')
             df.to_csv(fmin_file)
 
-        elif problem_index == i:
-            with Experiment(logger.filename, EnvCoco(problem)) as exp:
-                if args.grad:
-                    logger.info("BBO Session with GRADS net, it might take a while")
-                    divergence = exp.bbo_with_grads()
-                else:
-                    logger.info("BBO Session with VALUE net, it might take a while")
-                    divergence = exp.bbo()
-
     logger.info("End of simulation divergence = {}".format(divergence))
+
+
+def run_exp(env):
+    with Experiment(logger.filename, env) as exp:
+        logger.info("BBO Session with VALUE net, it might take a while")
+        divergence = exp.bbo()
+    return divergence
 
 
 def vae_simulation():
@@ -92,9 +89,7 @@ def vae_simulation():
     set_seed(args.seed)
     username = pwd.getpwuid(os.geteuid()).pw_name
 
-    base_dir = os.path.join('/data/', username, 'gan_rl', 'baseline')
-    if not os.path.exists(base_dir):
-        os.makedirs(base_dir)
+    algorithm = args.algorithm
 
     torch.set_num_threads(1000)
     print("Torch %d" % torch.get_num_threads())
@@ -106,47 +101,38 @@ def vae_simulation():
 
     data = defaultdict(list)
     problem_index = args.problem_index
-    is_grad = args.grad
     divergence = 0
-    for i in range(360):
-        if problem_index == -1:
-            vae_problem = VaeProblem(i)
-            with Experiment(logger.filename, EnvVae(vae_problem)) as exp:
-                if is_grad:
-                    logger.info("BBO Session with GRADS net, it might take a while")
-                    divergence = exp.bbo_with_grads()
-                else:
-                    logger.info("BBO Session with VALUE net, it might take a while")
-                    divergence = exp.bbo()
+
+    if problem_index != -1:
+        problem = VaeProblem(problem_index)
+        divergence = run_exp(EnvVae(problem))
+    else:
+        res_dir = os.path.join('/data/', username, 'gan_rl', 'baseline', 'results', algorithm)
+        if not os.path.exists(res_dir):
+            try:
+                os.makedirs(res_dir)
+            except:
+                pass
+
+        for i in range(0, 360, filter_mod):
+            problem = VaeProblem(problem_index)
+            divergence = run_exp(EnvVae(problem))
 
             data['iter_index'].append(i)
             data['divergence'].append(divergence)
             data['index'].append(i)
-            data['hit'].append(vae_problem.final_target_hit)
+            data['hit'].append(problem.final_target_hit)
             data['id'].append('vae_' + str(i))
-            data['dimension'].append(vae_problem.dimension)
-            data['best_observed'].append(vae_problem.best_observed_fvalue1)
-            data['initial_solution'].append(vae_problem.initial_solution)
-            data['upper_bound'].append(vae_problem.upper_bounds)
-            data['lower_bound'].append(vae_problem.lower_bounds)
-            data['number_of_evaluations'].append(vae_problem.evaluations)
+            data['dimension'].append(problem.dimension)
+            data['best_observed'].append(problem.best_observed_fvalue1)
+            data['initial_solution'].append(problem.initial_solution)
+            data['upper_bound'].append(problem.upper_bounds)
+            data['lower_bound'].append(problem.lower_bounds)
+            data['number_of_evaluations'].append(problem.evaluations)
 
             df = pd.DataFrame(data)
-            if is_grad:
-                fmin_file = os.path.join(base_dir, 'grad_' + str(args.action_space) + '.csv')
-            else:
-                fmin_file = os.path.join(base_dir, 'bbo_' + str(args.action_space) + '.csv')
+            fmin_file = os.path.join(res_dir, algorithm + '_' + str(args.action_space) + '.csv')
             df.to_csv(fmin_file)
-
-        elif problem_index == i:
-            vae_problem = VaeProblem(i)
-            with Experiment(logger.filename, EnvVae(vae_problem)) as exp:
-                if args.grad:
-                    logger.info("BBO Session with GRADS net, it might take a while")
-                    divergence = exp.bbo_with_grads()
-                else:
-                    logger.info("BBO Session with VALUE net, it might take a while")
-                    divergence = exp.bbo()
 
     logger.info("End of simulation divergence = {}".format(divergence))
 

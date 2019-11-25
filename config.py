@@ -45,7 +45,6 @@ boolean_feature('debug', False, 'debug flag')
 boolean_feature("load-last-model", False, 'Load the last saved model')
 boolean_feature("grad", False, 'Use derivative net')
 boolean_feature("tensorboard", False, "Log results to tensorboard")
-boolean_feature('mid-val', False, "Derivative eval")
 boolean_feature('importance-sampling', False, "Derivative eval")
 boolean_feature('bandage', False, "Bandage")
 parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
@@ -71,12 +70,12 @@ parser.add_argument('--checkpoint-interval', type=int, default=1000, metavar='ST
 parser.add_argument('--replay-updates-interval', type=int, default=50, metavar='STEPS', help='Number of training iterations between q-target updates')
 parser.add_argument('--replay-memory-factor', type=int, default=10, help='Replay factor')
 parser.add_argument('--delta', type=float, default=0.1, metavar='delta', help='Total variation constraint')
-parser.add_argument('--drop', type=float, default=0.1, metavar='drop out', help='Drop out')
+parser.add_argument('--drop', type=float, default=0, metavar='drop out', help='Drop out')
 #
 # #actors parameters
 parser.add_argument('--problem-index', type=int, default=-1, help='Problem Index or -1 for all')
-parser.add_argument('--beta-lr', type=float, default=1e-3, metavar='LR', help='beta learning rate')
-parser.add_argument('--beta-optim', type=str, default='sgd', metavar='optim', help='beta optimizer sgd | adam')
+parser.add_argument('--beta-lr', type=float, default=1e-2, metavar='LR', help='beta learning rate')
+#parser.add_argument('--beta-optim', type=str, default='sgd', metavar='optim', help='beta optimizer sgd | adam')
 parser.add_argument('--value-lr', type=float, default=1e-3, metavar='LR', help='value learning rate')
 parser.add_argument('--action-space', type=int, default=10, metavar='dimension', help='Problem dimension')
 parser.add_argument('--layer', type=int, default=128, metavar='layer', help='Value hidden layer size')
@@ -103,9 +102,15 @@ class Consts(object):
     logdir = os.path.join(base_dir, 'logs')
 
     if not os.path.exists(logdir):
-        os.makedirs(logdir)
+        try:
+            os.makedirs(logdir)
+        except:
+            pass
     if not os.path.exists(outdir):
-        os.makedirs(outdir)
+        try:
+            os.makedirs(outdir)
+        except:
+            pass
 
 consts = Consts()
 
@@ -134,13 +139,16 @@ class DirsAndLocksSingleton(metaclass=Singleton):
         self.analysis_dir = os.path.join(self.root, 'analysis')
         self.checkpoint = os.path.join(self.checkpoints_dir, 'checkpoint')
 
-        if not os.path.exists(self.tensorboard_dir):
-            os.makedirs(self.tensorboard_dir)
-        if not os.path.exists(self.checkpoints_dir):
-            os.makedirs(self.checkpoints_dir)
-        if not os.path.exists(self.results_dir):
-            os.makedirs(self.results_dir)
-        if not os.path.exists(self.code_dir):
-            os.makedirs(self.code_dir)
-        if not os.path.exists(self.analysis_dir):
-            os.makedirs(self.analysis_dir)
+        try:
+            if not os.path.exists(self.tensorboard_dir):
+                os.makedirs(self.tensorboard_dir)
+            if not os.path.exists(self.checkpoints_dir):
+                os.makedirs(self.checkpoints_dir)
+            if not os.path.exists(self.results_dir):
+                os.makedirs(self.results_dir)
+            if not os.path.exists(self.code_dir):
+                os.makedirs(self.code_dir)
+            if not os.path.exists(self.analysis_dir):
+                os.makedirs(self.analysis_dir)
+        except:
+            pass

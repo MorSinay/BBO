@@ -61,11 +61,17 @@ class VaeModel(object):
 
         data_path = os.path.join(vae_base_dir, 'data')
         if not os.path.exists(data_path):
-            os.makedirs(data_path)
+            try:
+                os.makedirs(data_path)
+            except:
+                pass
 
         self.results = os.path.join(vae_base_dir, 'results')
         if not os.path.exists(self.results):
-            os.makedirs(self.results)
+            try:
+                os.makedirs(self.results)
+            except:
+                pass
 
         self.train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(data_path, train=True, download=True,
@@ -160,14 +166,12 @@ class VaeProblem(object):
 
         suite_name = "bbob"
         suite_filter_options = ("dimensions: " + str(dim))
-        suite = cocoex.Suite(suite_name, "", suite_filter_options)
+        self.suite = cocoex.Suite(suite_name, "", suite_filter_options)
+        self.reset(problem_index)
 
-        for i, problem in enumerate(suite):
-            if problem_index == i:
-                self.problem = problem
-                break
-        else:
-            assert False, "init problem {}".format(problem_index)
+    def reset(self, problem_index):
+        self.suite.reset()
+        self.problem = self.suite.get_problem(problem_index)
 
         self.z_upper_bounds = self.problem.upper_bounds
         self.z_lower_bounds = self.problem.lower_bounds
@@ -175,13 +179,14 @@ class VaeProblem(object):
         self.device = self.vae.device
         self.best_observed_fvalue1 = self.problem.best_observed_fvalue1
         self.index = self.problem.index
-        self.id = self.problem.id
+        self.id = 'vae_'+str(self.problem.id)
         self.dimension = 784
         self.initial_solution = self.vae.model.decode(torch.tensor(self.problem.initial_solution, dtype=torch.float).to(self.device)).detach().cpu().numpy()
         self.lower_bounds = -np.ones(self.dimension)
         self.upper_bounds = np.ones(self.dimension)
         self.evaluations = 0
         self.final_target_hit = self.problem.final_target_hit
+
 
     def constraint(self, x):
         return None
