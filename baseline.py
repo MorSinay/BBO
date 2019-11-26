@@ -64,7 +64,7 @@ def merge_baseline(dims=[2, 3, 5, 10, 20, 40, 784]):
     file = os.path.join(base_dir, 'min_val.csv')
     df.to_csv(file)
 
-def plot_res(optimizers = [], max_budget = 1000, compare_baseline=False):
+def plot_res(optimizers = [], max_budget = 1200, compare_baseline=False):
     res_dir = os.path.join(base_dir, 'results')
     dimension = [2, 3, 5, 10, 20, 40, 784]
     success_df = pd.read_csv(os.path.join(base_dir, "success.csv"))
@@ -106,7 +106,7 @@ def plot_res(optimizers = [], max_budget = 1000, compare_baseline=False):
    # ax.autoscale(tight=True)
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=4)
     #ax.legend()
-    plt.title(title)
+    plt.title("BASELINE COMPARE - BUDGET {}".format(max_budget))
     plt.show()
 
 
@@ -235,16 +235,16 @@ def plot_2D_contour(problem_index, path, save_fig=False):
 if __name__ == '__main__':
    # merge_baseline()
 
-    dim = 20
+    dim = 40
     index = 15
     prefix = 'LR'
     path = os.path.join(base_dir, 'analysis', prefix, str(dim))
 
     title = "{} dim = {} index = {}".format(prefix, dim, index)
-    compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
+    #compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
 
 
-    #plot_res(optimizers=["bbo", "grad", "directnoupdate", "randnoupdate", "guidedrandnoupdate"], max_budget=450, compare_baseline=False)
+    plot_res(optimizers=["bbo", "grad"], max_budget=1200, compare_baseline=True)
 
     # for i in range(360):
     #     plot_2D(i, save_fig=True)

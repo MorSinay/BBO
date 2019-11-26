@@ -187,7 +187,6 @@ class VaeProblem(object):
         self.evaluations = 0
         self.final_target_hit = self.problem.final_target_hit
 
-
     def constraint(self, x):
         return None
 

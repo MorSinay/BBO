@@ -6,12 +6,11 @@ import numpy as np
 from tqdm import tqdm
 import torch.nn as nn
 from collections import defaultdict
-import torch.autograd as autograd
+from torchvision.utils import save_image
 
 from config import consts, args, DirsAndLocksSingleton
-from model_ddpg import DuelNet, ResNet, DerivativeNet
+from model_ddpg import DuelNet, DerivativeNet
 
-from environment import Env
 import os
 import copy
 
@@ -56,6 +55,7 @@ class BBOAgent(object):
         self.frame = 0
         self.n_offset = 0
         self.results = defaultdict(list)
+        self.clip = args.clip
 
         if args.explore == 'grad_rand':
             self.exploration = self.exploration_grad_rand
@@ -93,14 +93,18 @@ class BBOAgent(object):
 
     def update_beta_optimizer_lr(self):
         op_dict = self.optimizer_beta.state_dict()
-        lr = op_dict['param_groups'][0]['lr']
-        op_dict['param_groups'][0]['lr'] = lr * 0.1
+        self.beta_lr *= 0.1
+        self.beta_lr = max(self.beta_lr, 1e-6)
+        op_dict['param_groups'][0]['lr'] = self.beta_lr
         self.optimizer_beta.load_state_dict(op_dict)
 
     def save_results(self):
         for k in self.results.keys():
             path = os.path.join(self.analysis_dir, k +'.npy')
             np.save(path, self.results[k])
+        if self.action_space == 784:
+            path = os.path.join(self.analysis_dir, 'reconstruction.png')
+            save_image(self.beta_net.cpu().view(1, 28, 28), path)
 
     def reset_beta(self):
         with torch.no_grad():
@@ -261,331 +265,12 @@ class BBOAgent(object):
                     break
 
         return True
-    # def find_min(self, n_explore):
-    #
-    #     self.reset_beta()
-    #     self.env.reset()
-    #
-    #     self.value_net.eval()
-    #     for self.frame in tqdm(itertools.count()):
-    #         self.value_net.eval()
-    #
-    #         beta_explore, reward = self.exploration_step(n_explore)
-    #         #
-    #         # self.env.step_policy(beta_explore)
-    #         #
-    #         self.results['explore_policies'].append(beta_explore)
-    #         self.results['rewards'].append(reward)
-    #
-    #         replay_buffer_rewards = np.hstack(self.results['rewards'])[-self.replay_memory_size:]
-    #         replay_buffer_policy = np.vstack(self.results['explore_policies'])[-self.replay_memory_size:]
-    #         len_replay_buffer = len(replay_buffer_rewards)
-    #         minibatches = 20*(len_replay_buffer // self.batch)
-    #
-    #         tensor_replay_reward = torch.tensor(self.norm(replay_buffer_rewards), dtype=torch.float).to(self.device, non_blocking=True)
-    #         tensor_replay_policy = torch.tensor(replay_buffer_policy, dtype=torch.float).to(self.device, non_blocking=True)
-    #
-    #         if minibatches < 2:
-    #             continue
-    #
-    #         self.value_net.train()
-    #         for it in itertools.count():
-    #             avg_loss = torch.tensor(0, dtype=torch.float)
-    #             shuffle_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch),
-    #                                                replace=True)
-    #             for i in range(minibatches):
-    #                 samples = shuffle_indexes[i]
-    #                 r = tensor_replay_reward[samples]
-    #                 pi_explore = tensor_replay_policy[samples]
-    #
-    #                 self.optimizer_value.zero_grad()
-    #                 q_value = -self.value_net(pi_explore).view(-1)
-    #                 loss_q = self.q_loss(q_value, r).mean()
-    #                 avg_loss += loss_q.item()
-    #                 loss_q.backward()
-    #                 self.optimizer_value.step()
-    #
-    #             avg_loss /= minibatches
-    #             if it >= 1:
-    #                 break
-    #
-    #         self.value_net.eval()
-    #         self.beta_optimize()
-    #         # for _ in range(self.grad_steps):
-    #         #     self.grad_step()
-    #
-    #         self.save_checkpoint(self.checkpoint, {'n': self.frame})
-    #
-    #         #grads = self.beta_net.grad.detach().cpu().numpy()
-    #         beta = self.beta_net.detach().data.cpu().numpy()
-    #         beta_eval = self.env.f(beta)
-    #         if self.bandage and (np.abs(self.env.best_observed - beta_eval) > 10):
-    #             rewards = np.hstack(self.results['rewards'])
-    #             best_idx = rewards.argmax()
-    #             beta = np.vstack(self.results['explore_policies'])[best_idx]
-    #             with torch.no_grad():
-    #                 self.beta_net.data = torch.tensor(beta, dtype=torch.float).to(self.device)
-    #             self.grad_steps = 2
-    #             self.divergence += 1
-    #             #print("function is out of range- best_observed:{:0.3f} beta_eval:{:0.3f} max_reward: {:0.3f}".format(self.env.best_observed, beta_eval, rewards[best_idx]))
-    #
-    #         #results['grads'].append(grads)
-    #         self.results['reward_mean'].append(replay_buffer_rewards.mean())
-    #         self.results['policies'].append(beta)
-    #         q_value = self.value_net(torch.tensor(beta_explore, dtype=torch.float).to(self.device))
-    #         self.results['q_value'].append(q_value.data.cpu().numpy())
-    #         self.results['best_observed'].append(self.env.best_observed)
-    #         self.results['beta_evaluate'].append(beta_eval)
-    #         self.results['ts'].append(self.env.t)
-    #         self.results['q_loss'].append(avg_loss.numpy())
-    #         self.results['divergence'].append(self.divergence)
-    #
-    #         yield self.results
-    #
-    #         if len(self.results['best_observed']) > self.stop_con and self.results['best_observed'][-1] == self.results['best_observed'][-self.stop_con]:
-    #             self.save_checkpoint(self.checkpoint, {'n': self.frame})
-    #             self.save_results()
-    #             print("VALUE IS NOT CHANGING - FRAME %d" % self.frame)
-    #             break
-    #
-    #         if self.results['ts'][-1]:
-    #             self.save_checkpoint(self.checkpoint, {'n': self.frame})
-    #             self.save_results()
-    #             print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
-    #             break
-    #
-    #         if self.frame >= self.budget:
-    #             self.save_results()
-    #             print("FAILED")
-    #             break
-
-    # def find_min_grad_eval(self, n_explore):
-    #
-    #     self.reset_beta()
-    #     self.env.reset()
-    #
-    #     self.derivative_net.eval()
-    #
-    #     for self.frame in tqdm(itertools.count()):
-    #         self.derivative_net.eval()
-    #
-    #         beta_explore, reward = self.exploration_step(n_explore)
-    #         #
-    #         # self.env.step_policy(beta_explore)
-    #         #
-    #         self.results['explore_policies'].append(beta_explore)
-    #         self.results['rewards'].append(reward)
-    #
-    #         replay_buffer_rewards = np.hstack(self.results['rewards'])[-self.replay_memory_size:]
-    #         replay_buffer_policy = np.vstack(self.results['explore_policies'])[-self.replay_memory_size:]
-    #         len_replay_buffer = len(replay_buffer_rewards)
-    #         minibatches = len_replay_buffer // self.batch
-    #
-    #         tensor_replay_reward = torch.tensor(self.norm(replay_buffer_rewards), dtype=torch.float).to(self.device, non_blocking=True)
-    #         tensor_replay_policy = torch.tensor(replay_buffer_policy, dtype=torch.float).to(self.device, non_blocking=True)
-    #
-    #         if minibatches < 2:
-    #             continue
-    #
-    #         for it in itertools.count():
-    #             shuffle_index = np.random.randint(self.batch)
-    #
-    #             r_1 = tensor_replay_reward[shuffle_index::self.batch].unsqueeze(1).repeat(1, self.batch)
-    #             r_2 = tensor_replay_reward.view(minibatches, self.batch)
-    #             pi_1 = tensor_replay_policy[shuffle_index::self.batch]
-    #             pi_2 = tensor_replay_policy.view(minibatches, self.batch, -1)
-    #
-    #             pi_tag_1 = self.derivative_net(pi_1).unsqueeze(1).repeat(1, self.batch, 1)
-    #             pi_1 = pi_1.unsqueeze(1).repeat(1, self.batch, 1)
-    #
-    #             if self.importance_sampling:
-    #                 w = (1 / (torch.norm(pi_2-pi_1, p=2, dim=2) + 1e-4)).flatten()
-    #             else:
-    #                 w = 1
-    #
-    #             value = ((pi_2 - pi_1) * pi_tag_1).sum(dim=2).flatten()
-    #             target = (r_2 - r_1).flatten()
-    #
-    #             self.optimizer_derivative.zero_grad()
-    #             loss_q = (w*self.q_loss(value, target)).mean()
-    #             loss = loss_q.item()
-    #             loss_q.backward()
-    #             self.optimizer_derivative.step()
-    #
-    #             if it >= 200:
-    #                 break
-    #
-    #         self.derivative_net.eval()
-    #         self.beta_optimize()
-    #         # for _ in range(self.grad_steps):
-    #         #     self.grad_step()
-    #
-    #         self.save_checkpoint(self.checkpoint, {'n': self.frame})
-    #
-    #         #grads = self.beta_net.grad.detach().cpu().numpy().copy()
-    #         beta = self.beta_net.detach().data.cpu().numpy()
-    #         beta_eval = self.env.f(beta)
-    #         if self.bandage and (np.abs(self.env.best_observed - beta_eval) > 10):
-    #             rewards = np.hstack(self.results['rewards'])
-    #             best_idx = rewards.argmax()
-    #             beta = np.vstack(self.results['explore_policies'])[best_idx]
-    #             with torch.no_grad():
-    #                 self.beta_net.data = torch.tensor(beta, dtype=torch.float).to(self.device)
-    #             self.grad_steps = 2
-    #             self.divergence += 1
-    #             #print("function is out of range- best_observed:{:0.3f} beta_eval:{:0.3f} max_reward: {:0.3f}".format(self.env.best_observed, beta_eval, rewards[best_idx]))
-    #
-    #         #results['grads'].append(grads)
-    #         self.results['policies'].append(beta)
-    #         self.results['best_observed'].append(self.env.best_observed)
-    #         self.results['beta_evaluate'].append(beta_eval)
-    #         self.results['ts'].append(self.env.t)
-    #         self.results['q_loss'].append(loss)
-    #         self.results['value'].append(float(value.mean()))
-    #         self.results['target'].append(float(target.mean()))
-    #         self.results['divergence'].append(self.divergence)
-    #
-    #         yield self.results
-    #
-    #         if len(self.results['best_observed']) > self.stop_con and self.results['best_observed'][-1] == self.results['best_observed'][-self.stop_con]:
-    #             self.save_checkpoint(self.checkpoint, {'n': self.frame})
-    #             print("VALUE IS NOT CHANGING - FRAME %d" % self.frame)
-    #             self.save_results()
-    #             break
-    #
-    #         if self.results['ts'][-1]:
-    #             self.save_checkpoint(self.checkpoint, {'n': self.frame})
-    #             print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
-    #             self.save_results()
-    #             break
-    #
-    #         if self.frame >= self.budget:
-    #             print("FAILED")
-    #             self.save_results()
-    #             break
-
-    # def find_min_grad_second_order(self, n_explore):
-    #
-    #
-    #     self.reset_beta()
-    #     self.env.reset()
-    #
-    #     self.derivative_net.eval()
-    #
-    #     for self.frame in tqdm(itertools.count()):
-    #         self.derivative_net.eval()
-    #
-    #         beta_explore, reward = self.exploration_step(n_explore)
-    #         #
-    #         # self.env.step_policy(beta_explore)
-    #         #
-    #         self.results['explore_policies'].append(beta_explore)
-    #         self.results['rewards'].append(reward)
-    #
-    #         replay_buffer_rewards = np.hstack(self.results['rewards'])[-self.replay_memory_size:]
-    #         replay_buffer_policy = np.vstack(self.results['explore_policies'])[-self.replay_memory_size:]
-    #         len_replay_buffer = len(replay_buffer_rewards)
-    #         minibatches = len_replay_buffer // self.batch
-    #
-    #         tensor_replay_reward = torch.tensor(self.norm(replay_buffer_rewards), dtype=torch.float).to(self.device, non_blocking=True)
-    #         tensor_replay_policy = torch.tensor(replay_buffer_policy, dtype=torch.float).to(self.device, non_blocking=True)
-    #
-    #         if minibatches < 2:
-    #             continue
-    #
-    #         for it in itertools.count():
-    #             shuffle_index = np.random.randint(self.batch)
-    #
-    #             r_1 = tensor_replay_reward[shuffle_index::self.batch].unsqueeze(1).repeat(1, self.batch)
-    #             r_2 = tensor_replay_reward.view(minibatches, self.batch)
-    #             pi_1 = tensor_replay_policy[shuffle_index::self.batch].unsqueeze(1).repeat(1, self.batch, 1).view(minibatches*self.batch, -1)
-    #             pi_2 = tensor_replay_policy.view(minibatches*self.batch, -1)
-    #             delta_pi = pi_2 - pi_1
-    #
-    #             pi_1 = autograd.Variable(pi_1, requires_grad=True)
-    #             pi_tag_1 = self.derivative_net(pi_1)
-    #             pi_tag_1_dot_delta = (pi_tag_1 * delta_pi).sum(dim=1)
-    #             gradients = autograd.grad(outputs=pi_tag_1_dot_delta, inputs=pi_1, grad_outputs=torch.cuda.FloatTensor(pi_tag_1_dot_delta.size()).fill_(1.),
-    #                                     create_graph=True, retain_graph=True, only_inputs=True)[0].detach()
-    #             second_order = 0.5*(delta_pi*gradients.detach()).sum(dim=1)
-    #
-    #             if self.importance_sampling:
-    #                 w = (1 / (torch.norm(pi_2 - pi_1, p=2, dim=1) + 1e-4)).flatten()
-    #             else:
-    #                 w = 1
-    #
-    #             value = (delta_pi * pi_tag_1).sum(dim=1).flatten()
-    #             target = (r_2 - r_1).flatten() - second_order
-    #
-    #             self.optimizer_derivative.zero_grad()
-    #             loss_q = (w * self.q_loss(value, target)).mean()
-    #             loss = loss_q.item()
-    #             loss_q.backward()
-    #             self.optimizer_derivative.step()
-    #
-    #             if it >= 200:
-    #                 break
-    #
-    #         self.derivative_net.eval()
-    #         self.beta_optimize()
-    #         # for _ in range(self.grad_steps):
-    #         #     self.grad_step()
-    #
-    #         self.save_checkpoint(self.checkpoint, {'n': self.frame})
-    #
-    #         # grads = self.beta_net.grad.detach().cpu().numpy().copy()
-    #         beta = self.beta_net.detach().data.cpu().numpy()
-    #         beta_eval = self.env.f(beta)
-    #         if self.bandage and (np.abs(self.env.best_observed - beta_eval) > 10):
-    #             rewards = np.hstack(self.results['rewards'])
-    #             best_idx = rewards.argmax()
-    #             beta = np.vstack(self.results['explore_policies'])[best_idx]
-    #             with torch.no_grad():
-    #                 self.beta_net.data = torch.tensor(beta, dtype=torch.float).to(self.device)
-    #             self.grad_steps = 2
-    #             self.divergence += 1
-    #             # print("function is out of range- best_observed:{:0.3f} beta_eval:{:0.3f} max_reward: {:0.3f}".format(self.env.best_observed, beta_eval, rewards[best_idx]))
-    #
-    #         # results['grads'].append(grads)
-    #         self.results['policies'].append(beta)
-    #         self.results['best_observed'].append(self.env.best_observed)
-    #         self.results['beta_evaluate'].append(beta_eval)
-    #         self.results['ts'].append(self.env.t)
-    #         self.results['q_loss'].append(loss)
-    #         self.results['value'].append(float(value.mean()))
-    #         self.results['target'].append(float(target.mean()))
-    #         self.results['divergence'].append(self.divergence)
-    #
-    #         yield self.results
-    #
-    #         if len(self.results['best_observed']) > self.stop_con and self.results['best_observed'][-1] == self.results['best_observed'][-self.stop_con]:
-    #             self.save_checkpoint(self.checkpoint, {'n': self.frame})
-    #             print("VALUE IS NOT CHANGING - FRAME %d" % self.frame)
-    #             self.save_results()
-    #             break
-    #
-    #         if self.results['ts'][-1]:
-    #             self.save_checkpoint(self.checkpoint, {'n': self.frame})
-    #             print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
-    #             self.save_results()
-    #             break
-    #
-    #         if self.frame >= self.budget:
-    #             print("FAILED")
-    #             self.save_results()
-    #             break
 
     def get_n_grad_ahead(self, n):
 
         optimizer_state = copy.deepcopy(self.optimizer_beta.state_dict())
-        #initial_beta = self.beta_net.detach()
-
         beta_array = [self.beta_net.detach().cpu().numpy()]
         for _ in range(n-1):
-            # self.optimizer_beta.zero_grad()
-            # loss_beta = self.value_net(self.beta_net)
-            # loss_beta.backward()
-            # self.optimizer_beta.step()
             beta, _ = self.grad_step()
             beta_array.append(beta)
 
@@ -601,13 +286,14 @@ class BBOAgent(object):
             self.derivative_net.eval()
             grad = self.derivative_net(self.beta_net).detach().squeeze(0)
             with torch.no_grad():
-                self.beta_net.grad = -grad.detach()/torch.norm(grad.detach(), 2)
+                self.beta_net.grad = -grad.detach()  # /torch.norm(grad.detach(), 2)
         else:
             self.value_net.eval()
             self.optimizer_beta.zero_grad()
             loss_beta = self.value_net(self.beta_net)
             loss_beta.backward()
 
+        nn.utils.clip_grad_norm(self.beta_net, 1e-2/self.beta_lr)
         self.optimizer_beta.step()
 
         with torch.no_grad():

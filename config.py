@@ -58,7 +58,7 @@ parser.add_argument('--update-step', type=str, default='n_step', metavar='update
 boolean_feature("best-explore-update", False, 'move to the best value of exploration')
 parser.add_argument('--grad-steps', type=int, default=10, metavar='grad', help='Gradient step')
 parser.add_argument('--stop-con', type=int, default=200, metavar='stop', help='Stopping Condition')
-
+parser.add_argument('--clip', type=float, default=1., metavar='clip', help='Gradient Clipping')
 
 #
 # #dataloader

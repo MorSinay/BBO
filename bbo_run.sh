@@ -9,12 +9,8 @@ echo resume $1 algorithm $2
 loc=`dirname "%0"`
 
 case "$algorithm" in
-    ("bbo") args="--algorithm=$algorithm --game=RUN --budget=400 --explore=grad_direct --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --no-bandage --beta-lr=1e-4";;
-    ("grad") args="--grad --algorithm=$algorithm --game=RUN --budget=400 --explore=grad_direct --delta=0.01 --epsilon=0.01 --update-step=n_step --no-best-explore-update --no-bandage --beta-lr=1e-4";;
-    ("rand") args="--algorithm=$algorithm --game=RUN --budget=400 --explore=rand --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --no-bandage --beta-lr=1e-4";;
-    ("directnoupdate") args="--algorithm=$algorithm --game=RUN --budget=400 --explore=grad_direct --delta=0.1 --epsilon=0.1 --update-step=no_update --no-best-explore-update --no-bandage --beta-lr=1e-4";;
-    ("randnoupdate") args="--algorithm=$algorithm --game=RUN --budget=400 --explore=rand --delta=0.1 --epsilon=0.1 --update-step=no_update --no-best-explore-update --no-bandage --beta-lr=1e-4";;
-    ("guidedrandnoupdate") args="--algorithm=$algorithm --game=RUN --budget=400 --explore=grad_rand --delta=0.1 --epsilon=0.1 --update-step=no_update --no-best-explore-update --no-bandage --beta-lr=1e-4";;
+    ("bbo") args="--algorithm=$algorithm --game=RUN --budget=400 --explore=grad_direct --delta=0.1 --epsilon=0.1 --update-step=n_step --best-explore-update --bandage --beta-lr=1e-1";;
+    ("grad") args="--grad --algorithm=$algorithm --game=RUN --budget=400 --explore=grad_direct --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --bandage --beta-lr=1e-1";;
     (*) echo "$algorithm: Not Implemented" ;;
 esac
 

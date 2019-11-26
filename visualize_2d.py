@@ -210,7 +210,7 @@ if __name__ == '__main__':
     # for i in tqdm(range(0, 360, 1)):
     #     treeD_plot(i)
 
-    create_copy_file("LR", 2, 15)
+    create_copy_file("LR", 40, 15)
 
     #treeD_plot_contour(15)
 
