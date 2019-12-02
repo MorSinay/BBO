@@ -29,7 +29,6 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=50):
 
     if dim == 784:
         problem = VaeProblem(index)
-        func = problem.func
     else:
         suite_name = "bbob"
         suite_filter_options = ("dimensions: "+str(dim))
@@ -201,16 +200,16 @@ def treeD_plot_contour(problem_index):
 
 
 if __name__ == '__main__':
-    # filter_mod = 1
-    #
-    # for dim in ['2','3','5','10','20','40','784']:
-    #     for i in range(0, 360, filter_mod):
-    #         compare_problem_baseline(dim, i)
+    filter_mod = 1
+
+    for dim in ['2','3','5','10','20','40','784']:
+        for i in tqdm(range(0, 360, filter_mod)):
+            compare_problem_baseline(dim, i, budget=12000)
 
     # for i in tqdm(range(0, 360, 1)):
     #     treeD_plot(i)
-
-    create_copy_file("LR", 40, 15)
+    #
+    # create_copy_file("LR", 40, 15)
 
     #treeD_plot_contour(15)
 

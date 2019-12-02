@@ -64,6 +64,27 @@ def merge_baseline(dims=[2, 3, 5, 10, 20, 40, 784]):
     file = os.path.join(base_dir, 'min_val.csv')
     df.to_csv(file)
 
+def merge_baseline_mor(dims=[2, 3, 5, 10, 20, 40, 784]):
+
+    data = defaultdict(list)
+    for dim in dims:
+        for index in range(360):
+            optimizer_res = get_baseline_cmp(dim, index)
+
+            data['dim'].append(dim)
+            data['iter_index'].append(index)
+
+            for i, op in enumerate(optimizer_res['fmin']):
+                res = optimizer_res[optimizer_res['fmin'] == op]
+                data[op + '_best_observed'].append(float(res.best_observed))
+                data[op + '_budget'].append(float(res.number_of_evaluations))
+                data[op + '_x'].append(res.x)
+
+
+    df = pd.DataFrame(data)
+    file = os.path.join(base_dir, 'compare.csv')
+    df.to_csv(file)
+
 def plot_res(optimizers = [], max_budget = 1200, compare_baseline=False):
     res_dir = os.path.join(base_dir, 'results')
     dimension = [2, 3, 5, 10, 20, 40, 784]
@@ -235,6 +256,8 @@ def plot_2D_contour(problem_index, path, save_fig=False):
 if __name__ == '__main__':
    # merge_baseline()
 
+    merge_baseline_mor()
+
     dim = 40
     index = 15
     prefix = 'LR'
@@ -244,7 +267,7 @@ if __name__ == '__main__':
     #compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
 
 
-    plot_res(optimizers=["bbo", "grad"], max_budget=1200, compare_baseline=True)
+    #plot_res(optimizers=["bbo", "grad"], max_budget=12000, compare_baseline=True)
 
     # for i in range(360):
     #     plot_2D(i, save_fig=True)
