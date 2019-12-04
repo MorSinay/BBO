@@ -2,8 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="763d8035-c4f0-4db0-af6d-3fe721484ded" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/baseline.py" beforeDir="false" afterPath="$PROJECT_DIR$/baseline.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/visualize_2d.py" beforeDir="false" afterPath="$PROJECT_DIR$/visualize_2d.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/single_agent.py" beforeDir="false" afterPath="$PROJECT_DIR$/single_agent.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/vae.py" beforeDir="false" afterPath="$PROJECT_DIR$/vae.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -13,56 +14,36 @@
   </component>
   <component name="CoverageDataManager">
     <SUITE FILE_PATH="coverage/BBO$baseline_cmp.coverage" NAME="baseline_cmp Coverage Results" MODIFIED="1574794692493" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="/home/mlspeech/elkayam/BBO" />
-    <SUITE FILE_PATH="coverage/BBO$remote_dbg.coverage" NAME="remote_dbg Coverage Results" MODIFIED="1574702752132" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="/home/mlspeech/elkayam/BBO" />
-    <SUITE FILE_PATH="coverage/BBO$local_dbg.coverage" NAME="local_dbg Coverage Results" MODIFIED="1575272478313" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/BBO$local_dbg.coverage" NAME="local_dbg Coverage Results" MODIFIED="1575380976734" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/BBO$remote_dbg.coverage" NAME="remote_dbg Coverage Results" MODIFIED="1575461289260" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="/home/mlspeech/elkayam/BBO" />
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/experiment.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="95">
-              <caret line="104" column="11" selection-start-line="104" selection-start-column="11" selection-end-line="104" selection-end-column="11" />
+            <state relative-caret-position="1310">
+              <caret line="119" column="128" selection-start-line="119" selection-start-column="128" selection-end-line="119" selection-end-column="128" />
               <folding>
                 <element signature="e#0#11#0" expanded="true" />
-                <marker date="1574677250343" expanded="true" signature="762:1818" ph="..." />
+                <marker date="1575457458511" expanded="true" signature="801:1857" ph="..." />
               </folding>
             </state>
           </provider>
         </entry>
       </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/baseline.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-2599">
-              <caret line="69" selection-start-line="69" selection-end-line="69" />
-              <folding>
-                <element signature="e#63#84#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
+      <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/single_agent.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-3786">
-              <caret line="103" column="42" lean-forward="true" selection-start-line="103" selection-start-column="42" selection-end-line="103" selection-end-column="42" />
+            <state relative-caret-position="97">
+              <caret line="22" column="22" selection-start-line="22" selection-start-column="22" selection-end-line="22" selection-end-column="22" />
               <folding>
                 <element signature="e#0#12#0" expanded="true" />
+                <element signature="e#20880#20933#0" />
+                <element signature="e#20991#21307#0" />
+                <element signature="e#21366#21947#0" />
+                <element signature="e#22632#23288#0" />
                 <element signature="e#23682#24755#0" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/vae.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="141">
-              <caret line="34" column="17" lean-forward="true" selection-start-line="30" selection-start-column="4" selection-end-line="34" selection-end-column="17" />
-              <folding>
-                <element signature="e#0#37#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -71,8 +52,8 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/config.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="68">
-              <caret line="61" lean-forward="true" selection-start-line="61" selection-end-line="61" />
+            <state relative-caret-position="176">
+              <caret line="54" column="30" selection-start-line="54" selection-start-column="23" selection-end-line="54" selection-end-column="30" />
               <folding>
                 <element signature="e#0#15#0" expanded="true" />
               </folding>
@@ -83,19 +64,61 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/bbo_run.sh">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="180">
-              <caret line="12" column="4" selection-start-line="12" selection-start-column="4" selection-end-line="12" selection-end-column="4" />
+            <state relative-caret-position="240">
+              <caret line="16" column="51" selection-start-line="16" selection-start-column="39" selection-end-line="16" selection-end-column="51" />
             </state>
           </provider>
         </entry>
       </file>
-      <file pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/visualize_2d.py">
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/environment.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="529">
-              <caret line="206" column="58" lean-forward="true" selection-start-line="202" selection-start-column="4" selection-end-line="206" selection-end-column="58" />
+            <state relative-caret-position="1710">
+              <caret line="114" selection-start-line="114" selection-end-line="114" />
               <folding>
-                <element signature="e#63#84#0" expanded="true" />
+                <element signature="e#0#18#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$USER_HOME$/Library/Caches/PyCharm2018.3/remote_sources/204277109/1251662109/torch/autograd/__init__.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="144">
+              <caret line="89" selection-start-line="89" selection-end-line="89" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$USER_HOME$/Library/Caches/PyCharm2018.3/remote_sources/204277109/1251662109/torch/tensor.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="152">
+              <caret line="92" selection-start-line="92" selection-end-line="92" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/main.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="152">
+              <caret line="82" selection-start-line="82" selection-end-line="82" />
+              <folding>
+                <element signature="e#0#31#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/vae.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="142">
+              <caret line="30" column="22" selection-start-line="30" selection-start-column="8" selection-end-line="30" selection-end-column="22" />
+              <folding>
+                <element signature="e#0#37#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -104,8 +127,8 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/compare_rn.sh">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="285">
-              <caret line="19" selection-start-line="19" selection-end-line="19" />
+            <state relative-caret-position="243">
+              <caret line="22" column="20" selection-start-line="22" selection-start-column="20" selection-end-line="22" selection-end-column="20" />
             </state>
           </provider>
         </entry>
@@ -121,36 +144,36 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>con</find>
-      <find>np.save</find>
-      <find>self.nor</find>
-      <find>results</find>
-      <find>norm</find>
-      <find>os.makedirs</find>
-      <find>os.mak</find>
-      <find>os.maked</find>
-      <find>os.make</find>
-      <find>use_grad_net</find>
-      <find>if self.use_grad_net</find>
-      <find>q_value</find>
-      <find>value_optimize</find>
-      <find>optimizer_beta</find>
-      <find>base_dir</find>
+      <find>exploration_grad_direct</find>
+      <find>args.grad</find>
       <find>lr</find>
-      <find>step</find>
-      <find>step()</find>
-      <find>torch.nn</find>
-      <find>nn.</find>
-      <find>upda</find>
-      <find>cl</find>
-      <find>save</find>
-      <find>anali</find>
-      <find>save_image</find>
+      <find>use_grad_net</find>
+      <find>sec</find>
+      <find>seco</find>
+      <find>find</find>
+      <find>beta_optimize</find>
+      <find>grad_step</find>
+      <find>second</find>
+      <find>second_order'</find>
+      <find>tensor_replay_reward</find>
+      <find>explore</find>
+      <find>value_optimize</find>
+      <find>const</find>
+      <find>denormalize</find>
+      <find>.f(</find>
+      <find>flatt</find>
+      <find>algorithm</find>
+      <find>algorithm_metho</find>
+      <find>avg_lo</find>
+      <find>loss</find>
+      <find>method</find>
+      <find>anchor_m</find>
+      <find>norm</find>
+      <find>self.norm</find>
+      <find>beta.shape</find>
+      <find>fla</find>
+      <find>self.value_net</find>
       <find>reparameterize</find>
-      <find>treeD_plot</find>
-      <find>succ</find>
-      <find>enumerate</find>
-      <find>compare_problem_baseline</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -161,17 +184,17 @@
       <list>
         <option value="$PROJECT_DIR$/logger.py" />
         <option value="$PROJECT_DIR$/model_ddpg.py" />
-        <option value="$PROJECT_DIR$/environment.py" />
-        <option value="$PROJECT_DIR$/experiment.py" />
         <option value="$PROJECT_DIR$/main.py" />
-        <option value="$PROJECT_DIR$/config.py" />
-        <option value="$PROJECT_DIR$/single_agent.py" />
-        <option value="$PROJECT_DIR$/bbo_run.sh" />
-        <option value="$PROJECT_DIR$/compare_rn.sh" />
-        <option value="$PROJECT_DIR$/vae.py" />
-        <option value="$PROJECT_DIR$/baseline.py" />
-        <option value="$PROJECT_DIR$/visualize_2d.py" />
         <option value="$USER_HOME$/Desktop/mlspeech/visualize_2d.py" />
+        <option value="$PROJECT_DIR$/visualize_2d.py" />
+        <option value="$PROJECT_DIR$/baseline.py" />
+        <option value="$PROJECT_DIR$/config.py" />
+        <option value="$PROJECT_DIR$/bbo_run.sh" />
+        <option value="$PROJECT_DIR$/environment.py" />
+        <option value="$PROJECT_DIR$/compare_rn.sh" />
+        <option value="$PROJECT_DIR$/experiment.py" />
+        <option value="$PROJECT_DIR$/vae.py" />
+        <option value="$PROJECT_DIR$/single_agent.py" />
       </list>
     </option>
   </component>
@@ -217,7 +240,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Python.local_dbg">
+  <component name="RunManager" selected="Python.remote_dbg">
     <configuration name="baseline_cmp" type="PythonConfigurationType" factoryName="Python">
       <module name="BBO" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -275,8 +298,8 @@
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="/home/mlspeech/elkayam/BBO/main.py" />
-      <option name="PARAMETERS" value="--algorithm=value --explore=grad_direct --update-step=n_step --game=DBG --budget=5 --delta=0.1 --epsilon=0.1 --no-best-explore-update --bandage --action-space=20 --problem-index=15" />
+      <option name="SCRIPT_NAME" value="/home/mlspeech/elkayam/BBO/vae.py" />
+      <option name="PARAMETERS" value="--algorithm=value --explore=grad_direct --update-step=n_step --game=DBG --budget=400 --delta=0.1 --epsilon=0.1 --no-best-explore-update --no-bandage --action-space=2 --problem-index=0 --beta-lr=1e-3" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
       <option name="MODULE_MODE" value="false" />
@@ -301,7 +324,7 @@
       <option name="presentableId" value="Default" />
       <updated>1572946024844</updated>
       <workItem from="1572946026297" duration="176625000" />
-      <workItem from="1574417808773" duration="40075000" />
+      <workItem from="1574417808773" duration="71768000" />
     </task>
     <task id="LOCAL-00001" summary="derivative net">
       <created>1573047158138</created>
@@ -359,11 +382,18 @@
       <option name="project" value="LOCAL" />
       <updated>1574796987159</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="add anchor&#10;add second derivative">
+      <created>1575458799678</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1575458799678</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="216700000" />
+    <option name="totallyTimeSpent" value="248393000" />
   </component>
   <component name="TodoView">
     <todo-panel id="selected-file">
@@ -375,57 +405,33 @@
     </todo-panel>
   </component>
   <component name="ToolWindowManager">
-    <frame x="0" y="0" width="1920" height="1080" extended-state="6" />
+    <frame x="0" y="0" width="1280" height="800" extended-state="6" />
+    <editor active="true" />
     <layout>
       <window_info id="Favorites" order="0" side_tool="true" />
-      <window_info active="true" content_ui="combo" id="Project" order="1" visible="true" weight="0.12353568" />
+      <window_info active="true" content_ui="combo" id="Project" order="1" visible="true" weight="0.18739903" />
       <window_info id="Structure" order="2" side_tool="true" weight="0.25" />
       <window_info anchor="bottom" id="Database Changes" order="0" />
       <window_info anchor="bottom" id="Terminal" order="1" sideWeight="0.49919224" weight="0.32772276" />
       <window_info anchor="bottom" id="Event Log" order="2" sideWeight="0.50159746" side_tool="true" weight="0.16923077" />
       <window_info anchor="bottom" id="Version Control" order="3" />
-      <window_info anchor="bottom" id="File Transfer" order="4" sideWeight="0.4978701" visible="true" weight="0.16534653" />
+      <window_info anchor="bottom" id="File Transfer" order="4" sideWeight="0.4978701" weight="0.16438356" />
       <window_info anchor="bottom" id="Python Console" order="5" />
       <window_info anchor="bottom" id="Docker" order="6" show_stripe_button="false" />
       <window_info anchor="bottom" id="Message" order="7" />
       <window_info anchor="bottom" id="Find" order="8" />
-      <window_info anchor="bottom" id="Run" order="9" sideWeight="0.49840257" weight="0.32739726" />
-      <window_info anchor="bottom" id="Debug" order="10" sideWeight="0.4978701" weight="0.2920792" />
+      <window_info anchor="bottom" id="Run" order="9" sideWeight="0.49840257" weight="0.35342467" />
+      <window_info anchor="bottom" id="Debug" order="10" sideWeight="0.4978701" visible="true" weight="0.29178083" />
       <window_info anchor="bottom" id="Cvs" order="11" weight="0.25" />
       <window_info anchor="bottom" id="Inspection" order="12" weight="0.4" />
       <window_info anchor="bottom" id="TODO" order="13" weight="0.32967034" />
-      <window_info anchor="right" id="SciView" order="0" visible="true" weight="0.36048988" />
+      <window_info anchor="right" id="SciView" order="0" visible="true" weight="0.23909532" />
       <window_info anchor="right" id="Database" order="1" />
       <window_info anchor="right" id="Remote Host" order="2" />
       <window_info anchor="right" id="Commander" internal_type="SLIDING" order="3" type="SLIDING" weight="0.4" />
       <window_info anchor="right" id="Ant Build" order="4" weight="0.25" />
       <window_info anchor="right" content_ui="combo" id="Hierarchy" order="5" weight="0.25" />
     </layout>
-    <layout-to-restore>
-      <window_info id="Favorites" order="0" side_tool="true" />
-      <window_info content_ui="combo" id="Project" order="1" visible="true" weight="0.12353568" />
-      <window_info id="Structure" order="2" side_tool="true" weight="0.25" />
-      <window_info anchor="bottom" id="Database Changes" order="0" />
-      <window_info anchor="bottom" id="Terminal" order="1" sideWeight="0.49919224" weight="0.32861635" />
-      <window_info anchor="bottom" id="Event Log" order="2" sideWeight="0.50159746" side_tool="true" weight="0.16923077" />
-      <window_info anchor="bottom" id="Version Control" order="3" />
-      <window_info anchor="bottom" id="File Transfer" order="4" sideWeight="0.4978701" weight="0.16534653" />
-      <window_info anchor="bottom" id="Python Console" order="5" />
-      <window_info anchor="bottom" id="Docker" order="6" show_stripe_button="false" />
-      <window_info anchor="bottom" id="Message" order="7" />
-      <window_info anchor="bottom" id="Find" order="8" />
-      <window_info anchor="bottom" id="Run" order="9" sideWeight="0.49840257" visible="true" weight="0.21287128" />
-      <window_info anchor="bottom" id="Debug" order="10" sideWeight="0.4978701" weight="0.34356436" />
-      <window_info anchor="bottom" id="Cvs" order="11" weight="0.25" />
-      <window_info anchor="bottom" id="Inspection" order="12" weight="0.4" />
-      <window_info anchor="bottom" id="TODO" order="13" weight="0.32967034" />
-      <window_info active="true" anchor="right" id="SciView" order="0" visible="true" weight="0.2683706" />
-      <window_info anchor="right" id="Database" order="1" />
-      <window_info anchor="right" id="Remote Host" order="2" />
-      <window_info anchor="right" id="Commander" internal_type="SLIDING" order="3" type="SLIDING" weight="0.4" />
-      <window_info anchor="right" id="Ant Build" order="4" weight="0.25" />
-      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="5" weight="0.25" />
-    </layout-to-restore>
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="1" />
@@ -439,7 +445,8 @@
     <MESSAGE value="fix bugs&#10;Add exploration" />
     <MESSAGE value="grad norm&#10;grad method and value method union&#10;fix value net train and eval" />
     <MESSAGE value="grad clip&#10;lr adaptation" />
-    <option name="LAST_COMMIT_MESSAGE" value="grad clip&#10;lr adaptation" />
+    <MESSAGE value="add anchor&#10;add second derivative" />
+    <option name="LAST_COMMIT_MESSAGE" value="add anchor&#10;add second derivative" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -451,12 +458,12 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/single_agent.py</url>
-          <line>267</line>
+          <line>420</line>
           <option name="timeStamp" value="67" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/baseline.py</url>
-          <line>270</line>
+          <line>280</line>
           <option name="timeStamp" value="72" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -481,13 +488,8 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/baseline.py</url>
-          <line>268</line>
+          <line>278</line>
           <option name="timeStamp" value="113" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/visualize_2d.py</url>
-          <line>211</line>
-          <option name="timeStamp" value="114" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/visualize_2d.py</url>
@@ -496,7 +498,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/single_agent.py</url>
-          <line>135</line>
+          <line>166</line>
           <option name="timeStamp" value="123" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -516,22 +518,22 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/baseline.py</url>
-          <line>203</line>
+          <line>207</line>
           <option name="timeStamp" value="142" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/baseline.py</url>
-          <line>276</line>
+          <line>286</line>
           <option name="timeStamp" value="144" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/baseline.py</url>
-          <line>274</line>
+          <line>284</line>
           <option name="timeStamp" value="145" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/baseline.py</url>
-          <line>200</line>
+          <line>204</line>
           <option name="timeStamp" value="146" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -546,66 +548,103 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/baseline.py</url>
-          <line>266</line>
+          <line>276</line>
           <option name="timeStamp" value="154" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/single_agent.py</url>
-          <line>295</line>
-          <option name="timeStamp" value="156" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/visualize_2d.py</url>
           <line>106</line>
           <option name="timeStamp" value="162" />
         </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/single_agent.py</url>
+          <line>526</line>
+          <option name="timeStamp" value="167" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/single_agent.py</url>
+          <line>203</line>
+          <option name="timeStamp" value="180" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/single_agent.py</url>
+          <line>555</line>
+          <option name="timeStamp" value="182" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/single_agent.py</url>
+          <line>344</line>
+          <option name="timeStamp" value="186" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/single_agent.py</url>
+          <line>291</line>
+          <option name="timeStamp" value="189" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/vae.py</url>
+          <line>225</line>
+          <option name="timeStamp" value="191" />
+        </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
+    <watches-manager>
+      <configuration name="PythonConfigurationType">
+        <watch expression="beta.shape" language="Python" />
+      </configuration>
+    </watches-manager>
   </component>
   <component name="debuggerHistoryManager">
+    <expressions id="watch">
+      <expression>
+        <expression-string>beta.shape</expression-string>
+        <language-id>Python</language-id>
+        <evaluation-mode>EXPRESSION</evaluation-mode>
+      </expression>
+    </expressions>
     <expressions id="evaluateExpression">
       <expression>
-        <expression-string>optimizer_res</expression-string>
+        <expression-string>self.training</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>res.x</expression-string>
+        <expression-string>pi_1.shape</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>res.x[-1]</expression-string>
+        <expression-string>shuffle_indexes.shape</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>res</expression-string>
+        <expression-string>pi_2.shape</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>res.x[0]</expression-string>
+        <expression-string>pi_1</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>f_val[-5:]</expression-string>
+        <expression-string>r_2.shape</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>f_val[:-5]</expression-string>
+        <expression-string>r_1.shape</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.optimizer_beta.state_dict()['param_groups'][0]['lr']</expression-string>
+        <expression-string>re.shape</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.optimizer_beta.state_dict()['param_groups']</expression-string>
+        <expression-string>self.beta_net.shape</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
@@ -748,13 +787,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/environment.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="615">
-          <caret line="41" column="53" selection-start-line="41" selection-start-column="41" selection-end-line="41" selection-end-column="53" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$USER_HOME$/Library/Caches/PyCharm2018.3/remote_sources/204277109/297632761/posixpath.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="186">
@@ -776,86 +808,10 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/config.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="68">
-          <caret line="61" lean-forward="true" selection-start-line="61" selection-end-line="61" />
-          <folding>
-            <element signature="e#0#15#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/experiment.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="95">
-          <caret line="104" column="11" selection-start-line="104" selection-start-column="11" selection-end-line="104" selection-end-column="11" />
-          <folding>
-            <element signature="e#0#11#0" expanded="true" />
-            <marker date="1574677250343" expanded="true" signature="762:1818" ph="..." />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/main.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1635">
-          <caret line="109" column="11" selection-start-line="109" selection-start-column="10" selection-end-line="109" selection-end-column="11" />
-          <folding>
-            <element signature="e#0#31#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/single_agent.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-3786">
-          <caret line="103" column="42" lean-forward="true" selection-start-line="103" selection-start-column="42" selection-end-line="103" selection-end-column="42" />
-          <folding>
-            <element signature="e#0#12#0" expanded="true" />
-            <element signature="e#23682#24755#0" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/bbo_run.sh">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="180">
-          <caret line="12" column="4" selection-start-line="12" selection-start-column="4" selection-end-line="12" selection-end-column="4" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/compare_rn.sh">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="285">
-          <caret line="19" selection-start-line="19" selection-end-line="19" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/vae.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="141">
-          <caret line="34" column="17" lean-forward="true" selection-start-line="30" selection-start-column="4" selection-end-line="34" selection-end-column="17" />
-          <folding>
-            <element signature="e#0#37#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$USER_HOME$/anaconda3/lib/python3.6/site-packages/pandas/core/indexes/base.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="230">
           <caret line="4390" selection-start-line="4390" selection-end-line="4390" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/baseline.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-2599">
-          <caret line="69" selection-start-line="69" selection-end-line="69" />
-          <folding>
-            <element signature="e#63#84#0" expanded="true" />
-          </folding>
         </state>
       </provider>
     </entry>
@@ -868,10 +824,114 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/visualize_2d.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="529">
-          <caret line="206" column="58" lean-forward="true" selection-start-line="202" selection-start-column="4" selection-end-line="206" selection-end-column="58" />
+        <state relative-caret-position="466">
+          <caret line="211" column="23" selection-start-line="211" selection-start-column="23" selection-end-line="211" selection-end-column="23" />
           <folding>
             <element signature="e#63#84#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/baseline.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="265">
+          <caret line="270" column="18" selection-start-line="270" selection-start-column="18" selection-end-line="270" selection-end-column="18" />
+          <folding>
+            <element signature="e#63#84#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/bbo_run.sh">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="240">
+          <caret line="16" column="51" selection-start-line="16" selection-start-column="39" selection-end-line="16" selection-end-column="51" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/config.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="176">
+          <caret line="54" column="30" selection-start-line="54" selection-start-column="23" selection-end-line="54" selection-end-column="30" />
+          <folding>
+            <element signature="e#0#15#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/main.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="152">
+          <caret line="82" selection-start-line="82" selection-end-line="82" />
+          <folding>
+            <element signature="e#0#31#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/Library/Caches/PyCharm2018.3/remote_sources/204277109/1251662109/torch/autograd/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="144">
+          <caret line="89" selection-start-line="89" selection-end-line="89" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/Library/Caches/PyCharm2018.3/remote_sources/204277109/1251662109/torch/tensor.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="152">
+          <caret line="92" selection-start-line="92" selection-end-line="92" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/compare_rn.sh">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="243">
+          <caret line="22" column="20" selection-start-line="22" selection-start-column="20" selection-end-line="22" selection-end-column="20" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/experiment.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1310">
+          <caret line="119" column="128" selection-start-line="119" selection-start-column="128" selection-end-line="119" selection-end-column="128" />
+          <folding>
+            <element signature="e#0#11#0" expanded="true" />
+            <marker date="1575457458511" expanded="true" signature="801:1857" ph="..." />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/environment.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1710">
+          <caret line="114" selection-start-line="114" selection-end-line="114" />
+          <folding>
+            <element signature="e#0#18#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/vae.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="142">
+          <caret line="30" column="22" selection-start-line="30" selection-start-column="8" selection-end-line="30" selection-end-column="22" />
+          <folding>
+            <element signature="e#0#37#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/single_agent.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="97">
+          <caret line="22" column="22" selection-start-line="22" selection-start-column="22" selection-end-line="22" selection-end-column="22" />
+          <folding>
+            <element signature="e#0#12#0" expanded="true" />
+            <element signature="e#20880#20933#0" />
+            <element signature="e#20991#21307#0" />
+            <element signature="e#21366#21947#0" />
+            <element signature="e#22632#23288#0" />
+            <element signature="e#23682#24755#0" />
           </folding>
         </state>
       </provider>

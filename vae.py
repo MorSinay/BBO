@@ -29,10 +29,12 @@ class VAE(nn.Module):
         return self.fc21(h1), self.fc22(h1)
 
     def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5*logvar)
-        eps = torch.randn_like(std)
-        #return mu + eps*std
-        return mu
+        if self.training:
+            std = torch.exp(0.5*logvar)
+            eps = torch.randn_like(std)
+            return mu + eps*std
+        else:
+            return mu
 
     def decode(self, z):
         h3 = F.relu(self.fc3(z))
@@ -162,6 +164,7 @@ class VaeProblem(object):
         dim = 20
         self.vae = VaeModel()
         self.vae.load_model()
+        self.vae.model.eval()
         self.problem = None
 
         suite_name = "bbob"
