@@ -35,15 +35,14 @@ parser.add_argument('--batch', type=int, default=30, help='Mini-Batch Size')
 # strings
 parser.add_argument('--game', type=str, default='bbo', help='bbo | net')
 parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
-parser.add_argument('--algorithm', type=str, default='reinforce', help='[reinforce]')
-
+parser.add_argument('--algorithm', type=str, default='first_order', help='[first_order | value | second_order]')
 
 boolean_feature('debug', False, 'debug flag')
 #boolean_feature('vae', False, 'run vae problem')
 
 # # booleans
 boolean_feature("load-last-model", False, 'Load the last saved model')
-boolean_feature("grad", False, 'Use derivative net')
+boolean_feature("normalize", False, 'Normalize input to -1, 1')
 boolean_feature("tensorboard", False, "Log results to tensorboard")
 boolean_feature('importance-sampling', False, "Derivative eval")
 boolean_feature('bandage', False, "Bandage")
@@ -52,7 +51,7 @@ parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment')
 
 # #exploration parameters
-parser.add_argument('--epsilon', type=float, default=0.05, metavar='ε', help='exploration parameter before behavioral period')
+parser.add_argument('--epsilon', type=float, default=0.1, metavar='ε', help='exploration parameter before behavioral period')
 parser.add_argument('--explore', type=str, default='grad_direct', metavar='explore', help='exploration option - grad_rand | grad_direct | rand')
 parser.add_argument('--update-step', type=str, default='n_step', metavar='update', help='beta update step - n_step | best_step | first_vs_last | no_update')
 boolean_feature("best-explore-update", False, 'move to the best value of exploration')
@@ -75,7 +74,6 @@ parser.add_argument('--drop', type=float, default=0, metavar='drop out', help='D
 # #actors parameters
 parser.add_argument('--problem-index', type=int, default=-1, help='Problem Index or -1 for all')
 parser.add_argument('--beta-lr', type=float, default=1e-2, metavar='LR', help='beta learning rate')
-#parser.add_argument('--beta-optim', type=str, default='sgd', metavar='optim', help='beta optimizer sgd | adam')
 parser.add_argument('--value-lr', type=float, default=1e-3, metavar='LR', help='value learning rate')
 parser.add_argument('--action-space', type=int, default=10, metavar='dimension', help='Problem dimension')
 parser.add_argument('--layer', type=int, default=128, metavar='layer', help='Value hidden layer size')

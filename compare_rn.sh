@@ -6,15 +6,30 @@ aux="${@:3}"
 
 echo dim $1 index $2
 
-#args="--game=VALUE --budget=100 --action-space=$dim --resume=0 --load-last-model --problem-index=$index --no-bandage --delta=0.1 --epsilon=0.1"
-#args="--game=GRAD --grad --budget=100 --action-space=$dim --resume=0 --load-last-model --problem-index=$index --no-bandage --delta=0.01 --epsilon=0.01"
+args="--game=CMP --budget=100 --no-best-explore-update --bandage --action-space=$dim --problem-index=$index --beta-lr=1e-3"
 
-args="--game=CMP --budget=800 --delta=0.1 --epsilon=0.1 --best-explore-update --bandage --action-space=$dim --problem-index=$index --beta-lr=1e-1"
+CUDA_VISIBLE_DEVICES=0, python main.py --algorithm=first_order --identifier=direct --explore=grad_direct --update-step=n_step $args $aux &
+CUDA_VISIBLE_DEVICES=1, python main.py --algorithm=second_order --identifier=rand  --explore=grad_rand --update-step=n_step $args $aux &
+CUDA_VISIBLE_DEVICES=2, python main.py --algorithm=value --identifier=rand  --explore=rand --update-step=n_step $args $aux &
+CUDA_VISIBLE_DEVICES=2, python main.py --algorithm=anchor --identifier=direct  --explore=grad_direct --update-step=n_step $args $aux &
 
-CUDA_VISIBLE_DEVICES=0, python main.py --grad --algorithm=grad_d --explore=grad_direct --update-step=n_step $args $aux &
-CUDA_VISIBLE_DEVICES=1, python main.py --grad --algorithm=grad_r --explore=grad_rand --update-step=n_step $args $aux &
-CUDA_VISIBLE_DEVICES=0, python main.py --algorithm=value_d --explore=grad_direct --update-step=n_step $args $aux &
-CUDA_VISIBLE_DEVICES=1, python main.py --algorithm=value_r --explore=grad_rand --update-step=n_step $args $aux &
+
+#args="--game=LR --algorithm=first_order --explore=grad_direct --update-step=n_step --budget=150 --no-best-explore-update --no-bandage --action-space=$dim --problem-index=$index"
+
+#CUDA_VISIBLE_DEVICES=0, python main.py --identifier=lr_1 --no-normalize --beta-lr=1e-1 $args $aux &
+#CUDA_VISIBLE_DEVICES=1, python main.py --identifier=lr_2 --no-normalize --beta-lr=1e-2 $args $aux &
+#CUDA_VISIBLE_DEVICES=2, python main.py --identifier=lr_3 --no-normalize --beta-lr=1e-3 $args $aux &
+#CUDA_VISIBLE_DEVICES=0, python main.py --identifier=lr_4 --no-normalize --beta-lr=1e-4 $args $aux &
+#CUDA_VISIBLE_DEVICES=1, python main.py --identifier=lr_5 --no-normalize --beta-lr=1e-5 $args $aux &
+
+#CUDA_VISIBLE_DEVICES=2, python main.py --identifier=lr_1_n --normalize --beta-lr=1e-1 $args $aux &
+#CUDA_VISIBLE_DEVICES=0, python main.py --identifier=lr_2_n --normalize --beta-lr=1e-2 $args $aux &
+#CUDA_VISIBLE_DEVICES=1, python main.py --identifier=lr_3_n --normalize --beta-lr=1e-3 $args $aux &
+#CUDA_VISIBLE_DEVICES=2, python main.py --identifier=lr_4_n --normalize --beta-lr=1e-4 $args $aux &
+#CUDA_VISIBLE_DEVICES=1, python main.py --identifier=lr_5_n --normalize --beta-lr=1e-5 $args $aux &
+
+
+
 
 
 #CUDA_VISIBLE_DEVICES=0, python main.py --algorithm=bbo --explore=grad_direct --update-step=n_step $args $aux &

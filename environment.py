@@ -1,6 +1,9 @@
 import numpy as np
+from config import args
 
 class Env(object):
+    def __init__(self):
+        self.normalize = args.normalize
 
     def get_problem_dim(self):
         raise NotImplementedError
@@ -12,7 +15,7 @@ class Env(object):
         raise NotImplementedError
 
     def constrains(self):
-        raise NotImplementedError
+         raise NotImplementedError
 
     def get_initial_solution(self):
         raise NotImplementedError
@@ -24,6 +27,12 @@ class Env(object):
         raise NotImplementedError
 
     def f(self, policy):
+        raise NotImplementedError
+
+    def normalize(self, policy):
+        raise NotImplementedError
+
+    def denormalize(self, policy):
         raise NotImplementedError
 
 
@@ -47,7 +56,7 @@ class EnvCoco(Env):
         return self.problem.dimension
 
     def constrains(self):
-        return self.lower_bounds, self.upper_bounds
+         return self.lower_bounds, self.upper_bounds
 
     def get_initial_solution(self):
         return self.initial_solution
@@ -58,12 +67,39 @@ class EnvCoco(Env):
         self.k = 0
         self.t = 0
 
-    def step_policy(self, policy):
+    def normalize(self, policy):
+        if self.normalize:
+            policy = np.clip(policy, self.lower_bounds, self.upper_bounds)
+            if len(policy.shape) == 2:
+                assert (policy.shape[1] == self.output_size), "action error"
+                upper = np.repeat(self.upper_bounds, policy.shape[0], axis=0)
+                lower = np.repeat(self.lower_bounds, policy.shape[0], axis=0)
+            else:
+                upper = self.upper_bounds
+                lower = self.lower_bounds
 
+            policy = 2 * ((policy - lower) / upper - lower) - 1
+        return policy
+
+    def denormalize(self, policy):
+        if self.normalize:
+            assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
+            if len(policy.shape) == 2:
+                assert (policy.shape[1] == self.output_size), "action error"
+                upper = np.repeat(self.upper_bounds.reshape(1, -1), policy.shape[0], axis=0)
+                lower = np.repeat(self.lower_bounds.reshape(1, -1), policy.shape[0], axis=0)
+            else:
+                upper = self.upper_bounds
+                lower = self.lower_bounds
+
+            policy = 0.5 * (policy + 1) * (upper - lower) + lower
+        return policy
+
+    def step_policy(self, policy):
+        policy = self.denormalize(policy)
         assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
         if len(policy.shape) == 2:
-            assert(policy.shape[1] == self.output_size), "action error"
             for i in range(policy.shape[0]):
                 self.reward.append(-self.problem(policy[i]))
                 self.k += 1
@@ -76,6 +112,7 @@ class EnvCoco(Env):
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
+        policy = self.denormalize(policy)
         return self.problem(policy)
 
     def get_problem_index(self):
@@ -110,7 +147,7 @@ class EnvVae(Env):
         return self.vae_problem.id
 
     def constrains(self):
-        return self.lower_bounds, self.upper_bounds
+         return self.lower_bounds, self.upper_bounds
 
     def get_initial_solution(self):
         return self.initial_solution
@@ -121,12 +158,16 @@ class EnvVae(Env):
         self.k = 0
         self.t = 0
 
-    def step_policy(self, policy):
+    def normalize(self, policy):
+        return policy
 
+    def denormalize(self, policy):
+        return policy
+
+    def step_policy(self, policy):
         assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
         if len(policy.shape) == 2:
-            assert(policy.shape[1] == self.output_size), "action error"
             for i in range(policy.shape[0]):
                 self.reward.append(-self.vae_problem.func(policy[i]))
                 self.k += 1

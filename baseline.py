@@ -184,7 +184,7 @@ def compare_beta_evaluate(dim, index, path, title, baseline_cmp = False):
     plt.legend()
     plt.title(title)
    # plt.ylim([0, 200])
-    plt.xlim([0, 50])
+    plt.xlim([0, 200])
     plt.show()
 
 def plot_2D(problem_index, path, save_fig=False):
@@ -196,6 +196,10 @@ def plot_2D(problem_index, path, save_fig=False):
     x = np.load(os.path.join(path, str(problem_index), 'policies.npy'))
     x_exp = np.load(os.path.join(path, str(problem_index), 'explore_policies.npy')).reshape(-1, 2)
 
+    if dim != 784:
+        x *= 5
+        x_exp *= 5
+
     fig = plt.figure()
     ax = fig.gca(projection='3d')
     #mean = res[:, 2].mean()
@@ -205,7 +209,7 @@ def plot_2D(problem_index, path, save_fig=False):
     plt.plot(x[:, 0], x[:, 1], '-o', color='b', markersize=1)
     plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color='r', markersize=1)
 
-    ax.set_title('2D_index_{}'.format(problem_index));
+    ax.set_title('2D_index_{}'.format(problem_index))
     ax.set_xlabel('x0')
     ax.set_ylabel('x1')
     ax.set_zlabel('f(x0,x1)')
@@ -230,13 +234,17 @@ def plot_2D_contour(problem_index, path, save_fig=False):
 
     x = np.load(os.path.join(path, str(problem_index), 'policies.npy'))
     x_exp = np.load(os.path.join(path, str(problem_index), 'explore_policies.npy')).reshape(-1,2)
+
+    if dim != 784:
+        x *= 5
+        x_exp *= 5
     #f = np.load(os.path.join(path, str(problem_index), 'beta_evaluate.npy'))
 
 
     fig, ax = plt.subplots()
     cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
-    plt.plot(x[:, 0], x[:, 1], '-o', color='b', markersize=1)
     plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color='r', markersize=1)
+    plt.plot(x[:, 0], x[:, 1], '-o', color='b', markersize=1)
     plt.title(path.split('/')[-1])
     fig.colorbar(cs)
     if save_fig:
@@ -254,17 +262,19 @@ def plot_2D_contour(problem_index, path, save_fig=False):
 
 
 if __name__ == '__main__':
-   # merge_baseline()
+    #merge_baseline()
 
-    merge_baseline_mor()
+    #merge_baseline_mor()
 
-    dim = 40
+    dim = 2
     index = 15
-    prefix = 'LR'
-    path = os.path.join(base_dir, 'analysis', prefix, str(dim))
+    dir_name = 'LR'
 
-    title = "{} dim = {} index = {}".format(prefix, dim, index)
-    #compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
+
+    path = os.path.join(base_dir, 'analysis', dir_name, str(dim))
+
+    title = "{} dim = {} index = {}".format(dir_name, dim, index)
+    compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
 
 
     #plot_res(optimizers=["bbo", "grad"], max_budget=12000, compare_baseline=True)
@@ -272,7 +282,7 @@ if __name__ == '__main__':
     # for i in range(360):
     #     plot_2D(i, save_fig=True)
 
-    #prefix = 'lr_4_debug'
-    #path = os.path.join(base_dir, 'analysis', 'LR', '2', prefix)
-    #plot_2D_contour(15, path, False)
+    prefix = 'lr_3_debug'
+    path = os.path.join(base_dir, 'analysis', dir_name, str(dim), prefix)
+    #plot_2D_contour(index, path, False)
     #plot_2D(15, path, False)

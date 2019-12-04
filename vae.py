@@ -190,10 +190,24 @@ class VaeProblem(object):
     def constraint(self, x):
         return None
 
+    def denormalize(self, policy):
+        assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
+        if len(policy.shape) == 2:
+            assert (policy.shape[1] == self.output_size), "action error"
+            upper = np.repeat(self.z_upper_bounds, policy.shape[0], axis=0)
+            lower = np.repeat(self.z_lower_bounds, policy.shape[0], axis=0)
+        else:
+            upper = self.z_upper_bounds.flatten()
+            lower = self.z_lower_bounds.flatten()
+
+        policy = 0.5 * (policy + 1) * (upper - lower) + lower
+        return policy
+
     def func(self, x):
         x = torch.tensor(x, dtype=torch.float).to(self.device)
         mu, logvar = self.vae.model.encode(x)
         z = self.vae.model.reparameterize(mu, logvar).detach().cpu().numpy()
+        z = self.denormalize(z)
         z = np.clip(z, self.z_lower_bounds, self.z_upper_bounds)
         f_val = self.problem(z)
 
