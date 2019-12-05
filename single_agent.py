@@ -19,15 +19,10 @@ import itertools
 mem_threshold = consts.mem_threshold
 
 #TODO:
-# Normalize and denormalized the input in ENV
 # add Uniform VAE and Gaussian VAE
-# add self.training and sample
-# Add f(0) to compare.csv
-# Anchor_v
+# vae change logvar to
 # curl regularization
-# New graph plot
-# loss print
-# update grad\value print
+# ELAD - 1d visualizetion of bbo function - eval function and derivative using projection in a specific direction
 
 
 class BBOAgent(object):
@@ -45,6 +40,7 @@ class BBOAgent(object):
         self.delta = args.delta
         self.cuda_id = args.cuda_default
         self.batch = args.batch
+        self.warmup_minibatch = 4
         self.replay_memory_size = self.batch*args.replay_memory_factor
         self.problem_index = args.problem_index
         self.beta_lr = args.beta_lr
@@ -54,6 +50,7 @@ class BBOAgent(object):
         self.algorithm_method = args.algorithm
         self.grad_steps = args.grad_steps
         self.stop_con = args.stop_con
+        self.grad_clip = args.grad_clip
         self.divergence = 0
         self.importance_sampling = args.importance_sampling
         self.bandage = args.bandage
@@ -72,6 +69,8 @@ class BBOAgent(object):
         self.clip = args.clip
         self.tensor_replay_reward = None
         self.tensor_replay_policy = None
+        self.mean = None
+        self.std = None
 
         if args.explore == 'grad_rand':
             self.exploration = self.exploration_grad_rand
@@ -187,9 +186,35 @@ class BBOAgent(object):
 
         return state['aux']
 
+    def warmup(self):
+        n_explore = self.warmup_minibatch*self.batch
+        self.env.reset()
+
+        explore_policies = np.random.rand(n_explore, self.action_space)
+        if not self.normalize:
+            lower_bounds, upper_bounds = self.env.constrains()
+            upper_bounds = np.repeat(upper_bounds.reshape(1, -1), n_explore, axis=0)
+            lower_bounds = np.repeat(lower_bounds.reshape(1, -1), n_explore, axis=0)
+            explore_policies = 0.5 * (explore_policies + 1) * (upper_bounds - lower_bounds) + lower_bounds
+
+        self.env.step_policy(explore_policies)
+        rewards = self.env.reward
+        self.results['explore_policies'].append(explore_policies)
+        self.results['rewards'].append(rewards)
+        self.mean = rewards.mean()
+        self.std = rewards.std()
+
+        best_idx = rewards.argmax()
+        beta = explore_policies[best_idx]
+        with torch.no_grad():
+            self.beta_net.data = torch.tensor(beta, dtype=torch.float).to(self.device)
+
+        self.value_optimize()
+
     def minimize(self, n_explore):
 
         self.reset_beta()
+        self.warmup()
         self.env.reset()
 
         for self.frame in tqdm(itertools.count()):
@@ -228,7 +253,7 @@ class BBOAgent(object):
                 self.results['grad_norm'].append(grad_norm)
             if self.algorithm_method in ['value', 'anchor']:
                 value = -self.value_net(self.beta_net).data.cpu().numpy()
-                self.results['value'].append(value)
+                self.results['value'].append(self.denorm(value))
 
             self.results['best_observed'].append(self.env.best_observed)
             self.results['beta_evaluate'].append(beta_eval)
@@ -255,7 +280,7 @@ class BBOAgent(object):
                 break
 
     def value_optimize(self):
-        replay_buffer_rewards = np.hstack(self.results['rewards'])[-self.replay_memory_size:]
+        replay_buffer_rewards = self.norm(np.hstack(self.results['rewards'])[-self.replay_memory_size:])
         replay_buffer_policy = np.vstack(self.results['explore_policies'])[-self.replay_memory_size:]
         len_replay_buffer = len(replay_buffer_rewards)
         minibatches = len_replay_buffer // self.batch
@@ -263,7 +288,7 @@ class BBOAgent(object):
         self.tensor_replay_reward = torch.tensor(replay_buffer_rewards, dtype=torch.float).to(self.device, non_blocking=True)
         self.tensor_replay_policy = torch.tensor(replay_buffer_policy, dtype=torch.float).to(self.device, non_blocking=True)
 
-        if minibatches < 4:
+        if minibatches < self.warmup_minibatch:
             return False
 
         if self.algorithm_method == 'first_order':
@@ -453,7 +478,9 @@ class BBOAgent(object):
         else:
             raise NotImplementedError
 
-        nn.utils.clip_grad_norm(self.beta_net, 1e-2/self.beta_lr)
+        if self.grad_clip:
+            nn.utils.clip_grad_norm(self.beta_net, 1e-2/self.beta_lr)
+
         self.optimizer_beta.step()
 
         with torch.no_grad():
@@ -470,8 +497,11 @@ class BBOAgent(object):
         return beta, self.env.f(beta)
 
     def norm(self, x):
-        mean = x.mean()
-        x = x - mean
+        x = (x - self.mean) / self.std
+        return x
+
+    def denorm(self, x):
+        x = (x * self.std) + self.mean
         return x
 
     def exploration_rand(self, n_explore):
