@@ -28,7 +28,7 @@ else:
 color = ['b', 'g', 'r', 'y', 'c', 'm', 'k', 'lime', 'gold', 'slategray', 'indigo', 'maroon', 'plum', 'pink', 'tan', 'khaki', 'silver',
              'navy', 'skyblue', 'teal', 'darkkhaki', 'indianred', 'orchid', 'lightgrey', 'dimgrey']
 
-epsilon = 10
+epsilon = 1
 
 def merge_baseline(dims=[2, 3, 5, 10, 20, 40, 784]):
 
@@ -64,7 +64,7 @@ def merge_baseline(dims=[2, 3, 5, 10, 20, 40, 784]):
     file = os.path.join(base_dir, 'min_val.csv')
     df.to_csv(file)
 
-def merge_baseline_mor(dims=[2, 3, 5, 10, 20, 40, 784]):
+def merge_baseline_one_line_compare(dims=[2, 3, 5, 10, 20, 40, 784]):
 
     data = defaultdict(list)
     for dim in dims:
@@ -73,6 +73,8 @@ def merge_baseline_mor(dims=[2, 3, 5, 10, 20, 40, 784]):
 
             data['dim'].append(dim)
             data['iter_index'].append(index)
+            data['f0'].append(max(optimizer_res.f0))
+            data['id'].append(optimizer_res.id[0])
 
             for i, op in enumerate(optimizer_res['fmin']):
                 res = optimizer_res[optimizer_res['fmin'] == op]
@@ -84,6 +86,62 @@ def merge_baseline_mor(dims=[2, 3, 5, 10, 20, 40, 784]):
     df = pd.DataFrame(data)
     file = os.path.join(base_dir, 'compare.csv')
     df.to_csv(file)
+
+def merge_bbo(optimizers = [], dimension = [2, 3, 5, 10, 20, 40, 784], plot_sum=False):
+    compare_file = os.path.join(base_dir, 'compare.csv')
+    if not os.path.exists(compare_file):
+        merge_baseline_one_line_compare(dimension)
+
+    baseline_df = pd.read_csv(os.path.join(compare_file))
+    res_dir = os.path.join(base_dir, 'results')
+
+    for op in optimizers:
+        op_df = pd.read_csv(os.path.join(res_dir, op, op+'_{}'.format(dimension[0]) + ".csv"))
+
+        for dim in dimension[1:]:
+            df_d = pd.read_csv(os.path.join(res_dir, op, op+'_{}'.format(dim) + ".csv"))
+            op_df = op_df.append(df_d, ignore_index=True)
+
+        op_df = op_df[['id', 'best_observed', 'number_of_evaluations']]
+        op_df = op_df.rename(columns={"best_observed": op+"_best_observed",
+                                "number_of_evaluations": op+"_number_of_evaluations"})
+
+        baseline_df = baseline_df.merge(op_df, on='id')
+
+    columns = baseline_df.columns
+    best_observed = []
+    for item in columns:
+        if item.endswith('_best_observed'):
+            best_observed.append(item)
+
+    baseline_df['min_val'] = baseline_df[best_observed].min(axis=1)
+
+    X = [20*i for i in range(len(dimension))]
+    ax = plt.subplot(111)
+    w = 1
+
+    for j, best_observed_op in enumerate(best_observed):
+        res = []
+        x = [X[i] + j*w for i in range(len(dimension))]
+        for dim in dimension:
+            temp_df = baseline_df[baseline_df.dim == dim]
+            if plot_sum:
+                compare_method = (temp_df[best_observed_op].values - temp_df['min_val'].values) / temp_df['f0'].values
+            else:
+                compare_method = (temp_df[best_observed_op].values - temp_df['min_val'].values) < epsilon
+            count = len(compare_method)
+            res.append(compare_method.sum()/count)
+        optim = best_observed_op[:-len('_best_observed')]
+        ax.bar(x, res, width=w, color=color[j], align='center', label=optim)
+
+    ax.set_xticks([i + len(dimension)//2 for i in X])
+    ax.set_xticklabels(dimension)
+   # ax.autoscale(tight=True)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=4)
+    #ax.legend()
+    #plt.title("BASELINE COMPARE - BUDGET {}".format(max_budget))
+    plt.show()
+
 
 def plot_res(optimizers = [], max_budget = 1200, compare_baseline=False):
     res_dir = os.path.join(base_dir, 'results')
@@ -264,8 +322,9 @@ def plot_2D_contour(problem_index, path, save_fig=False):
 if __name__ == '__main__':
     #merge_baseline()
 
-    #merge_baseline_mor()
-
+    #merge_baseline_one_line_compare()
+    merge_bbo(optimizers=[], dimension=[2, 3, 5, 10, 20, 40, 784], plot_sum=False)
+    #merge_bbo(optimizers=["bbo", "grad"], dimension=[2, 3, 5, 10, 20, 40, 784], plot_sum=True)
     dim = 2
     index = 15
     dir_name = 'LR'
@@ -274,7 +333,7 @@ if __name__ == '__main__':
     path = os.path.join(base_dir, 'analysis', dir_name, str(dim))
 
     title = "{} dim = {} index = {}".format(dir_name, dim, index)
-    compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
+    #compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
 
 
     #plot_res(optimizers=["bbo", "grad"], max_budget=12000, compare_baseline=True)

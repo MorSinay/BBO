@@ -66,9 +66,10 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=50):
         data['number_of_evaluations'].append(problem.evaluations)
         data['eval'].append(eval)
         data['f'].append(f)
+        data['f0'].append(func(problem.initial_solution))
 
-        print(data['fmin'][-1] + ":\tevaluations: " + str(data['number_of_evaluations'][-1]) + "\tf(x): "
-                                                          + str(func(x)) + "\thit: " + str(data['hit'][-1]))
+        # print(data['fmin'][-1] + ":\tevaluations: " + str(data['number_of_evaluations'][-1]) + "\tf(x): "
+        #                                                   + str(func(x)) + "\thit: " + str(data['hit'][-1]))
 
     df = pd.DataFrame(data)
     title = 'dim_{} index_{}'.format(dim, index)
@@ -200,16 +201,17 @@ def treeD_plot_contour(problem_index):
 
 
 if __name__ == '__main__':
-    # filter_mod = 1
-    #
-    # for dim in ['2','3','5','10','20','40','784']:
-    #     for i in tqdm(range(0, 360, filter_mod)):
-    #         compare_problem_baseline(dim, i, budget=12000)
+    #compare_problem_baseline(2,15,90)
+    filter_mod = 1
 
-    # for i in tqdm(range(0, 360, 1)):
-    #     treeD_plot_contour(i)  #treeD_plot
+    for dim in ['2','3','5','10','20','40','784']:
+        for i in tqdm(range(0, 360, filter_mod)):
+            compare_problem_baseline(dim, i, budget=12000)
 
-   create_copy_file("LR", 2, 15)
+   #  for i in tqdm(range(0, 360, 1)):
+   #      treeD_plot_contour(i)  #treeD_plot
+   #
+   # create_copy_file("LR", 2, 15)
 
     #treeD_plot_contour(0)
 
