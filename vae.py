@@ -9,15 +9,14 @@ import os
 import pwd
 import cocoex
 import numpy as np
+from config import args
 
 username = pwd.getpwuid(os.geteuid()).pw_name
-vae_base_dir = os.path.join('/data/', username, 'gan_rl', 'vae')
-
 
 class VAE(nn.Module):
-    def __init__(self):
+    def __init__(self, vae_mode):
         super(VAE, self).__init__()
-
+        self.vae_mode = vae_mode
         self.fc1 = nn.Linear(784, 400)
         self.fc21 = nn.Linear(400, 20)
         self.fc22 = nn.Linear(400, 20)
@@ -31,7 +30,12 @@ class VAE(nn.Module):
     def reparameterize(self, mu, logvar):
         if self.training:
             std = torch.exp(0.5*logvar)
-            eps = torch.randn_like(std)
+            if self.vae_mode == 'gaussian':
+                eps = torch.randn_like(std)
+            elif self.vae_mode == 'uniform':
+                eps = torch.ones_like(std).uniform_(-1, 1)
+            else:
+                raise NotImplementedError
             return mu + eps*std
         else:
             return mu
@@ -47,17 +51,18 @@ class VAE(nn.Module):
 
 
 class VaeModel(object):
-    def __init__(self):
-
+    def __init__(self, vae_mode):
+        self.vae_mode = vae_mode
+        vae_base_dir = os.path.join('/data/', username, 'gan_rl', 'vae_' + vae_mode)
         is_cuda = torch.cuda.is_available()
         torch.manual_seed(128)
         self.device = torch.device("cuda" if is_cuda else "cpu")
         kwargs = {'num_workers': 1, 'pin_memory': True} if is_cuda else {}
         self.batch_size = 128
-        self.epochs = 10
+        self.epochs = 20
         self.log_interval = 10
 
-        self.model = VAE().to(self.device)
+        self.model = VAE(vae_mode).to(self.device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
         self.model_path = os.path.join(vae_base_dir, 'vae_model')
 
@@ -106,8 +111,15 @@ class VaeModel(object):
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
         # https://arxiv.org/abs/1312.6114
-        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        if self.vae_mode == 'gaussian':
+            # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+            KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        elif self.vae_mode == 'uniform':
+            # log(sigma)
+            KLD = -0.5*torch.sum(logvar)
+        else:
+            raise NotImplementedError
+
 
         return BCE + KLD
 
@@ -152,7 +164,12 @@ class VaeModel(object):
             self.train(epoch)
             self.test(epoch)
             with torch.no_grad():
-                sample = torch.randn(64, 20).to(self.device)
+                if self.vae_mode == 'gaussian':
+                    sample = torch.randn(64, 20).to(self.device)
+                elif self.vae_mode == 'uniform':
+                    sample = torch.FloatTensor(64,20).uniform_(-1, 1).to(self.device)
+                else:
+                    raise NotImplementedError
                 sample = self.model.decode(sample).cpu()
                 save_image(sample.view(64, 1, 28, 28), os.path.join(self.results, 'sample_' + str(epoch) + '.png'))
 
@@ -162,7 +179,7 @@ class VaeModel(object):
 class VaeProblem(object):
     def __init__(self, problem_index):
         dim = 20
-        self.vae = VaeModel()
+        self.vae = VaeModel(args.vae)
         self.vae.load_model()
         self.vae.model.eval()
         self.problem = None
@@ -222,6 +239,6 @@ class VaeProblem(object):
 
 
 if __name__ == "__main__":
-    vae = VaeModel()
+    vae = VaeModel(args.vae)
     vae.run_vae()
 

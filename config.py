@@ -47,6 +47,7 @@ boolean_feature("tensorboard", False, "Log results to tensorboard")
 boolean_feature('importance-sampling', False, "Derivative eval")
 boolean_feature('bandage', False, "Bandage")
 boolean_feature('grad-clip', False, "Clip gradients")
+parser.add_argument('--vae', type=str, default='gaussian', help='gaussian | uniform')
 parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
 # parameters
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment')
