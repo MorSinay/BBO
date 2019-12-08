@@ -122,7 +122,7 @@ def vae_simulation():
             data['divergence'].append(divergence)
             data['index'].append(i)
             data['hit'].append(problem.final_target_hit)
-            data['id'].append('vae_' + str(i))
+            data['id'].append('vae_' + problem.id)
             data['dimension'].append(problem.dimension)
             data['best_observed'].append(problem.best_observed_fvalue1)
             data['initial_solution'].append(problem.initial_solution)
