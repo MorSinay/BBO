@@ -1,145 +1,59 @@
-from config import consts, args
-from logger import logger
-from experiment import Experiment
-import torch
-import cocoex
+from config import args, exp
+import numpy as np
+from loguru import logger
 import pandas as pd
 import os
-import pwd
-import random
-import numpy as np
-from vae import VaeProblem, VAE
-from environment import EnvCoco, EnvVae
+from bbo import BBO
+from tqdm import tqdm
 from collections import defaultdict
 
-filter_mod = 15
-def set_seed(seed):
-    if seed > 0:
-        random.seed(seed)
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+
+def get_algorithm():
+
+    if args.algorithm == 'bbo':
+        return BBO()
+    raise NotImplementedError
+
+
+def reload(alg):
+
+    aux = defaultdict(lambda: 0)
+    if exp.load_model and args.reload:
+        try:
+            aux = alg.load_checkpoint(exp.checkpoint)
+        except Exception as e:
+            logger.error(str(e))
+
+    return aux
+
+
+def optimize(alg):
+    aux = reload(alg)
+    n_offset = aux['n']
+
+    for epoch, train_results in enumerate(alg.learn()):
+        n = n_offset + (epoch + 1) * args.train_epoch
+
+        exp.log_data(train_results, n=n, alg=alg if args.lognet else None)
+
+        aux = {'n': n}
+        alg.save_checkpoint(exp.checkpoint, aux)
+
 
 def main():
 
-    set_seed(args.seed)
-    username = pwd.getpwuid(os.geteuid()).pw_name
-    algorithm = args.algorithm
+    alg = get_algorithm()
 
-    torch.set_num_threads(1000)
-    print("Torch %d" % torch.get_num_threads())
-    # print args of current run
-    logger.info("Welcome to Gan simulation")
-    logger.info(' ' * 26 + 'Simulation Hyperparameters')
-    for k, v in vars(args).items():
-        logger.info(' ' * 26 + k + ': ' + str(v))
+    if args.optimize:
+        logger.info("Optimization session")
+        optimize(alg)
 
-    data = defaultdict(list)
-    problem_index = args.problem_index
-    divergence = 0
-
-    suite_name = "bbob"
-    suite_filter_options = ("dimensions: " + str(args.action_space))
-    suite = cocoex.Suite(suite_name, "", suite_filter_options)
-
-    if problem_index != -1:
-        problem = suite.get_problem(problem_index)
-        divergence = run_exp(EnvCoco(problem))
     else:
-        res_dir = os.path.join('/data/', username, 'gan_rl', 'baseline', 'results', algorithm)
-        if not os.path.exists(res_dir):
-            try:
-                os.makedirs(res_dir)
-            except:
-                pass
+        raise NotImplementedError
 
-        for i in range(0, 360, filter_mod):
-            problem = suite.get_problem(i)
-            divergence = run_exp(EnvCoco(problem))
-
-            data['iter_index'].append(i)
-            data['divergence'].append(divergence)
-            data['index'].append(problem.index)
-            data['hit'].append(problem.final_target_hit)
-            data['id'].append(problem.id)
-            data['dimension'].append(problem.dimension)
-            data['best_observed'].append(problem.best_observed_fvalue1)
-            data['initial_solution'].append(problem.initial_solution)
-            data['upper_bound'].append(problem.upper_bounds)
-            data['lower_bound'].append(problem.lower_bounds)
-            data['number_of_evaluations'].append(problem.evaluations)
-
-            df = pd.DataFrame(data)
-            fmin_file = os.path.join(res_dir, algorithm + '_' + str(args.action_space) + '.csv')
-            df.to_csv(fmin_file)
-
-    logger.info("End of simulation divergence = {}".format(divergence))
-
-
-def run_exp(env):
-    with Experiment(logger.filename, env) as exp:
-        logger.info("BBO Session with VALUE net, it might take a while")
-        divergence = exp.bbo()
-    return divergence
-
-
-def vae_simulation():
-
-    set_seed(args.seed)
-    username = pwd.getpwuid(os.geteuid()).pw_name
-
-    algorithm = args.algorithm
-
-    torch.set_num_threads(1000)
-    print("Torch %d" % torch.get_num_threads())
-    # print args of current run
-    logger.info("Welcome to Gan simulation")
-    logger.info(' ' * 26 + 'Simulation Hyperparameters')
-    for k, v in vars(args).items():
-        logger.info(' ' * 26 + k + ': ' + str(v))
-
-    data = defaultdict(list)
-    problem_index = args.problem_index
-    divergence = 0
-
-    if problem_index != -1:
-        problem = VaeProblem(problem_index)
-        divergence = run_exp(EnvVae(problem))
-    else:
-        res_dir = os.path.join('/data/', username, 'gan_rl', 'baseline', 'results', algorithm)
-        if not os.path.exists(res_dir):
-            try:
-                os.makedirs(res_dir)
-            except:
-                pass
-
-        for i in range(0, 360, filter_mod):
-            problem = VaeProblem(problem_index)
-            divergence = run_exp(EnvVae(problem))
-
-            data['iter_index'].append(i)
-            data['divergence'].append(divergence)
-            data['index'].append(i)
-            data['hit'].append(problem.final_target_hit)
-            data['id'].append('vae_' + str(i))
-            data['dimension'].append(problem.dimension)
-            data['best_observed'].append(problem.best_observed_fvalue1)
-            data['initial_solution'].append(problem.initial_solution)
-            data['upper_bound'].append(problem.upper_bounds)
-            data['lower_bound'].append(problem.lower_bounds)
-            data['number_of_evaluations'].append(problem.evaluations)
-
-            df = pd.DataFrame(data)
-            fmin_file = os.path.join(res_dir, algorithm + '_' + str(args.action_space) + '.csv')
-            df.to_csv(fmin_file)
-
-    logger.info("End of simulation divergence = {}".format(divergence))
+    logger.info("End of simulation")
 
 
 if __name__ == '__main__':
-    if args.action_space == 784:
-        vae_simulation()
-    else:
-        main()
+    main()
 
