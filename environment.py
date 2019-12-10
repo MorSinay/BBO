@@ -2,9 +2,6 @@ import numpy as np
 from config import args
 
 class Env(object):
-    def __init__(self):
-        self.normalize = args.normalize
-
     def get_problem_dim(self):
         raise NotImplementedError
 
@@ -29,10 +26,10 @@ class Env(object):
     def f(self, policy):
         raise NotImplementedError
 
-    def normalize(self, policy):
+    def denormalize(self, policy):
         raise NotImplementedError
 
-    def denormalize(self, policy):
+    def get_f0(self):
         raise NotImplementedError
 
 
@@ -52,6 +49,9 @@ class EnvCoco(Env):
         self.lower_bounds = self.problem.lower_bounds
         self.initial_solution = self.problem.initial_solution
 
+    def get_f0(self):
+        return self.problem(self.initial_solution)
+
     def get_problem_dim(self):
         return self.problem.dimension
 
@@ -67,32 +67,17 @@ class EnvCoco(Env):
         self.k = 0
         self.t = 0
 
-    def normalize(self, policy):
-        if self.normalize:
-            policy = np.clip(policy, self.lower_bounds, self.upper_bounds)
-            if len(policy.shape) == 2:
-                assert (policy.shape[1] == self.output_size), "action error"
-                upper = np.repeat(self.upper_bounds, policy.shape[0], axis=0)
-                lower = np.repeat(self.lower_bounds, policy.shape[0], axis=0)
-            else:
-                upper = self.upper_bounds
-                lower = self.lower_bounds
-
-            policy = 2 * ((policy - lower) / upper - lower) - 1
-        return policy
-
     def denormalize(self, policy):
-        if self.normalize:
-            assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
-            if len(policy.shape) == 2:
-                assert (policy.shape[1] == self.output_size), "action error"
-                upper = np.repeat(self.upper_bounds.reshape(1, -1), policy.shape[0], axis=0)
-                lower = np.repeat(self.lower_bounds.reshape(1, -1), policy.shape[0], axis=0)
-            else:
-                upper = self.upper_bounds
-                lower = self.lower_bounds
+        assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
+        if len(policy.shape) == 2:
+            assert (policy.shape[1] == self.output_size), "action error"
+            upper = np.repeat(self.upper_bounds.reshape(1, -1), policy.shape[0], axis=0)
+            lower = np.repeat(self.lower_bounds.reshape(1, -1), policy.shape[0], axis=0)
+        else:
+            upper = self.upper_bounds
+            lower = self.lower_bounds
 
-            policy = 0.5 * (policy + 1) * (upper - lower) + lower
+        policy = 0.5 * (policy + 1) * (upper - lower) + lower
         return policy
 
     def step_policy(self, policy):
@@ -158,9 +143,6 @@ class EnvVae(Env):
         self.k = 0
         self.t = 0
 
-    def normalize(self, policy):
-        return policy
-
     def denormalize(self, policy):
         return policy
 
@@ -181,3 +163,88 @@ class EnvVae(Env):
 
     def f(self, policy):
         return self.vae_problem.func(policy)
+
+    def get_f0(self):
+        return self.vae_problem.func(self.initial_solution)
+
+class EnvOneD(Env):
+
+    def __init__(self, problem):
+        super(EnvOneD, self).__init__()
+        self.best_observed = None
+        self.reward = None
+        self.t = 0
+        self.k = 0
+        self.problem = problem
+        self.output_size = self.problem.dimension
+
+        self.reset()
+        self.upper_bounds = self.problem.upper_bounds[0]
+        self.lower_bounds = self.problem.lower_bounds[0]
+        self.initial_solution = self.problem.initial_solution[0]
+
+    def get_f0(self):
+        return self.problem(self.change_dim(self.initial_solution).flatten())
+
+    def get_problem_dim(self):
+        return self.output_size
+
+    def get_problem_index(self):
+        return self.problem.index
+
+    def get_problem_id(self):
+        return self.problem.id
+
+    def constrains(self):
+         return self.lower_bounds, self.upper_bounds
+
+    def get_initial_solution(self):
+        return self.initial_solution
+
+    def reset(self):
+        self.best_observed = None
+        self.reward = None
+        self.k = 0
+        self.t = 0
+
+    def change_dim(self, policy):
+        policy = policy.reshape(-1, 1)
+        a = 0.5
+        b = 0.2
+        policy = np.hstack([policy, a*policy+b])
+        policy = np.clip(policy, -1, 1)
+
+        return policy
+
+    def denormalize(self, policy):
+        assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
+        if len(policy.shape) == 2:
+            assert (policy.shape[1] == self.output_size), "action error, shape is {} and not {}".format(policy.shape[1], self.output_size)
+            upper = np.repeat(self.upper_bounds.reshape(1, -1), policy.shape[0], axis=0)
+            lower = np.repeat(self.lower_bounds.reshape(1, -1), policy.shape[0], axis=0)
+        else:
+            upper = self.upper_bounds
+            lower = self.lower_bounds
+
+        policy = 0.5 * (policy + 1) * (upper - lower) + lower
+        return policy
+
+    def step_policy(self, policy):
+        policy = self.denormalize(self.change_dim(policy))
+        assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
+        self.reward = []
+        if len(policy.shape) == 2:
+            for i in range(policy.shape[0]):
+                self.reward.append(-self.problem(policy[i]))
+                self.k += 1
+        else:
+            self.reward.append(-self.problem(policy))
+            self.k += 1
+
+        self.reward = np.array(self.reward)
+        self.best_observed = self.problem.best_observed_fvalue1
+        self.t = self.problem.final_target_hit
+
+    def f(self, policy):
+        policy = self.denormalize(self.change_dim(policy)).flatten()
+        return self.problem(policy)

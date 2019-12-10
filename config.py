@@ -42,7 +42,6 @@ boolean_feature('debug', False, 'debug flag')
 
 # # booleans
 boolean_feature("load-last-model", False, 'Load the last saved model')
-boolean_feature("normalize", False, 'Normalize input to -1, 1')
 boolean_feature("tensorboard", False, "Log results to tensorboard")
 boolean_feature('importance-sampling', False, "Derivative eval")
 boolean_feature('bandage', False, "Bandage")
