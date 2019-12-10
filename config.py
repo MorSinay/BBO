@@ -39,14 +39,17 @@ parser.add_argument('--algorithm', type=str, default='first_order', help='[first
 
 boolean_feature('debug', False, 'debug flag')
 #boolean_feature('vae', False, 'run vae problem')
+# VAE parameters
+parser.add_argument('--latent', type=int, default=40, help='Size of latent space')
 
 # # booleans
 boolean_feature("load-last-model", False, 'Load the last saved model')
+boolean_feature("normalize", False, 'Normalize input to -1, 1')
 boolean_feature("tensorboard", False, "Log results to tensorboard")
 boolean_feature('importance-sampling', False, "Derivative eval")
 boolean_feature('bandage', False, "Bandage")
 boolean_feature('grad-clip', False, "Clip gradients")
-parser.add_argument('--vae', type=str, default='gaussian', help='gaussian | uniform')
+parser.add_argument('--vae', type=str, default='uniform', help='gaussian | uniform')
 parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
 # parameters
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment')

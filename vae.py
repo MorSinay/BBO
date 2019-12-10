@@ -10,75 +10,111 @@ import pwd
 import cocoex
 import numpy as np
 from config import args
+import pathlib
+import socket
+
 
 username = pwd.getpwuid(os.geteuid()).pw_name
+project_name = 'vae_bbo'
+
+if "gpu" in socket.gethostname():
+    root_dir = os.path.join('/home/dsi/', username, 'data', project_name)
+elif "root" == username:
+    root_dir = os.path.join('/workspace/data', project_name)
+else:
+    root_dir = os.path.join('/data/', username, project_name)
+
 
 class VAE(nn.Module):
     def __init__(self, vae_mode):
         super(VAE, self).__init__()
         self.vae_mode = vae_mode
-        self.fc1 = nn.Linear(784, 400)
-        self.fc21 = nn.Linear(400, 20)
-        self.fc22 = nn.Linear(400, 20)
-        self.fc3 = nn.Linear(20, 400)
-        self.fc4 = nn.Linear(400, 784)
 
-    def encode(self, x):
-        h1 = F.relu(self.fc1(x))
-        return self.fc21(h1), self.fc22(h1)
+        self.encoder = nn.Sequential(
+            nn.Linear(784, 400),
+            nn.ReLU(),
+        )
 
-    def reparameterize(self, mu, logvar):
+        self.mu = nn.Linear(400, args.latent)
+        self.std = nn.Sequential(
+                    nn.Linear(400, args.latent),
+                    nn.Softplus())
+
+        self.decoder = nn.Sequential(nn.Linear(args.latent, 400),
+                                     nn.ReLU(),
+                                     nn.Linear(400, 784))
+
+    def kl(self, mu, std):
+
+        if self.vae_mode == 'gaussian':
+            return (-torch.log(std) + (std ** 2 + mu ** 2) / 2 - 0.5).sum(dim=1)
+        elif self.vae_mode == 'uniform':
+            ub = torch.tanh(mu + std)
+            lb = torch.tanh(mu - std)
+            return - torch.log((ub - lb) / 2).sum(dim=1)
+        else:
+            raise NotImplementedError
+
+    def reparameterize(self, mu, std):
         if self.training:
-            std = torch.exp(0.5*logvar)
             if self.vae_mode == 'gaussian':
                 eps = torch.randn_like(std)
+                return mu + eps * std
             elif self.vae_mode == 'uniform':
                 eps = torch.ones_like(std).uniform_(-1, 1)
+                ub = torch.tanh(mu + std)
+                lb = torch.tanh(mu - std)
+                return (lb + ub) / 2 + (ub - lb) / 2 * eps
             else:
                 raise NotImplementedError
-            return mu + eps*std
+
         else:
             return mu
 
-    def decode(self, z):
-        h3 = F.relu(self.fc3(z))
-        return torch.sigmoid(self.fc4(h3))
+    def forward(self, x, part='all'):
 
-    def forward(self, x):
-        mu, logvar = self.encode(x.view(-1, 784))
-        z = self.reparameterize(mu, logvar)
-        return self.decode(z), mu, logvar
+        if part in ['all', 'enc']:
+
+            x = self.encoder(x)
+            mu = self.mu(x)
+            std = self.std(x)
+            x = self.reparameterize(mu, std)
+
+            kl = self.kl(mu, std)
+
+        if part in ['all', 'dec']:
+            x = self.decoder(x)
+
+        if part in ['all', 'enc']:
+            return x, mu, std, kl
+        elif part == 'dec':
+            return x
+        else:
+            return NotImplementedError
 
 
 class VaeModel(object):
     def __init__(self, vae_mode):
         self.vae_mode = vae_mode
-        vae_base_dir = os.path.join('/data/', username, 'gan_rl', 'vae_' + vae_mode)
+        vae_base_dir = os.path.join(root_dir, 'vae_bbo', 'vae_' + vae_mode)
         is_cuda = torch.cuda.is_available()
         torch.manual_seed(128)
         self.device = torch.device("cuda" if is_cuda else "cpu")
         kwargs = {'num_workers': 1, 'pin_memory': True} if is_cuda else {}
         self.batch_size = 128
-        self.epochs = 20
+        self.epochs = 50
         self.log_interval = 10
 
         self.model = VAE(vae_mode).to(self.device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
         self.model_path = os.path.join(vae_base_dir, 'vae_model')
+        self.loss = nn.BCEWithLogitsLoss(reduction='none')
 
         data_path = os.path.join(vae_base_dir, 'data')
-        if not os.path.exists(data_path):
-            try:
-                os.makedirs(data_path)
-            except:
-                pass
-
         self.results = os.path.join(vae_base_dir, 'results')
-        if not os.path.exists(self.results):
-            try:
-                os.makedirs(self.results)
-            except:
-                pass
+
+        pathlib.Path(data_path).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(self.results).mkdir(parents=True, exist_ok=True)
 
         self.train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(data_path, train=True, download=True,
@@ -104,36 +140,18 @@ class VaeModel(object):
         self.model = state['model'].to(self.device)
         self.optimizer.load_state_dict(state['optimizer'])
 
-    # Reconstruction + KL divergence losses summed over all elements and batch
-    def loss_function(self, recon_x, x, mu, logvar):
-        BCE = F.binary_cross_entropy(recon_x, x.view(-1, 784), reduction='sum')
-
-        # see Appendix B from VAE paper:
-        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-        # https://arxiv.org/abs/1312.6114
-        if self.vae_mode == 'gaussian':
-            # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-            KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        elif self.vae_mode == 'uniform':
-            # log(sigma)
-            KLD = -0.5*torch.sum(logvar)
-        else:
-            raise NotImplementedError
-
-
-        return BCE + KLD
-
     def train(self, epoch):
         self.model.train()
         train_loss = 0
         for batch_idx, (data, _) in enumerate(self.train_loader):
-            data = data.to(self.device)
+            x = data.to(self.device).view(len(data), -1)
             self.optimizer.zero_grad()
-            recon_batch, mu, logvar = self.model(data)
-            loss = self.loss_function(recon_batch, data, mu, logvar)
+            x_hat, _, _, kl = self.model(x)
+            loss = self.loss(x_hat, x).sum(dim=1).mean() + kl.mean()
             loss.backward()
-            train_loss += loss.item()
             self.optimizer.step()
+
+            train_loss += float(loss)
             if batch_idx % self.log_interval == 0:
                 print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                     epoch, batch_idx * len(data), len(self.train_loader.dataset),
@@ -148,12 +166,13 @@ class VaeModel(object):
         test_loss = 0
         with torch.no_grad():
             for i, (data, _) in enumerate(self.test_loader):
-                data = data.to(self.device)
-                recon_batch, mu, logvar = self.model(data)
-                test_loss += self.loss_function(recon_batch, data, mu, logvar).item()
+                x = data.to(self.device).view(len(data), -1)
+                x_hat, _, _, kl = self.model(x)
+                test_loss += float(self.loss(x_hat, x).sum(dim=1).mean() + kl.mean())
                 if i == 0:
-                    n = min(data.size(0), 8)
-                    comparison = torch.cat([data[:n], recon_batch.view(self.batch_size, 1, 28, 28)[:n]])
+                    n = min(x.size(0), 8)
+                    x_hat = torch.sigmoid(x_hat)
+                    comparison = torch.cat([x[:n].view(n, 1, 28, 28), x_hat[:n].view(n, 1, 28, 28)])
                     save_image(comparison.cpu(), os.path.join(self.results, 'reconstruction_' + str(epoch) + '.png'), nrow=n)
 
         test_loss /= len(self.test_loader.dataset)
@@ -165,20 +184,21 @@ class VaeModel(object):
             self.test(epoch)
             with torch.no_grad():
                 if self.vae_mode == 'gaussian':
-                    sample = torch.randn(64, 20).to(self.device)
+                    sample = torch.randn(self.batch_size, args.latent).to(self.device)
                 elif self.vae_mode == 'uniform':
-                    sample = torch.FloatTensor(64,20).uniform_(-1, 1).to(self.device)
+                    sample = torch.FloatTensor(self.batch_size, args.latent).uniform_(-1, 1).to(self.device)
                 else:
                     raise NotImplementedError
-                sample = self.model.decode(sample).cpu()
-                save_image(sample.view(64, 1, 28, 28), os.path.join(self.results, 'sample_' + str(epoch) + '.png'))
+                sample = self.model(sample, part='dec').cpu()
+                sample = torch.sigmoid(sample)
+                save_image(sample.view(self.batch_size, 1, 28, 28), os.path.join(self.results, 'sample_' + str(epoch) + '.png'))
 
         self.save_model()
 
 
 class VaeProblem(object):
     def __init__(self, problem_index):
-        dim = 20
+        dim = args.latent
         self.vae = VaeModel(args.vae)
         self.vae.load_model()
         self.vae.model.eval()
