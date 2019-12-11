@@ -2,8 +2,10 @@ import time
 import os
 import sys
 import numpy as np
+import torch
 from tensorboardX import SummaryWriter
 from single_agent import BBOAgent
+from np_agent_temp import NPAgent
 from config import consts, args, DirsAndLocksSingleton
 
 from logger import logger
@@ -101,48 +103,56 @@ class Experiment(object):
             self.writer.close()
 
     def bbo(self):
-
-        agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
+        if args.debug:
+            agent = NPAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
+        else:
+            agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
 
         n_explore = args.batch
         player = agent.minimize(n_explore)
         divergence = 0
 
         for n, bbo_results in (enumerate(player)):
-            beta = bbo_results['policies'][-1]
-            beta_explore = np.average(bbo_results['explore_policies'][-1], axis=0)
-            reward = np.average(bbo_results['rewards'][-1])
+            if args.debug:
+                pi = bbo_results['policies'][-1]
+                pi_explore = np.average(bbo_results['explore_policies'][-1], axis=0)
+                pi_evaluate = bbo_results['beta_evaluate'][-1]
+            else:
+                pi = bbo_results['policies'][-1].cpu().numpy()
+                pi_explore = torch.mean(bbo_results['explore_policies'][-1], dim=0).cpu().numpy()
+                pi_evaluate = bbo_results['pi_evaluate'][-1]
+
+            avg_reward = np.average(bbo_results['rewards'][-1])
             best_observe = bbo_results['best_observed'][-1]
-            beta_evaluate = bbo_results['beta_evaluate'][-1]
             divergence = bbo_results['divergence'][-1]
 
             if not n % 20:
                 logger.info("-------------------- iteration: {} - Problem ID :{} --------------------".format(n, self.problem_id))
                 logger.info("Problem index     :{}\t\t\tDim: {}\t\t\tDivergence: {}".format(self.problem_index, self.action_space, divergence))
                 if self.algorithm in ['first_order', 'second_order']:
-                    logger.info("Actions statistics: |\t grad norm = %.3f \t reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['grad_norm'][-1], reward, bbo_results['derivative_loss'][-1]))
+                    logger.info("Actions statistics: |\t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['grad_norm'][-1], avg_reward, bbo_results['derivative_loss'][-1]))
                 elif self.algorithm == 'value':
-                    logger.info("Actions statistics: |\t value = %.3f \t reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'][-1], reward, bbo_results['value_loss'][-1]))
+                    logger.info("Actions statistics: |\t value = %.3f \t avg_reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'][-1], avg_reward, bbo_results['value_loss'][-1]))
                 elif self.algorithm == 'anchor':
-                    logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
-                logger.info("Best observe      : |\t %f \t \tBeta_evaluate: = %f|" % (best_observe, beta_evaluate))
+                    logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
+                logger.info("Best observe      : |\t %f \t \tPi_evaluate: = %f|" % (best_observe, pi_evaluate))
 
             # log to tensorboard
             if args.tensorboard:
                 self.writer.add_scalar('evaluation/divergence', divergence, n)
                 if self.algorithm in ['value', 'anchor']:
-                    self.writer.add_scalars('evaluation/value_reward', {'value': bbo_results['value'][-1], 'reward': reward}, n)
+                    self.writer.add_scalars('evaluation/value_reward', {'value': bbo_results['value'][-1], 'pi_evaluate': pi_evaluate, 'best': best_observe}, n)
                     self.writer.add_scalar('evaluation/value_loss', bbo_results['value_loss'][-1], n)
                 if self.algorithm in ['first_order', 'second_order', 'anchor']:
                     self.writer.add_scalar('evaluation/grad_norm', bbo_results['grad_norm'][-1], n)
                     self.writer.add_scalar('evaluation/derivative_loss', bbo_results['derivative_loss'][-1], n)
-                self.writer.add_scalars('evaluation/beta_evaluate_observe', {'evaluate': beta_evaluate, 'best': best_observe}, n)
+                self.writer.add_scalars('evaluation/pi_evaluate_observe', {'evaluate': pi_evaluate, 'best': best_observe}, n)
 
-                for i in range(len(beta)):
-                    self.writer.add_scalars('evaluation/beta_' + str(i), {'beta': beta[i], 'explore': beta_explore[i]}, n)
+                for i in range(len(pi)):
+                    self.writer.add_scalars('evaluation/pi_' + str(i), {'pi': pi[i], 'explore': pi_explore[i]}, n)
 
-                if hasattr(agent, "beta_net"):
-                    self.writer.add_histogram("evaluation/beta_net", agent.beta_net.clone().cpu().data.numpy(), n, 'fd')
+                if hasattr(agent, "pi_net"):
+                    self.writer.add_histogram("evaluation/pi_net", agent.pi_net.pi.clone().cpu().data.numpy(), n, 'fd')
                 if hasattr(agent, "value_net"):
                     for name, param in agent.value_net.named_parameters():
                         self.writer.add_histogram("evaluation/value_net/%s" % name, param.clone().cpu().data.numpy(), n, 'fd')

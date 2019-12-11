@@ -181,7 +181,7 @@ class EnvOneD(Env):
         self.reset()
         self.upper_bounds = self.problem.upper_bounds[0]
         self.lower_bounds = self.problem.lower_bounds[0]
-        self.initial_solution = self.problem.initial_solution[0]
+        self.initial_solution = np.array([self.problem.initial_solution[0]])
 
     def get_f0(self):
         return self.problem(self.change_dim(self.initial_solution).flatten())

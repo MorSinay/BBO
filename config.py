@@ -68,7 +68,7 @@ parser.add_argument('--cuda-default', type=int, default=0, help='Default GPU')
 # #train parameters
 parser.add_argument('--checkpoint-interval', type=int, default=1000, metavar='STEPS', help='Number of training steps between evaluations')
 parser.add_argument('--replay-updates-interval', type=int, default=50, metavar='STEPS', help='Number of training iterations between q-target updates')
-parser.add_argument('--replay-memory-factor', type=int, default=10, help='Replay factor')
+parser.add_argument('--replay-memory-factor', type=int, default=20, help='Replay factor')
 parser.add_argument('--delta', type=float, default=0.1, metavar='delta', help='Total variation constraint')
 parser.add_argument('--drop', type=float, default=0, metavar='drop out', help='Drop out')
 #

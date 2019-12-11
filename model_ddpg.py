@@ -40,6 +40,32 @@ class DuelNet(nn.Module):
 
         return x
 
+class PiNet(nn.Module):
+
+    def __init__(self, init, device, action_space):
+
+        super(PiNet, self).__init__()
+
+        self.pi = nn.Parameter(init)
+        self.normalize = nn.Tanh()
+        self.device = device
+        self.action_space = action_space
+
+    def forward(self, pi=None):
+        if pi is None:
+            return self.normalize(self.pi)
+        else:
+            return self.normalize(pi)
+
+    def pi_update(self, pi):
+        with torch.no_grad():
+            self.pi.data = pi
+
+    def grad_update(self, grads):
+    #    if self.action_space == 1:
+     #       grads = grads.squeeze(0)
+        with torch.no_grad():
+            self.pi.grad = grads
 
 class DerivativeNet(nn.Module):
 
