@@ -26,3 +26,11 @@ CUDA_VISIBLE_DEVICES=2, python main.py --identifier=debug20 --action-space=20 --
 CUDA_VISIBLE_DEVICES=1, python main.py --identifier=debug40 --action-space=40 --resume=$resume --load-last-model $args $aux &
 
 CUDA_VISIBLE_DEVICES=1, python main.py --identifier=debug784 --action-space=784 --resume=$resume --load-last-model $args $aux &
+
+
+
+
+
+
+
+

@@ -74,8 +74,10 @@ def merge_baseline_one_line_compare(dims=[2, 3, 5, 10, 20, 40, 784]):
             data['dim'].append(dim)
             data['iter_index'].append(index)
             data['f0'].append(max(optimizer_res.f0))
-            data['id'].append(optimizer_res.id[0])
-
+            if dim == 784:
+                data['id'].append('vae_'+optimizer_res.id[0])
+            else:
+                data['id'].append(optimizer_res.id[0])
             for i, op in enumerate(optimizer_res['fmin']):
                 res = optimizer_res[optimizer_res['fmin'] == op]
                 data[op + '_best_observed'].append(float(res.best_observed))
@@ -116,6 +118,9 @@ def merge_bbo(optimizers = [], dimension = [2, 3, 5, 10, 20, 40, 784], plot_sum=
 
     baseline_df['min_val'] = baseline_df[best_observed].min(axis=1)
 
+    file = os.path.join(base_dir, 'tmp_compare.csv')
+    baseline_df.to_csv(file)
+
     X = [20*i for i in range(len(dimension))]
     ax = plt.subplot(111)
     w = 1
@@ -143,50 +148,50 @@ def merge_bbo(optimizers = [], dimension = [2, 3, 5, 10, 20, 40, 784], plot_sum=
     plt.show()
 
 
-def plot_res(optimizers = [], max_budget = 1200, compare_baseline=False):
-    res_dir = os.path.join(base_dir, 'results')
-    dimension = [2, 3, 5, 10, 20, 40, 784]
-    success_df = pd.read_csv(os.path.join(base_dir, "success.csv"))
-    min_df = pd.read_csv(os.path.join(base_dir, 'min_val.csv'))
-    if compare_baseline:
-        cmp_optim = ['fmin_slsqp', 'fmin', 'fmin_cobyla', 'fmin_powell', 'fmin_cg', 'fmin_bfgs', 'fmin2']
-    else:
-        cmp_optim = []
-
-    index = set(range(360))
-    for dim in dimension:
-        for op in optimizers:
-            tmp = pd.read_csv(os.path.join(res_dir, op, op+'_{}'.format(dim) + ".csv"))
-            index = index.intersection(tmp['iter_index'])
-            tmp = tmp.loc[tmp.iter_index.isin(index)]
-            tmp_min_df = min_df.loc[(min_df.dim == dim) & (min_df['iter_index'].isin(index))]
-            success = np.abs(np.min([tmp['best_observed'].values, tmp_min_df['min_val'].values], axis=0) - tmp['best_observed'].values) < epsilon
-            op_df = pd.DataFrame({'dim': [dim]*len(index), 'iter_index': list(index), 'optimizer':[op]*len(index),
-                                  'success': list(success.astype('int')), 'budget': [max_budget]*len(index)})
-            success_df = success_df.append(op_df, ignore_index=True, sort=False)
-
-    cmp_size = len(index)
-    if cmp_size == 0:
-        return
-
-    success_df = success_df[success_df['iter_index'].isin(index)]
-    X = [20*i for i in range(len(dimension))]
-    ax = plt.subplot(111)
-    w = 1
-
-    opl_opt = cmp_optim + optimizers
-    for j, op in enumerate(opl_opt):
-        x = [X[i] + j*w for i in range(len(dimension))]
-        res = [success_df[(success_df['optimizer'] == op) & (success_df['dim'] == dim) & (success_df['budget'] <= max_budget)].success.sum()/cmp_size for dim in dimension]
-        ax.bar(x, res, width=w, color=color[j], align='center', label=op)
-
-    ax.set_xticks([i + len(dimension)//2 for i in X])
-    ax.set_xticklabels(dimension)
-   # ax.autoscale(tight=True)
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=4)
-    #ax.legend()
-    plt.title("BASELINE COMPARE - BUDGET {}".format(max_budget))
-    plt.show()
+# def plot_res(optimizers = [], max_budget = 1200, compare_baseline=False):
+#     res_dir = os.path.join(base_dir, 'results')
+#     dimension = [2, 3, 5, 10, 20, 40, 784]
+#     success_df = pd.read_csv(os.path.join(base_dir, "success.csv"))
+#     min_df = pd.read_csv(os.path.join(base_dir, 'min_val.csv'))
+#     if compare_baseline:
+#         cmp_optim = ['fmin_slsqp', 'fmin', 'fmin_cobyla', 'fmin_powell', 'fmin_cg', 'fmin_bfgs', 'fmin2']
+#     else:
+#         cmp_optim = []
+#
+#     index = set(range(360))
+#     for dim in dimension:
+#         for op in optimizers:
+#             tmp = pd.read_csv(os.path.join(res_dir, op, op+'_{}'.format(dim) + ".csv"))
+#             index = index.intersection(tmp['iter_index'])
+#             tmp = tmp.loc[tmp.iter_index.isin(index)]
+#             tmp_min_df = min_df.loc[(min_df.dim == dim) & (min_df['iter_index'].isin(index))]
+#             success = np.abs(np.min([tmp['best_observed'].values, tmp_min_df['min_val'].values], axis=0) - tmp['best_observed'].values) < epsilon
+#             op_df = pd.DataFrame({'dim': [dim]*len(index), 'iter_index': list(index), 'optimizer':[op]*len(index),
+#                                   'success': list(success.astype('int')), 'budget': [max_budget]*len(index)})
+#             success_df = success_df.append(op_df, ignore_index=True, sort=False)
+#
+#     cmp_size = len(index)
+#     if cmp_size == 0:
+#         return
+#
+#     success_df = success_df[success_df['iter_index'].isin(index)]
+#     X = [20*i for i in range(len(dimension))]
+#     ax = plt.subplot(111)
+#     w = 1
+#
+#     opl_opt = cmp_optim + optimizers
+#     for j, op in enumerate(opl_opt):
+#         x = [X[i] + j*w for i in range(len(dimension))]
+#         res = [success_df[(success_df['optimizer'] == op) & (success_df['dim'] == dim) & (success_df['budget'] <= max_budget)].success.sum()/cmp_size for dim in dimension]
+#         ax.bar(x, res, width=w, color=color[j], align='center', label=op)
+#
+#     ax.set_xticks([i + len(dimension)//2 for i in X])
+#     ax.set_xticklabels(dimension)
+#    # ax.autoscale(tight=True)
+#     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=4)
+#     #ax.legend()
+#     plt.title("BASELINE COMPARE - BUDGET {}".format(max_budget))
+#     plt.show()
 
 
 def get_baseline_cmp(dim, index):
@@ -194,14 +199,18 @@ def get_baseline_cmp(dim, index):
     return optimizer_res
 
 
-def get_min_val(dim, index):
+def get_min_f0_val(dim, index):
     min_df = pd.read_csv(os.path.join(base_dir, 'min_val.csv'))
-    return float(min_df[(min_df.dim == dim) & (min_df.iter_index == index)].min_val)
+    tmp_df = min_df[(min_df.dim == dim) & (min_df.iter_index == index)]
+
+    min_val = float(tmp_df.min_val)
+    f0 = float(tmp_df.f0)
+    return min_val, f0
 
 def compare_beta_evaluate(dim, index, path, title, baseline_cmp = False):
 
-    min_val = get_min_val(dim, index)
-    compare_file = 'beta_evaluate.npy'#'best_observed.npy' #beta_evaluate
+    min_val, f0 = get_min_f0_val(dim, index)
+    compare_file = 'pi_evaluate.npy'#'best_observed.npy' #pi_evaluate
     analysis_path = os.path.join(path)
     dirs = os.listdir(analysis_path)
     compare_dict = {}
@@ -234,15 +243,16 @@ def compare_beta_evaluate(dim, index, path, title, baseline_cmp = False):
     for i, key in enumerate(res_keys):
         if key in my_optim:
         #plt.plot(t, v.cumsum()/t, color=color[i], label=key)
-            plt.plot(compare_dict[key][0], compare_dict[key][1] - min_val, color=color[i], label=key)
+            plt.loglog(compare_dict[key][0], (compare_dict[key][1] - min_val)/(f0 - min_val), color=color[i], label=key)
         else:
-            plt.plot(compare_dict[key][0], compare_dict[key][1] - min_val, markerfacecolor='None', marker='x', color=color[i], label=key)
+            plt.loglog(compare_dict[key][0], (compare_dict[key][1] - min_val)/(f0 - min_val), markerfacecolor='None', marker='x', color=color[i], label=key)
 
     #plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=5)
     plt.legend()
     plt.title(title)
-   # plt.ylim([0, 200])
-    plt.xlim([0, 200])
+    plt.grid(True, which='both')
+    #plt.ylim([0, 100000])
+    #plt.xlim([350, 400])
     plt.show()
 
 def plot_1D(problem_index, path=None, save_fig=False):
@@ -324,7 +334,7 @@ def plot_2D_contour(problem_index, path, save_fig=False):
     res = np.load(path_res).item()
 
     x = np.load(os.path.join(path, str(problem_index), 'policies.npy'))
-    x_exp = np.load(os.path.join(path, str(problem_index), 'explore_policies.npy')).reshape(-1,2)
+    x_exp = np.load(os.path.join(path, str(problem_index), 'explore_policies.npy')).reshape(-1,2)[120:]
 
     if dim != 784:
         x *= 5
@@ -351,30 +361,55 @@ def plot_2D_contour(problem_index, path, save_fig=False):
 
     plt.close()
 
+def plot_2D_contour_tmp(problem_index, save_fig=False):
+
+    path_dir = os.path.join(base_dir, '2D_Contour')
+    path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(problem_index))
+    res = np.load(path_res).item()
+
+    fig, ax = plt.subplots()
+    cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
+    fig.colorbar(cs)
+    plt.title("dim = 2 index = {}".format(problem_index))
+    if save_fig:
+        path_dir_fig = os.path.join(path_dir, 'figures')
+        if not os.path.exists(path_dir_fig):
+            os.makedirs(path_dir_fig)
+
+        path_fig = os.path.join(path_dir_fig, '2D_index_{}.pdf'.format(problem_index))
+        plt.savefig(path_fig)
+    else:
+        plt.show()
+
+
+    plt.close()
+
 
 if __name__ == '__main__':
     #merge_baseline()
 
     #merge_baseline_one_line_compare()
-    merge_bbo(optimizers=[], dimension=[2, 3, 5, 10, 20, 40, 784], plot_sum=False)
-    #merge_bbo(optimizers=["bbo", "grad"], dimension=[2, 3, 5, 10, 20, 40, 784], plot_sum=True)
+    #merge_bbo(optimizers=[], dimension=[2, 3, 5, 10, 20, 40, 784], plot_sum=False)
+    #merge_bbo(optimizers=["first_order", "second_order"], dimension=[2, 3, 5, 10, 20, 40], plot_sum=True)
     dim = 2
-    index = 15
-    dir_name = 'LR'
+    index = 0
+    dir_name = 'CMP'
 
 
     path = os.path.join(base_dir, 'analysis', dir_name, str(dim))
 
     title = "{} dim = {} index = {}".format(dir_name, dim, index)
-    #compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
+    compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
 
 
-    #plot_res(optimizers=["bbo", "grad"], max_budget=12000, compare_baseline=True)
+    #plot_res(optimizers=["value", "first_order", "second_order", "anchor"], max_budget=12000, compare_baseline=True)
 
-    # for i in range(360):
+    #for i in range(360):
+     #   plot_2D_contour_tmp(i, True)
     #     plot_2D(i, save_fig=True)
 
-    prefix = 'lr_3_debug'
+    prefix = 'value_direct_3'
     path = os.path.join(base_dir, 'analysis', dir_name, str(dim), prefix)
-    #plot_2D_contour(index, path, False)
+
+    plot_2D_contour(index, path, False)
     #plot_2D(15, path, False)
