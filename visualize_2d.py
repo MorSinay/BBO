@@ -13,6 +13,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from vae import VaeProblem, VAE
+from environment import one_d_change_dim
 
 username = pwd.getpwuid(os.geteuid()).pw_name
 
@@ -176,7 +177,6 @@ def treeD_plot_contour(problem_index):
     upper_bound = problem.upper_bounds
     lower_bound = problem.lower_bounds
     interval = 0.1
-    res_list = []
 
     x0 = np.arange(lower_bound[0], upper_bound[0] + interval, interval)
     x1 = np.arange(lower_bound[1], upper_bound[1] + interval, interval)
@@ -188,7 +188,7 @@ def treeD_plot_contour(problem_index):
             x = np.array([x0[i,j], x1[i,j]])
             z[i,j] = problem(x)
 
-    res_dir = os.path.join(base_dir, 'baseline', '2D_temp')
+    res_dir = os.path.join(base_dir, 'baseline', '2D_Contour')
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)

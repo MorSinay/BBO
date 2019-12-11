@@ -184,7 +184,7 @@ class EnvOneD(Env):
         self.initial_solution = np.array([self.problem.initial_solution[0]])
 
     def get_f0(self):
-        return self.problem(self.change_dim(self.initial_solution).flatten())
+        return self.problem(one_d_change_dim(self.initial_solution).flatten())
 
     def get_problem_dim(self):
         return self.output_size
@@ -207,15 +207,6 @@ class EnvOneD(Env):
         self.k = 0
         self.t = 0
 
-    def change_dim(self, policy):
-        policy = policy.reshape(-1, 1)
-        a = 0.5
-        b = 0.2
-        policy = np.hstack([policy, a*policy+b])
-        policy = np.clip(policy, -1, 1)
-
-        return policy
-
     def denormalize(self, policy):
         assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
         if len(policy.shape) == 2:
@@ -230,7 +221,7 @@ class EnvOneD(Env):
         return policy
 
     def step_policy(self, policy):
-        policy = self.denormalize(self.change_dim(policy))
+        policy = self.denormalize(one_d_change_dim(policy))
         assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
         if len(policy.shape) == 2:
@@ -246,5 +237,15 @@ class EnvOneD(Env):
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
-        policy = self.denormalize(self.change_dim(policy)).flatten()
+        policy = self.denormalize(one_d_change_dim(policy)).flatten()
         return self.problem(policy)
+
+
+def one_d_change_dim(self, policy):
+    policy = policy.reshape(-1, 1)
+    a = 0.5
+    b = 0.2
+    policy = np.hstack([policy, a * policy + b])
+    policy = np.clip(policy, -1, 1)
+
+    return policy

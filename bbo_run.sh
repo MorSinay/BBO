@@ -9,10 +9,10 @@ echo resume $1 algorithm $2
 loc=`dirname "%0"`
 
 case "$algorithm" in
-    ("value") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_direct --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --normalize --grad-clip --no-bandage";;
-    ("first_order") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_direct --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --normalize --grad-clip --no-bandage";;
-    ("second_order") args="--algorithm=$algorithm  --beta-lr=1e-2 --game=RUN --budget=400 --explore=grad_direct --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --normalize --grad-clip --no-bandage";;
-    ("anchor") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_direct --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --normalize --grad-clip --no-bandage";;
+    ("value") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_rand --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --grad-clip --no-bandage";;
+    ("first_order") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_rand --delta=0.01 --epsilon=0.01 --update-step=n_step --no-best-explore-update --grad-clip --no-bandage";;
+    ("second_order") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_rand --delta=0.01 --epsilon=0.01 --update-step=n_step --no-best-explore-update --grad-clip --no-bandage";;
+    ("anchor") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_rand --delta=0.01 --epsilon=0.01 --update-step=n_step --no-best-explore-update --grad-clip --no-bandage";;
     (*) echo "$algorithm: Not Implemented" ;;
 esac
 

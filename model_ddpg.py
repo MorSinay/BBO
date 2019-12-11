@@ -67,6 +67,31 @@ class PiNet(nn.Module):
         with torch.no_grad():
             self.pi.grad = grads
 
+class PiNetClamp(nn.Module):
+
+    def __init__(self, init, device, action_space):
+
+        super(PiNet, self).__init__()
+
+        self.pi = nn.Parameter(init)
+        self.device = device
+        self.action_space = action_space
+
+    def forward(self, pi=None):
+        if pi is None:
+            return torch.clamp(self.pi, -1, 1)
+        else:
+            return torch.clamp(pi, -1, 1)
+
+    def pi_update(self, pi):
+        with torch.no_grad():
+            self.pi.data = torch.clamp(pi)
+
+    def grad_update(self, grads):
+        with torch.no_grad():
+            self.pi.grad = grads
+
+
 class DerivativeNet(nn.Module):
 
     def __init__(self):
