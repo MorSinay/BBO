@@ -9,10 +9,10 @@ echo resume $1 algorithm $2
 loc=`dirname "%0"`
 
 case "$algorithm" in
-    ("value") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_rand --delta=0.1 --epsilon=0.1 --update-step=n_step --best-explore-update --grad-clip --bandage";;
-    ("first_order") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_rand --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --grad-clip --bandage";;
-    ("second_order") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_rand --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --grad-clip --bandage";;
-    ("anchor") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_rand --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --grad-clip --bandage";;
+    ("value") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_direct --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --normalize --grad-clip --no-bandage";;
+    ("first_order") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_direct --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --normalize --grad-clip --no-bandage";;
+    ("second_order") args="--algorithm=$algorithm  --beta-lr=1e-2 --game=RUN --budget=400 --explore=grad_direct --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --normalize --grad-clip --no-bandage";;
+    ("anchor") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_direct --delta=0.01 --epsilon=0.01 --update-step=n_step --best-explore-update --normalize --grad-clip --no-bandage";;
     (*) echo "$algorithm: Not Implemented" ;;
 esac
 
@@ -26,7 +26,3 @@ CUDA_VISIBLE_DEVICES=2, python main.py --identifier=debug20 --action-space=20 --
 CUDA_VISIBLE_DEVICES=1, python main.py --identifier=debug40 --action-space=40 --resume=$resume --load-last-model $args $aux &
 
 CUDA_VISIBLE_DEVICES=1, python main.py --identifier=debug784 --action-space=784 --resume=$resume --load-last-model $args $aux &
-
-
-
-

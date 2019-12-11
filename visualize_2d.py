@@ -170,22 +170,6 @@ def treeD_plot(problem_index):
 
     np.save(path_res, res)
 
-def calc_f0():
-    save_dir = os.path.join(base_dir, 'baseline')
-    data_dict = defaultdict(list)
-    for dim in [2,3,5,10,20,40]:
-        suite = cocoex.Suite("bbob", "", ("dimensions: {}".format(dim)))
-
-        for problem_index in range (360):
-            problem = suite.get_problem(problem_index)
-            data_dict['id'].append(problem.id)
-            data_dict['f0'].append(problem(problem.initial_solution))
-
-    df = pd.DataFrame(data_dict)
-    file = os.path.join(save_dir, 'f0.csv')
-    df.to_csv(file)
-
-
 def treeD_plot_contour(problem_index):
     suite = cocoex.Suite("bbob", "", ("dimensions: 2"))
     problem = suite.get_problem(problem_index)
@@ -215,49 +199,19 @@ def treeD_plot_contour(problem_index):
     path_res = os.path.join(res_dir, '2D_index_{}.npy'.format(problem_index))
     np.save(path_res, {'x0':x0, 'x1':x1, 'z':z})
 
-def twoD_plot_contour(problem_index):
-    suite = cocoex.Suite("bbob", "", ("dimensions: 2"))
-    problem = suite.get_problem(problem_index)
-
-    upper_bound = problem.upper_bounds
-    lower_bound = problem.lower_bounds
-    interval = 0.1
-    res_list = []
-
-    x0 = np.arange(lower_bound[0], upper_bound[0] + interval, interval)
-    x1 = np.arange(lower_bound[1], upper_bound[1] + interval, interval)
-    x0, x1 = np.meshgrid(x0, x1)
-    z = np.zeros(x0.shape)
-
-    for i in range(x0.shape[0]):
-        for j in range(x1.shape[1]):
-            x = np.array([x0[i,j], x1[i,j]])
-            z[i,j] = problem(x)
-
-    res_dir = os.path.join(base_dir, 'baseline', '2D_temp')
-    if not os.path.exists(res_dir):
-        try:
-            os.makedirs(res_dir)
-        except:
-            pass
-
-
-    path_res = os.path.join(res_dir, '2D_index_{}.npy'.format(problem_index))
-    np.save(path_res, {'x0':x0, 'x1':x1, 'z':z})
 
 if __name__ == '__main__':
     #compare_problem_baseline(2,15,90)
-    # filter_mod = 1
-    #
-    # for dim in ['2','3','5','10','20','40','784']:
-    #     for i in tqdm(range(0, 360, filter_mod)):
-    #         compare_problem_baseline(dim, i, budget=12000)
+    filter_mod = 1
+
+    for dim in ['2','3','5','10','20','40','784']:
+        for i in tqdm(range(0, 360, filter_mod)):
+            compare_problem_baseline(dim, i, budget=12000)
 
    #  for i in tqdm(range(0, 360, 1)):
    #      treeD_plot_contour(i)  #treeD_plot
-
-    create_copy_file("CMP", 2, 15)
+   #
+   # create_copy_file("LR", 2, 15)
 
     #treeD_plot_contour(0)
-    #calc_f0()
-    #twoD_plot_contour(index)
+
