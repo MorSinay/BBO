@@ -6,7 +6,7 @@ aux="${@:3}"
 
 echo dim $1 index $2
 
-args="--game=CMP --budget=200 --grad-clip --no-best-explore-update --no-bandage --update-step=n_step --action-space=$dim --problem-index=$index"
+args="--game=CMP --budget=200 --grad-clip --no-best-explore-update --bandage --update-step=n_step --action-space=$dim --problem-index=$index"
 
 CUDA_VISIBLE_DEVICES=0, python main.py --algorithm=value --explore=grad_direct --identifier=direct_3 --beta-lr=1e-3 $args $aux &
 #CUDA_VISIBLE_DEVICES=1, python main.py --algorithm=value --explore=grad_direct --identifier=direct_4 --beta-lr=1e-4 $args $aux &

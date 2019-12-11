@@ -284,7 +284,7 @@ class NPAgent(object):
 
     def update_best_beta(self):
         rewards = np.hstack(self.results['rewards'])
-        best_idx = rewards.argmax()
+        best_idx = rewards.argmin()
         beta = np.vstack(self.results['explore_policies'])[best_idx]
         with torch.no_grad():
             if self.action_space == 1:
@@ -294,13 +294,13 @@ class NPAgent(object):
     def bandage_update(self):
 
         replay_observed = np.hstack(self.results['rewards'])[-self.replay_memory_size:]
-        replay_evaluate = -np.array(self.results['beta_evaluate'])[-self.replay_memory_factor:]
+        replay_evaluate = np.array(self.results['beta_evaluate'])[-self.replay_memory_factor:]
 
-        best_observed = -self.results['best_observed'][-1]
-        best_evaluate = -np.max(self.results['beta_evaluate'])
+        best_observed = self.results['best_observed'][-1]
+        best_evaluate = np.min(self.results['beta_evaluate'])
 
-        bst_bandage = best_observed > np.max(replay_observed)
-        bte_bandage = best_evaluate > np.max(replay_evaluate)
+        bst_bandage = best_observed < np.min(replay_observed)
+        bte_bandage = best_evaluate < np.min(replay_evaluate)
 
         if bst_bandage or bte_bandage:
             self.update_best_beta()

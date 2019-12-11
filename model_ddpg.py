@@ -16,7 +16,8 @@ class DuelNet(nn.Module):
 
         layer = args.layer
 
-        self.fc = nn.Sequential(nn.Linear(action_space, 2*layer, bias=False),
+        self.fc = nn.Sequential(nn.Tanh(),
+                                nn.Linear(action_space, 2*layer, bias=False),
                                 #nn.BatchNorm1d(2*layer),
                                 nn.LeakyReLU(),
                                 nn.Dropout(drop),
@@ -100,7 +101,8 @@ class DerivativeNet(nn.Module):
 
         layer = args.layer
 
-        self.fc = nn.Sequential(nn.Linear(action_space, 2*layer, bias=False),
+        self.fc = nn.Sequential(nn.Tanh(),
+                                nn.Linear(action_space, 2*layer, bias=False),
                                 #nn.BatchNorm1d(2*layer),
                                 nn.LeakyReLU(),
                                 nn.Dropout(drop),

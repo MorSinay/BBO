@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from tensorboardX import SummaryWriter
 from single_agent import BBOAgent
-from np_agent_temp import NPAgent
+#from np_agent_temp import NPAgent
 from config import consts, args, DirsAndLocksSingleton
 
 from logger import logger
@@ -103,11 +103,11 @@ class Experiment(object):
             self.writer.close()
 
     def bbo(self):
-        if args.debug:
-            agent = NPAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
-        else:
-            agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
-
+        # if args.debug:
+        #     agent = NPAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
+        # else:
+        #     agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
+        agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
         n_explore = args.batch
         player = agent.minimize(n_explore)
         divergence = 0
