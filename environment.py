@@ -240,9 +240,6 @@ class EnvOneD(Env):
         policy = self.denormalize(one_d_change_dim(policy)).flatten()
         return self.problem(policy)
 
-    def get_f0(self):
-        return self.problem(self.initial_solution)
-
 def one_d_change_dim(policy):
     policy = policy.reshape(-1, 1)
     a = 0.5

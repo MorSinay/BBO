@@ -13,6 +13,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from matplotlib import cm
+import pickle
 
 username = pwd.getpwuid(os.geteuid()).pw_name
 
@@ -255,38 +256,35 @@ def compare_beta_evaluate(dim, index, path, title, baseline_cmp = False):
     #plt.xlim([350, 400])
     plt.show()
 
-def plot_1D(problem_index, path=None, save_fig=False):
+def plot_1D(problem_index, save_fig=False):
 
     path_dir = os.path.join(base_dir, '1D')
-    path_res = os.path.join(path_dir, '1D_index_{}.npy'.format(problem_index))
-    res = np.load(path_res)
+    path_res = os.path.join(path_dir, '1D_index_{}.pkl'.format(problem_index))
+#    res = np.load(path_res)
 
-    plt.subplot(111)
+    with open(path_res, 'rb') as handle:
+        res = pickle.load(handle)
 
-    plt.plot(res[:, 0], res[:, 2], cmap='g', markersize=2)
+        plt.subplot(111)
 
-    if path:
-        x = 5*np.load(os.path.join(path, str(problem_index), 'policies.npy'))
-        x_exp = 5*np.load(os.path.join(path, str(problem_index), 'explore_policies.npy')).reshape(-1, 2)
+        plt.plot(res['policy'][:,0], res['f'], color='g', markersize=1, label='f')
 
-        plt.plot(x[:, 0], x[:, 1], '-o', color='b', markersize=1)
-        plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color='r', markersize=1)
+        plt.title('1D_index_{}'.format(problem_index))
+        plt.xlabel('x')
+        plt.ylabel('f(x)')
+        plt.grid(True, which='both')
 
-    plt.set_title('1D_index_{}'.format(problem_index))
-    plt.set_xlabel('x')
-    plt.set_ylabel('f(x)')
+        if save_fig:
+            path_dir_fig = os.path.join(path_dir, 'figures')
+            if not os.path.exists(path_dir_fig):
+                os.makedirs(path_dir_fig)
 
-    if save_fig:
-        path_dir_fig = os.path.join(path_dir, 'figures')
-        if not os.path.exists(path_dir_fig):
-            os.makedirs(path_dir_fig)
+            path_fig = os.path.join(path_dir_fig, '1D_index_{}.pdf'.format(problem_index))
+            plt.savefig(path_fig)
+        else:
+            plt.show()
 
-        path_fig = os.path.join(path_dir_fig, '1D_index_{}.pdf'.format(problem_index))
-        plt.savefig(path_fig)
-    else:
-        plt.show()
-
-    plt.close()
+        plt.close()
 
 def plot_2D(problem_index, path, save_fig=False):
 
@@ -404,12 +402,13 @@ if __name__ == '__main__':
 
     #plot_res(optimizers=["value", "first_order", "second_order", "anchor"], max_budget=12000, compare_baseline=True)
 
-    #for i in range(360):
+    for i in range(360):
+        plot_1D(i, True)
      #   plot_2D_contour_tmp(i, True)
     #     plot_2D(i, save_fig=True)
 
     prefix = 'value_direct_3'
     path = os.path.join(base_dir, 'analysis', dir_name, str(dim), prefix)
 
-    plot_2D_contour(index, path, False)
+    #plot_2D_contour(index, path, False)
     #plot_2D(15, path, False)

@@ -507,8 +507,8 @@ class NPAgent(object):
         else:
             raise NotImplementedError
 
-        if self.grad_clip:
-            nn.utils.clip_grad_norm_(self.beta_net, 1e-2/self.beta_lr)
+        if self.grad_clip == 0:
+            nn.utils.clip_grad_norm_(self.pi_net.pi, self.grad_clip / self.beta_lr)
 
         self.optimizer_beta.step()
         beta = self.beta_net.detach().data.cpu().numpy()

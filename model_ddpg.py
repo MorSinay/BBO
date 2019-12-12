@@ -20,15 +20,15 @@ class DuelNet(nn.Module):
                                 nn.Linear(action_space, 2*layer, bias=False),
                                 #nn.BatchNorm1d(2*layer),
                                 nn.LeakyReLU(),
-                                nn.Dropout(drop),
+                                #nn.Dropout(drop),
                                 nn.Linear(2*layer, 2*layer, bias=False),
                                 #nn.BatchNorm1d(2*layer),
                                 nn.LeakyReLU(),
-                                nn.Dropout(drop),
+                                #nn.Dropout(drop),
                                 nn.Linear(2*layer, layer, bias=False),
                                 #nn.BatchNorm1d(layer),
                                 nn.LeakyReLU(),
-                                nn.Dropout(drop),
+                                #nn.Dropout(drop),
                                 nn.Linear(layer, 1))
 
     def reset(self):
@@ -105,15 +105,15 @@ class DerivativeNet(nn.Module):
                                 nn.Linear(action_space, 2*layer, bias=False),
                                 #nn.BatchNorm1d(2*layer),
                                 nn.LeakyReLU(),
-                                nn.Dropout(drop),
+                                #nn.Dropout(drop),
                                 nn.Linear(2*layer, 2*layer, bias=False),
                                 #nn.BatchNorm1d(2*layer),
                                 nn.LeakyReLU(),
-                                nn.Dropout(drop),
+                                #nn.Dropout(drop),
                                 nn.Linear(2*layer, layer, bias=False),
                                 #nn.BatchNorm1d(layer),
                                 nn.LeakyReLU(),
-                                nn.Dropout(drop),
+                                #nn.Dropout(drop),
                                 nn.Linear(layer, action_space))
 
     def reset(self):
