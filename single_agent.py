@@ -99,6 +99,9 @@ class BBOAgent(object):
         elif args.norm == 'min_max':
             self.output_norm = self.min_max_norm
             self.output_denorm = self.min_max_denorm
+        elif args.norm == 'no_norm':
+            self.output_norm = self.no_norm
+            self.output_denorm = self.no_denorm
         else:
             print("norm:" + args.norm)
             raise NotImplementedError
@@ -543,6 +546,12 @@ class BBOAgent(object):
 
     def min_max_denorm(self, data):
         return (data * (self.max - self.min + 1e-5)) + self.min
+
+    def no_norm(self, data):
+        return data
+
+    def no_denorm(self, data):
+        return data
 
     def exploration_rand(self, n_explore):
             pi = self.pi_net.pi.detach().clone().cpu()
