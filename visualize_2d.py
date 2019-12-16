@@ -252,11 +252,11 @@ if __name__ == '__main__':
     #     for i in tqdm(range(0, 360, filter_mod)):
     #         compare_problem_baseline(dim, i, budget=12000)
 
-    # for i in tqdm(range(0, 360, 1)):
-    #     D1_plot(i)
+     for i in tqdm(range(0, 360, 1)):
+         D1_plot(i)
     #      treeD_plot_contour(i)  #treeD_plot
 
-    create_copy_file("CMP", 2, 0)
+    #create_copy_file("CMP", 2, 0)
 
 
     #treeD_plot_contour(0)

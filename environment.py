@@ -242,8 +242,8 @@ class EnvOneD(Env):
 
 def one_d_change_dim(policy):
     policy = policy.reshape(-1, 1)
-    a = 0.5
-    b = 0.2
+    a = 1
+    b = 0
     policy = np.hstack([policy, a * policy + b])
     policy = np.clip(policy, -1, 1)
 

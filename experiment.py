@@ -14,6 +14,8 @@ from environment import one_d_change_dim
 from logger import logger
 from distutils.dir_util import copy_tree
 import pickle
+import pandas as pd
+
 
 import scipy.optimize  # to define the solver to be benchmarked
 
@@ -108,24 +110,15 @@ class Experiment(object):
             self.writer.close()
 
     def bbo(self):
-        # if args.debug:
-        #     agent = NPAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
-        # else:
-        #     agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
         self.agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
         n_explore = args.batch
         player = self.agent.minimize(n_explore)
         divergence = 0
 
         for n, bbo_results in (enumerate(player)):
-            if args.debug:
-                pi = bbo_results['policies'][-1]
-                pi_explore = np.average(bbo_results['explore_policies'][-1], axis=0)
-                pi_evaluate = bbo_results['beta_evaluate'][-1]
-            else:
-                pi = bbo_results['policies'][-1].cpu().numpy()
-                pi_explore = torch.mean(bbo_results['explore_policies'][-1], dim=0).cpu().numpy()
-                pi_evaluate = bbo_results['pi_evaluate'][-1]
+            pi = bbo_results['policies'][-1].cpu().numpy()
+            pi_explore = torch.mean(bbo_results['explore_policies'][-1], dim=0).cpu().numpy()
+            pi_evaluate = bbo_results['pi_evaluate'][-1]
 
             avg_reward = np.average(bbo_results['rewards'][-1])
             best_observe = bbo_results['best_observed'][-1]
@@ -136,13 +129,13 @@ class Experiment(object):
                 logger.info("Problem index     :{}\t\t\tDim: {}\t\t\tDivergence: {}".format(self.problem_index, self.action_space, divergence))
                 if self.algorithm in ['first_order', 'second_order']:
                     logger.info("Actions statistics: |\t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['grad_norm'][-1], avg_reward, bbo_results['derivative_loss'][-1]))
-                elif self.algorithm == 'value':
+                elif self.algorithm == ['value', 'spline']:
                     logger.info("Actions statistics: |\t value = %.3f \t avg_reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'][-1], avg_reward, bbo_results['value_loss'][-1]))
                 elif self.algorithm == 'anchor':
                     logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
                 logger.info("Best observe      : |\t %f \t \tPi_evaluate: = %f|" % (best_observe, pi_evaluate))
 
-                if (self.algorithm == 'value') and (self.action_space == 1):
+                if (self.algorithm in ['value', 'spline']) and (self.action_space == 1):
                     self.value_vs_f_one_d(n)
 
             # log to tensorboard
@@ -166,6 +159,10 @@ class Experiment(object):
                         self.writer.add_histogram("evaluation/value_net/%s" % name, param.clone().cpu().data.numpy(), n, 'fd')
 
         print("End BBO evaluation")
+        self.compare_beta_evaluate()
+
+        if self.action_space == 2:
+            self.plot_2D_contour()
         return divergence
 
     def value_vs_f_one_d(self, n):
@@ -195,6 +192,61 @@ class Experiment(object):
             plt.savefig(path_fig)
             plt.close()
 
+    def plot_2D_contour(self):
+
+        path = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
+        path_dir = os.path.join(consts.baseline_dir, '2D_Contour')
+        path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(self.problem_index))
+        res = np.load(path_res).item()
+
+        x = 5*np.load(os.path.join(path, 'policies.npy'))
+        x_exp = 5*np.load(os.path.join(path, 'explore_policies.npy')).reshape(-1,2)
+
+        fig, ax = plt.subplots()
+        cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
+        plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color='r', markersize=1)
+        plt.plot(x[:, 0], x[:, 1], '-o', color='b', markersize=1)
+        plt.title(path.split('/')[-1])
+        fig.colorbar(cs)
+
+        path_dir_fig = os.path.join(self.results_dir, '2D_figures', str(self.problem_index))
+        if not os.path.exists(path_dir_fig):
+            os.makedirs(path_dir_fig)
+
+        path_fig = os.path.join(path_dir_fig, '2D_index_{}.pdf'.format(self.problem_index))
+        plt.savefig(path_fig)
+
+        plt.close()
 
 
+    def compare_beta_evaluate(self):
+        min_val, f0 = self.get_min_f0_val()
+        path = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
+        pi_eval = np.load(os.path.join(path, 'pi_evaluate.npy'))
+        pi_best = np.load(os.path.join(path, 'best_observed.npy'))
 
+        plt.subplot(111)
+
+        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color='b', label='pi_evaluate')
+        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color='r', label='best_observed')
+
+        plt.legend()
+        plt.title('dim = {} index = {} ----- best vs eval'.format(self.action_space, self.problem_index))
+        plt.grid(True, which='both')
+
+        path_dir_fig = os.path.join(self.results_dir, 'BestVsEval', str(self.problem_index))
+        if not os.path.exists(path_dir_fig):
+            os.makedirs(path_dir_fig)
+
+        path_fig = os.path.join(path_dir_fig, 'dim = {} index = {}.pdf'.format(self.action_space, self.problem_index))
+        plt.savefig(path_fig)
+
+        plt.close()
+
+    def get_min_f0_val(self):
+        min_df = pd.read_csv(os.path.join(consts.baseline_dir, 'min_val.csv'))
+        tmp_df = min_df[(min_df.dim == self.action_space) & (min_df.iter_index == self.problem_index)]
+
+        min_val = float(tmp_df.min_val)
+        f0 = float(tmp_df.f0)
+        return min_val, f0

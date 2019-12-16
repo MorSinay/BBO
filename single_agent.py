@@ -8,9 +8,9 @@ import torch.nn as nn
 from collections import defaultdict
 import torch.autograd as autograd
 from torchvision.utils import save_image
-
+from sklearn.preprocessing import RobustScaler
 from config import consts, args, DirsAndLocksSingleton
-from model_ddpg import DuelNet, DerivativeNet, PiNet
+from model_ddpg import DuelNet, DerivativeNet, PiNet, SplineNet, MultipleOptimizer
 
 import os
 import copy
@@ -69,6 +69,7 @@ class BBOAgent(object):
         self.std = None
         self.max = None
         self.min = None
+        self.transformer = None
         self.alpha = args.alpha
         self.lr_list = [args.beta_lr, args.beta_lr*0.1]
         self.lr_index = 0
@@ -102,6 +103,9 @@ class BBOAgent(object):
         elif args.norm == 'no_norm':
             self.output_norm = self.no_norm
             self.output_denorm = self.no_denorm
+        elif args.norm == 'robust_scaler':
+            self.output_norm = self.robust_scaler_norm
+            self.output_denorm = self.robust_scaler_denorm
         else:
             print("norm:" + args.norm)
             raise NotImplementedError
@@ -127,7 +131,16 @@ class BBOAgent(object):
             self.value_net.to(self.device)
             # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
             self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-            self.value_net.train()
+            self.value_net.eval()
+        elif self.algorithm_method == 'spline':
+            self.value_iter = 20
+            self.spline_net = SplineNet(self.device, output=1)
+            self.spline_net.to(self.device)
+            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
+            opt_sparse = torch.optim.SparseAdam(self.spline_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
+            opt_dense = torch.optim.Adam(self.spline_net.head.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-04)
+            self.optimizer_spline = MultipleOptimizer(opt_sparse, opt_dense)
+            self.spline_net.eval()
         elif self.algorithm_method == 'anchor':
             self.value_iter = 100
             self.derivative_net = DerivativeNet()
@@ -198,6 +211,9 @@ class BBOAgent(object):
                      'optimizer_value': self.optimizer_value.state_dict(),
                      'optimizer_pi': self.optimizer_pi.state_dict(),
                      'aux': aux}
+        elif self.algorithm_method == 'spline':
+            # TODO: implement
+            return
         else:
             raise NotImplementedError
 
@@ -220,6 +236,9 @@ class BBOAgent(object):
             self.optimizer_derivative.load_state_dict(state['optimizer_derivative'])
             self.value_net.load_state_dict(state['value_net'])
             self.optimizer_value.load_state_dict(state['optimizer_value'])
+        elif self.algorithm_method == 'spline':
+            # TODO: implement
+            return None
         else:
             raise NotImplementedError
         self.n_offset = state['aux']['n']
@@ -236,6 +255,7 @@ class BBOAgent(object):
         self.std = rewards.std()
         self.max = rewards.max()
         self.min = rewards.min()
+        self.transformer = RobustScaler().fit(rewards.reshape(-1,1))
         self.value_optimize()
 
 
@@ -267,7 +287,10 @@ class BBOAgent(object):
                 self.results['grad_norm'].append(grad_norm)
             if self.algorithm_method in ['value', 'anchor']:
                 value = self.value_net(self.pi_net.pi.detach()).detach().item()
-                self.results['value'].append(self.output_denorm(value))
+                self.results['value'].append(self.output_denorm(np.array(value)))
+            if self.algorithm_method in ['spline']:
+                value = self.spline_net(self.pi_net.pi.detach()).detach().item()
+                self.results['value'].append(self.output_denorm(np.array(value)))
 
             self.results['ts'].append(self.env.t)
             self.results['divergence'].append(self.divergence)
@@ -326,7 +349,7 @@ class BBOAgent(object):
 
         if self.algorithm_method == 'first_order':
             self.first_order_method_optimize(len_replay_buffer, minibatches)
-        elif self.algorithm_method == 'value':
+        elif self.algorithm_method in ['value', 'spline']:
             self.value_method_optimize(len_replay_buffer, minibatches)
         elif self.algorithm_method == 'second_order':
             self.second_order_method_optimize(len_replay_buffer, minibatches)
@@ -376,8 +399,17 @@ class BBOAgent(object):
 
 
     def value_method_optimize(self, len_replay_buffer, minibatches):
+        if self.algorithm_method in ['spline']:
+            optimizer = self.optimizer_spline
+            net = self.spline_net
+        elif self.algorithm_method in ['value']:
+            optimizer = self.optimizer_value
+            net = self.value_net
+        else:
+            raise NotImplementedError
+
         loss = 0
-        #self.value_net.train()
+        net.train()
         for it in itertools.count():
             shuffle_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch), replace=True)
             for i in range(minibatches):
@@ -385,20 +417,20 @@ class BBOAgent(object):
                 r = self.tensor_replay_reward[samples]
                 pi_explore = self.tensor_replay_policy[samples]
 
-                self.optimizer_value.zero_grad()
+                optimizer.zero_grad()
                 self.optimizer_pi.zero_grad()
-                q_value = self.value_net(pi_explore).view(-1)
+                q_value = net(pi_explore).view(-1)
                 loss_q = self.q_loss(q_value, r).mean()
                 loss += loss_q.detach().item()
                 loss_q.backward()
-                self.optimizer_value.step()
+                optimizer.step()
 
             if it >= self.value_iter:
                 break
 
         loss /= self.value_iter
         self.results['value_loss'].append(loss)
-        #self.value_net.eval()
+        net.eval()
 
     def first_order_method_optimize(self, len_replay_buffer, minibatches):
 
@@ -513,6 +545,10 @@ class BBOAgent(object):
             self.optimizer_value.zero_grad()
             loss_pi = self.value_net(self.pi_net.pi)
             loss_pi.backward()
+        elif self.algorithm_method == 'spline':
+            self.optimizer_spline.zero_grad()
+            loss_pi = self.spline_net(self.pi_net.pi)
+            loss_pi.backward()
         else:
             raise NotImplementedError
 
@@ -552,6 +588,15 @@ class BBOAgent(object):
 
     def no_denorm(self, data):
         return data
+
+    def robust_scaler_norm(self, data):
+        data = data.reshape(-1, 1)
+        self.transformer = RobustScaler().fit(data)
+        return self.transformer.transform(data).flatten()
+
+    def robust_scaler_denorm(self, data):
+        data = data.reshape(-1, 1)
+        return self.transformer.inverse_transform(data).flatten()
 
     def exploration_rand(self, n_explore):
             pi = self.pi_net.pi.detach().clone().cpu()
@@ -602,6 +647,10 @@ class BBOAgent(object):
         elif self.algorithm_method == 'value':
             self.optimizer_value.zero_grad()
             loss_pi = self.value_net(self.pi_net.pi)
+            loss_pi.backward()
+        elif self.algorithm_method == 'spline':
+            self.spline_net.zero_grad()
+            loss_pi = self.spline_net(self.pi_net.pi)
             loss_pi.backward()
         else:
             raise NotImplementedError
@@ -662,13 +711,17 @@ class BBOAgent(object):
         return pi_explore, rewards
 
     def get_evaluation_function(self, policy):
-        if self.algorithm_method == 'value':
-            #self.value_net.eval()
-            policy_tensor = torch.tensor(policy, dtype=torch.float).to(self.device)
-            value = self.value_net(policy_tensor).view(-1).detach().cpu().numpy()
-            pi = self.pi_net().detach().cpu().numpy()
-            pi_value = self.value_net(self.pi_net.pi).detach().cpu().numpy()
-            grad = self.get_grad().cpu().numpy()
-            return self.output_denorm(value), pi, self.output_denorm(pi_value), self.pi_lr*grad
+        if self.algorithm_method in 'value':
+            net = self.value_net
+        elif self.algorithm_method in 'spline':
+            net = self.spline_net
         else:
             raise NotImplementedError
+
+        #self.value_net.eval()
+        policy_tensor = torch.tensor(policy, dtype=torch.float).to(self.device)
+        value = net(policy_tensor).view(-1).detach().cpu().numpy()
+        pi = self.pi_net().detach().cpu().numpy()
+        pi_value = net(self.pi_net.pi).detach().cpu().numpy()
+        grad = self.get_grad().cpu().numpy()
+        return self.output_denorm(value), pi, self.output_denorm(np.array(pi_value)), self.pi_lr*grad

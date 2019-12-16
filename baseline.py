@@ -334,12 +334,6 @@ def plot_2D_contour(problem_index, path, save_fig=False):
     x = np.load(os.path.join(path, str(problem_index), 'policies.npy'))
     x_exp = np.load(os.path.join(path, str(problem_index), 'explore_policies.npy')).reshape(-1,2)[120:]
 
-    if dim != 784:
-        x *= 5
-        x_exp *= 5
-    #f = np.load(os.path.join(path, str(problem_index), 'beta_evaluate.npy'))
-
-
     fig, ax = plt.subplots()
     cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
     plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color='r', markersize=1)
