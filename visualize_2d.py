@@ -13,6 +13,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from vae import VaeProblem, VAE
+from environment import EnvCoco, EnvOneD, EnvVae
 from environment import one_d_change_dim
 import pickle
 username = pwd.getpwuid(os.geteuid()).pw_name
@@ -26,13 +27,13 @@ else:
 
 
 
-def compare_problem_baseline(dim, index, budget=1000, sub_budget=50):
+def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
 
     if dim == 784:
         problem = VaeProblem(index)
     else:
         suite_name = "bbob"
-        suite_filter_options = ("dimensions: "+str(dim))
+        suite_filter_options = ("dimensions: "+str(max(dim, 2)))
         suite = cocoex.Suite(suite_name, "", suite_filter_options)
 
     optimization_function = [scipy.optimize.fmin_slsqp, scipy.optimize.fmin, scipy.optimize.fmin_cobyla, scipy.optimize.fmin_powell,
@@ -42,32 +43,45 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=50):
     for fmin in optimization_function:
         if dim == 784:
             problem.reset(index)
-            func = problem.func
+            env = EnvVae(problem)
+        elif dim == 1:
+            suite.reset()
+            problem = suite.get_problem(index)
+            env = EnvOneD(problem, False)
         else:
             suite.reset()
             problem = suite.get_problem(index)
-            func = problem
+            env = EnvCoco(problem, False)
 
-        x = problem.initial_solution
+        func = env.f
+
+        x = env.initial_solution
         f = []
         eval = []
-        for _ in range(0, budget, sub_budget):
-            x = run_problem(fmin, func, x, sub_budget)
-            f.append(func(x))
-            eval.append(problem.evaluations)
-            if problem.final_target_hit or problem.evaluations > budget:
-                break
+        try:
+            for curr_budget in range(sub_budget, budget, sub_budget):
+                env.limit_budget(curr_budget)
+
+                x = run_problem(fmin, func, x, sub_budget)
+
+                env.limit_budget(float('inf'))
+                f.append(func(x))
+                eval.append(problem.evaluations)
+                if problem.final_target_hit or problem.evaluations > budget:
+                    break
+        except:
+            continue
 
         data['fmin'].append(fmin.__name__)
         data['index'].append(problem.index)
         data['hit'].append(problem.final_target_hit)
         data['x'].append(x)
-        data['id'].append(problem.id)
+        data['id'].append(env.get_problem_id())
         data['best_observed'].append(problem.best_observed_fvalue1)
         data['number_of_evaluations'].append(problem.evaluations)
         data['eval'].append(eval)
         data['f'].append(f)
-        data['f0'].append(func(problem.initial_solution))
+        data['f0'].append(func(env.initial_solution))
 
         # print(data['fmin'][-1] + ":\tevaluations: " + str(data['number_of_evaluations'][-1]) + "\tf(x): "
         #                                                   + str(func(x)) + "\thit: " + str(data['hit'][-1]))
@@ -244,16 +258,52 @@ def D1_plot(problem_index):
     with open(path_res, 'wb') as handle:
         pickle.dump({'norm_policy':norm_policy, 'policy':policy, 'f':f}, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+def get_baseline_cmp(dim, index):
+    optimizer_res = pd.read_csv(os.path.join(base_dir, 'baseline', 'compare', 'dim_{} index_{}'.format(dim, index) + ".csv"))
+    return optimizer_res
+
+def merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
+
+    data = defaultdict(list)
+    for dim in dims:
+        for index in range(360):
+            optimizer_res = get_baseline_cmp(dim, index)
+
+            data['dim'].append(dim)
+            data['iter_index'].append(index)
+            data['f0'].append(max(optimizer_res.f0))
+            data['id'].append(optimizer_res.id[0])
+            for i, op in enumerate(optimizer_res['fmin']):
+                res = optimizer_res[optimizer_res['fmin'] == op]
+                data[op + '_best_observed'].append(float(res.best_observed))
+                data[op + '_budget'].append(float(res.number_of_evaluations))
+                data[op + '_x'].append(res.x)
+
+    df = pd.DataFrame(data)
+    file = os.path.join(base_dir, 'compare.csv')
+    df.to_csv(file)
+
+def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
+    filter_mod = 1
+
+    for dim in dims:
+        for i in tqdm(range(0, 360, filter_mod)):
+            compare_problem_baseline(dim, i, budget=200)
+
+    merge_baseline_one_line_compare(dims)
+
 if __name__ == '__main__':
-    #compare_problem_baseline(2,15,90)
-    # filter_mod = 1
+    run_baseline()
+    #compare_problem_baseline(784,15,90)
+    # filter_mod = 100
     #
-    # for dim in ['2','3','5','10','20','40','784']:
+    # for dim in ['1','2','3','5','10','20','40','784']:
     #     for i in tqdm(range(0, 360, filter_mod)):
     #         compare_problem_baseline(dim, i, budget=12000)
 
-     for i in tqdm(range(0, 360, 1)):
-         D1_plot(i)
+    # for i in tqdm(range(0, 360, 1)):
+    #      D1_plot(i)
+    #
     #      treeD_plot_contour(i)  #treeD_plot
 
     #create_copy_file("CMP", 2, 0)

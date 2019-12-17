@@ -2,6 +2,11 @@ import numpy as np
 from config import args
 
 class Env(object):
+
+    def __init__(self, need_norm = True):
+        self.max_budget = float('inf')
+        self.need_norm = need_norm
+
     def get_problem_dim(self):
         raise NotImplementedError
 
@@ -26,17 +31,16 @@ class Env(object):
     def f(self, policy):
         raise NotImplementedError
 
-    def denormalize(self, policy):
-        raise NotImplementedError
-
     def get_f0(self):
         raise NotImplementedError
 
+    def limit_budget(self, max_budget):
+        self.max_budget = max_budget
 
 class EnvCoco(Env):
 
-    def __init__(self, problem):
-        super(EnvCoco, self).__init__()
+    def __init__(self, problem, need_norm):
+        super(EnvCoco, self).__init__(need_norm)
         self.best_observed = None
         self.reward = None
         self.t = 0
@@ -48,6 +52,11 @@ class EnvCoco(Env):
         self.upper_bounds = self.problem.upper_bounds
         self.lower_bounds = self.problem.lower_bounds
         self.initial_solution = self.problem.initial_solution
+
+        if self.need_norm:
+            self.denormalize = self.with_denormalize
+        else:
+            self.denormalize = self.no_normalization
 
     def get_f0(self):
         return self.problem(self.initial_solution)
@@ -67,7 +76,10 @@ class EnvCoco(Env):
         self.k = 0
         self.t = 0
 
-    def denormalize(self, policy):
+    def no_normalization(self, policy):
+        return policy
+
+    def with_denormalize(self, policy):
         assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
         if len(policy.shape) == 2:
             assert (policy.shape[1] == self.output_size), "action error"
@@ -97,19 +109,22 @@ class EnvCoco(Env):
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
-        policy = self.denormalize(policy)
-        return self.problem(policy)
+        if self.problem.evaluations < self.max_budget:
+            policy = self.denormalize(policy)
+            return self.problem(policy)
+        else:
+            return 1e100
 
     def get_problem_index(self):
         return self.problem.index
 
     def get_problem_id(self):
-        return self.problem.id
+        return 'coco_' + str(self.problem.id)
 
 class EnvVae(Env):
 
     def __init__(self, vae_problem):
-        super(EnvVae, self).__init__()
+        super(EnvVae, self).__init__(False)
         self.best_observed = None
         self.reward = None
         self.t = 0
@@ -129,7 +144,7 @@ class EnvVae(Env):
         return self.vae_problem.index
 
     def get_problem_id(self):
-        return self.vae_problem.id
+        return 'vae_' + str(self.vae_problem.id)
 
     def constrains(self):
          return self.lower_bounds, self.upper_bounds
@@ -162,15 +177,19 @@ class EnvVae(Env):
         self.t = self.vae_problem.problem.final_target_hit
 
     def f(self, policy):
-        return self.vae_problem.func(policy)
+        if self.vae_problem.evaluations < self.max_budget:
+            return self.vae_problem.func(policy)
+        else:
+            return 1e100
+
 
     def get_f0(self):
         return self.vae_problem.func(self.initial_solution)
 
 class EnvOneD(Env):
 
-    def __init__(self, problem):
-        super(EnvOneD, self).__init__()
+    def __init__(self, problem, need_norm):
+        super(EnvOneD, self).__init__(need_norm)
         self.best_observed = None
         self.reward = None
         self.t = 0
@@ -183,6 +202,12 @@ class EnvOneD(Env):
         self.lower_bounds = self.problem.lower_bounds[0]
         self.initial_solution = np.array([self.problem.initial_solution[0]])
 
+        if self.need_norm:
+            self.denormalize = self.with_denormalize
+        else:
+            self.denormalize = self.no_normalization
+
+
     def get_f0(self):
         return self.problem(one_d_change_dim(self.initial_solution).flatten())
 
@@ -193,7 +218,7 @@ class EnvOneD(Env):
         return self.problem.index
 
     def get_problem_id(self):
-        return self.problem.id
+        return '1D_' + str(self.problem.id)
 
     def constrains(self):
          return self.lower_bounds, self.upper_bounds
@@ -207,7 +232,10 @@ class EnvOneD(Env):
         self.k = 0
         self.t = 0
 
-    def denormalize(self, policy):
+    def no_normalization(self, policy):
+        return policy
+
+    def with_denormalize(self, policy):
         assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
         if len(policy.shape) == 2:
             assert (policy.shape[1] == self.output_size), "action error, shape is {} and not {}".format(policy.shape[1], self.output_size)
@@ -237,8 +265,11 @@ class EnvOneD(Env):
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
-        policy = self.denormalize(one_d_change_dim(policy)).flatten()
-        return self.problem(policy)
+        if self.problem.evaluations < self.max_budget:
+            policy = self.denormalize(one_d_change_dim(policy)).flatten()
+            return self.problem(policy)
+        else:
+            return 1e100
 
 def one_d_change_dim(policy):
     policy = policy.reshape(-1, 1)

@@ -199,7 +199,7 @@ class VaeProblem(object):
         self.device = self.vae.device
         self.best_observed_fvalue1 = self.problem.best_observed_fvalue1
         self.index = self.problem.index
-        self.id = 'vae_'+str(self.problem.id)
+        self.id = self.problem.id
         self.dimension = 784
         self.initial_solution = self.vae.model.decode(torch.tensor(self.problem.initial_solution, dtype=torch.float).to(self.device)).detach().cpu().numpy()
         self.lower_bounds = -np.ones(self.dimension)
