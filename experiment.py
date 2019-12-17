@@ -21,7 +21,7 @@ import scipy.optimize  # to define the solver to be benchmarked
 
 class Experiment(object):
 
-    def __init__(self, logger_file, env):
+    def __init__(self, logger_file, env, iter_index):
 
         # parameters
         self.action_space = args.action_space
@@ -31,10 +31,9 @@ class Experiment(object):
         self.load_last = args.load_last_model
         self.resume = args.resume
         self.env = env
-        self.problem_index = self.env.get_problem_index()
         self.problem_id = self.env.get_problem_id()
         self.algorithm = args.algorithm
-
+        self.iter_index = iter_index
         # temp_name = "%s_%s_%s_bbo_%s" % (args.game, args.algorithm, args.identifier, str(args.action_space))
         # self.exp_name = ""
         # if self.load_model:
@@ -126,7 +125,7 @@ class Experiment(object):
 
             if not n % 20:
                 logger.info("-------------------- iteration: {} - Problem ID :{} --------------------".format(n, self.problem_id))
-                logger.info("Problem index     :{}\t\t\tDim: {}\t\t\tDivergence: {}".format(self.problem_index, self.action_space, divergence))
+                logger.info("Problem iter index     :{}\t\t\tDim: {}\t\t\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
                 if self.algorithm in ['first_order', 'second_order']:
                     logger.info("Actions statistics: |\t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['grad_norm'][-1], avg_reward, bbo_results['derivative_loss'][-1]))
                 elif self.algorithm == ['value', 'spline']:
@@ -166,7 +165,7 @@ class Experiment(object):
         return divergence
 
     def value_vs_f_one_d(self, n):
-        path_res = os.path.join(consts.baseline_dir, '1D', '1D_index_{}.pkl'.format(self.problem_index))
+        path_res = os.path.join(consts.baseline_dir, '1D', '1D_index_{}.pkl'.format(self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
             max_f = res['f'].max()
@@ -179,12 +178,12 @@ class Experiment(object):
             plt.plot(5*pi, (pi_value - min_f)/(max_f - min_f), 'X', color='r', markersize=4, label='pi')
             plt.plot(5 * np.tanh(pi - grad), (pi_value - min_f)/(max_f - min_f), 'v', color='c', markersize=4, label='gard')
 
-            plt.title('1D_index_{} - iteration {}'.format(self.problem_index, n))
+            plt.title('1D_index_{} - iteration {}'.format(self.iter_index, n))
             plt.xlabel('x')
             plt.ylabel('f(x)')
             plt.legend()
 
-            path_dir_fig = os.path.join(self.results_dir, '1D_figures', str(self.problem_index))
+            path_dir_fig = os.path.join(self.results_dir, '1D_figures', str(self.iter_index))
             if not os.path.exists(path_dir_fig):
                 os.makedirs(path_dir_fig)
 
@@ -194,13 +193,13 @@ class Experiment(object):
 
     def plot_2D_contour(self):
 
-        path = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
+        path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
         path_dir = os.path.join(consts.baseline_dir, '2D_Contour')
-        path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(self.problem_index))
+        path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(self.iter_index))
         res = np.load(path_res).item()
 
         x = 5*np.load(os.path.join(path, 'policies.npy'))
-        x_exp = 5*np.load(os.path.join(path, 'explore_policies.npy')).reshape(-1,2)
+        x_exp = 5*np.load(os.path.join(path, 'explore_policies.npy'))
 
         fig, ax = plt.subplots()
         cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
@@ -209,11 +208,11 @@ class Experiment(object):
         plt.title(path.split('/')[-1])
         fig.colorbar(cs)
 
-        path_dir_fig = os.path.join(self.results_dir, '2D_figures', str(self.problem_index))
+        path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
         if not os.path.exists(path_dir_fig):
             os.makedirs(path_dir_fig)
 
-        path_fig = os.path.join(path_dir_fig, '2D_index_{}.pdf'.format(self.problem_index))
+        path_fig = os.path.join(path_dir_fig, '2D_index_{}.pdf'.format(self.iter_index))
         plt.savefig(path_fig)
 
         plt.close()
@@ -221,7 +220,7 @@ class Experiment(object):
 
     def compare_beta_evaluate(self):
         min_val, f0 = self.get_min_f0_val()
-        path = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
+        path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
         pi_eval = np.load(os.path.join(path, 'pi_evaluate.npy'))
         pi_best = np.load(os.path.join(path, 'best_observed.npy'))
 
@@ -231,22 +230,26 @@ class Experiment(object):
         plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color='r', label='best_observed')
 
         plt.legend()
-        plt.title('dim = {} index = {} ----- best vs eval'.format(self.action_space, self.problem_index))
+        plt.title('dim = {} index = {} ----- best vs eval'.format(self.action_space, self.iter_index))
         plt.grid(True, which='both')
 
-        path_dir_fig = os.path.join(self.results_dir, 'BestVsEval', str(self.problem_index))
+        path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
         if not os.path.exists(path_dir_fig):
             os.makedirs(path_dir_fig)
 
-        path_fig = os.path.join(path_dir_fig, 'dim = {} index = {}.pdf'.format(self.action_space, self.problem_index))
+        path_fig = os.path.join(path_dir_fig, 'BestVsEval: dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
         plt.savefig(path_fig)
 
         plt.close()
 
     def get_min_f0_val(self):
-        min_df = pd.read_csv(os.path.join(consts.baseline_dir, 'min_val.csv'))
-        tmp_df = min_df[(min_df.dim == self.action_space) & (min_df.iter_index == self.problem_index)]
+        if self.action_space == 1:
+            min_val = 0
+            f0 = 1
+        else:
+            min_df = pd.read_csv(os.path.join(consts.baseline_dir, 'min_val.csv'))
+            tmp_df = min_df[(min_df.dim == self.action_space) & (min_df.iter_index == self.iter_index)]
 
-        min_val = float(tmp_df.min_val)
-        f0 = float(tmp_df.f0)
+            min_val = float(tmp_df.min_val)
+            f0 = float(tmp_df.f0)
         return min_val, f0

@@ -71,9 +71,7 @@ class BBOAgent(object):
         self.min = None
         self.transformer = None
         self.alpha = args.alpha
-        self.lr_list = [args.beta_lr, args.beta_lr*0.1]
-        self.lr_index = 0
-        self.pi_lr = self.lr_list[self.lr_index]
+        self.pi_lr = args.beta_lr
         self.epsilon = args.epsilon
         self.delta = self.pi_lr
 
@@ -115,7 +113,7 @@ class BBOAgent(object):
 
         self.init = torch.tensor(self.env.get_initial_solution(), dtype=torch.float).to(self.device)
         self.pi_net = PiNet(self.init, self.device, self.action_space)
-        self.optimizer_pi = torch.optim.SGD([self.pi_net.pi], lr=self.lr_list[self.lr_index])
+        self.optimizer_pi = torch.optim.SGD([self.pi_net.pi], lr=self.pi_lr)
         self.pi_net.train()
 
         if self.algorithm_method in ['first_order', 'second_order']:
@@ -160,9 +158,7 @@ class BBOAgent(object):
 
     def update_pi_optimizer_lr(self):
         op_dict = self.optimizer_pi.state_dict()
-        #self.lr_index = (self.lr_index + 1)%len(self.lr_list)
-        self.lr_index = min((self.lr_index + 1) , len(self.lr_list)-1)
-        self.pi_lr = self.lr_list[self.lr_index]
+        self.pi_lr *= 0.97
         op_dict['param_groups'][0]['lr'] = self.pi_lr
         self.optimizer_pi.load_state_dict(op_dict)
 
@@ -171,11 +167,11 @@ class BBOAgent(object):
             path = os.path.join(self.analysis_dir, k +'.npy')
             if k in ['explore_policies']:
                 policy = self.pi_net(torch.cat(self.results[k], dim=0))
-                assert (len(policy.shape) == 2), "save_results"
+                assert ((len(policy.shape) == 2) and (policy.shape[1] == self.action_space)), "save_results"
                 np.save(path, policy.cpu().numpy())
             elif k in ['policies']:
                 policy = self.pi_net(torch.stack(self.results[k]))
-                assert (len(policy.shape) == 2), "save_results"
+                assert ((len(policy.shape) == 2) and (policy.shape[1] == self.action_space)), "save_results"
                 np.save(path, policy.cpu().numpy())
             else:
                 tmp = np.array(self.results[k]).flatten()
@@ -552,7 +548,7 @@ class BBOAgent(object):
         else:
             raise NotImplementedError
 
-        if self.grad_clip == 0:
+        if self.grad_clip != 0:
             nn.utils.clip_grad_norm_(self.pi_net.pi, self.grad_clip / self.pi_lr)
 
         self.optimizer_pi.step()
@@ -655,7 +651,7 @@ class BBOAgent(object):
         else:
             raise NotImplementedError
 
-        if self.grad_clip == 0:
+        if self.grad_clip != 0:
             nn.utils.clip_grad_norm_(self.pi_net.pi, self.grad_clip / self.pi_lr)
 
         #self.pi_net.eval()

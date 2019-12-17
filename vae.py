@@ -227,7 +227,7 @@ class VaeProblem(object):
         x = torch.tensor(x, dtype=torch.float).to(self.device)
         mu, logvar = self.vae.model.encode(x)
         z = self.vae.model.reparameterize(mu, logvar).detach().cpu().numpy()
-        z = self.denormalize(z)
+        #z = self.denormalize(z)
         z = np.clip(z, self.z_lower_bounds, self.z_upper_bounds)
         f_val = self.problem(z)
 
