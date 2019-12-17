@@ -24,7 +24,7 @@ else:
     from vae import VaeProblem, VAE
     base_dir = os.path.join('/data/', username, 'gan_rl')
 
-
+filter_mod = 1
 
 
 def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
@@ -59,18 +59,12 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
         f = []
         eval = []
         try:
-            for curr_budget in range(sub_budget, budget, sub_budget):
-                env.limit_budget(curr_budget)
+            run_problem(fmin, func, x, budget)
+            f, x = env.get_observed_and_pi_list()
 
-                x = run_problem(fmin, func, x, sub_budget)
-
-                env.limit_budget(float('inf'))
-                f.append(func(x))
-                eval.append(problem.evaluations)
-                if problem.final_target_hit or problem.evaluations > budget:
-                    break
         except:
-            continue
+            x = env.initial_solution
+            f.append(func(x))
 
         data['fmin'].append(fmin.__name__)
         data['index'].append(problem.index)
@@ -79,13 +73,14 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
         data['id'].append(env.get_problem_id())
         data['best_observed'].append(problem.best_observed_fvalue1)
         data['number_of_evaluations'].append(problem.evaluations)
-        data['eval'].append(eval)
+        data['eval'].append(problem.evaluations)
         data['f'].append(f)
         data['f0'].append(func(env.initial_solution))
 
         # print(data['fmin'][-1] + ":\tevaluations: " + str(data['number_of_evaluations'][-1]) + "\tf(x): "
         #                                                   + str(func(x)) + "\thit: " + str(data['hit'][-1]))
 
+    data['min_opt'] = (len(data['best_observed'])*[min(data['best_observed'])])
     df = pd.DataFrame(data)
     title = 'dim_{} index_{}'.format(dim, index)
     save_dir = os.path.join(base_dir, 'baseline', 'compare')
@@ -94,8 +89,9 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
             os.makedirs(save_dir)
         except:
             pass
-    fmin_file = os.path.join(save_dir, title + '.csv')
-    df.to_csv(fmin_file)
+    fmin_file = os.path.join(save_dir, title + '.pkl')
+    with open(fmin_file, 'wb') as handle:
+        pickle.dump(df, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def run_problem(fmin,  problem, x0, budget):
 
@@ -259,47 +255,44 @@ def D1_plot(problem_index):
         pickle.dump({'norm_policy':norm_policy, 'policy':policy, 'f':f}, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def get_baseline_cmp(dim, index):
-    optimizer_res = pd.read_csv(os.path.join(base_dir, 'baseline', 'compare', 'dim_{} index_{}'.format(dim, index) + ".csv"))
-    return optimizer_res
+    path_res = os.path.join(base_dir, 'baseline', 'compare', 'dim_{} index_{}'.format(dim, index) + ".pkl")
+    with open(path_res, 'rb') as handle:
+        res = pickle.load(handle)
+        return res
+
+    return None
 
 def merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
 
     data = defaultdict(list)
     for dim in dims:
-        for index in range(360):
+        for index in tqdm(range(0, 360, filter_mod)):
             optimizer_res = get_baseline_cmp(dim, index)
 
             data['dim'].append(dim)
             data['iter_index'].append(index)
-            data['f0'].append(max(optimizer_res.f0))
-            data['id'].append(optimizer_res.id[0])
+            data['f0'].append(optimizer_res['f0'][0])
+            data['id'].append(optimizer_res['id'][0])
+            data['min_opt'].append(optimizer_res['min_opt'][0])
             for i, op in enumerate(optimizer_res['fmin']):
                 res = optimizer_res[optimizer_res['fmin'] == op]
-                data[op + '_best_observed'].append(float(res.best_observed))
-                data[op + '_budget'].append(float(res.number_of_evaluations))
-                data[op + '_x'].append(res.x)
+                data[op + '_best_observed'].append(res['best_observed'])
+                data[op + '_budget'].append(res['number_of_evaluations'])
 
     df = pd.DataFrame(data)
     file = os.path.join(base_dir, 'compare.csv')
     df.to_csv(file)
 
 def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
-    filter_mod = 1
 
     for dim in dims:
         for i in tqdm(range(0, 360, filter_mod)):
-            compare_problem_baseline(dim, i, budget=200)
+            compare_problem_baseline(dim, i, budget=150000)
 
     merge_baseline_one_line_compare(dims)
 
 if __name__ == '__main__':
     run_baseline()
-    #compare_problem_baseline(784,15,90)
-    # filter_mod = 100
-    #
-    # for dim in ['1','2','3','5','10','20','40','784']:
-    #     for i in tqdm(range(0, 360, filter_mod)):
-    #         compare_problem_baseline(dim, i, budget=12000)
 
     # for i in tqdm(range(0, 360, 1)):
     #      D1_plot(i)

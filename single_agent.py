@@ -62,7 +62,6 @@ class BBOAgent(object):
         self.frame = 0
         self.n_offset = 0
         self.results = defaultdict(list)
-        self.clip = args.clip
         self.tensor_replay_reward = None
         self.tensor_replay_policy = None
         self.mean = None
@@ -596,7 +595,7 @@ class BBOAgent(object):
 
     def exploration_rand(self, n_explore):
             pi = self.pi_net.pi.detach().clone().cpu()
-            pi_explore = pi + self.epsilon * torch.randn(n_explore, self.action_space)
+            pi_explore = pi + 10*self.epsilon * torch.randn(n_explore, self.action_space)
             return pi_explore
 
     def exploration_rand_test(self, n_explore):

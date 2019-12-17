@@ -15,7 +15,7 @@ from logger import logger
 from distutils.dir_util import copy_tree
 import pickle
 import pandas as pd
-
+from visualize_2d import get_baseline_cmp
 
 import scipy.optimize  # to define the solver to be benchmarked
 
@@ -110,8 +110,8 @@ class Experiment(object):
 
     def bbo(self):
         self.agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
-        n_explore = args.batch
-        player = self.agent.minimize(n_explore)
+        self.n_explore = args.batch
+        player = self.agent.minimize(self.n_explore)
         divergence = 0
 
         for n, bbo_results in (enumerate(player)):
@@ -124,7 +124,7 @@ class Experiment(object):
             divergence = bbo_results['divergence'][-1]
 
             if not n % 20:
-                logger.info("-------------------- iteration: {} - Problem ID :{} --------------------".format(n, self.problem_id))
+                logger.info("---------------- iteration: {} - Problem ID :{} ---------------".format(n, self.problem_id))
                 logger.info("Problem iter index     :{}\t\t\tDim: {}\t\t\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
                 if self.algorithm in ['first_order', 'second_order']:
                     logger.info("Actions statistics: |\t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['grad_norm'][-1], avg_reward, bbo_results['derivative_loss'][-1]))
@@ -183,7 +183,7 @@ class Experiment(object):
             plt.ylabel('f(x)')
             plt.legend()
 
-            path_dir_fig = os.path.join(self.results_dir, '1D_figures', str(self.iter_index))
+            path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
             if not os.path.exists(path_dir_fig):
                 os.makedirs(path_dir_fig)
 
@@ -205,7 +205,7 @@ class Experiment(object):
         cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
         plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color='r', markersize=1)
         plt.plot(x[:, 0], x[:, 1], '-o', color='b', markersize=1)
-        plt.title(path.split('/')[-1])
+        plt.title('2D_Contour index {}'.format(self.iter_index))
         fig.colorbar(cs)
 
         path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
@@ -219,15 +219,28 @@ class Experiment(object):
 
 
     def compare_beta_evaluate(self):
-        min_val, f0 = self.get_min_f0_val()
+        optimizer_res = get_baseline_cmp(self.action_space, self.iter_index)
+        min_val = optimizer_res['min_opt'][0]
+        f0 = optimizer_res['f0'][0]
+
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
         pi_eval = np.load(os.path.join(path, 'pi_evaluate.npy'))
+        pi_eval = np.repeat(pi_eval, self.n_explore, axis=0)
         pi_best = np.load(os.path.join(path, 'best_observed.npy'))
+        pi_best = np.repeat(pi_best, self.n_explore, axis=0)
+        rewards = np.hstack(np.load(os.path.join(path, 'rewards.npy')))
 
         plt.subplot(111)
 
-        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color='b', label='pi_evaluate')
-        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color='r', label='best_observed')
+        colors = consts.color
+        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='pi_evaluate')
+        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[1], label='best_observed')
+        plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
+
+        for i, op in enumerate(optimizer_res['fmin']):
+            res = optimizer_res[optimizer_res['fmin'] == op]
+            op_eval = np.array(res['f'].values[0])
+            plt.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), linestyle='None', marker='x', color=colors[3+i], label=op)
 
         plt.legend()
         plt.title('dim = {} index = {} ----- best vs eval'.format(self.action_space, self.iter_index))
@@ -237,19 +250,19 @@ class Experiment(object):
         if not os.path.exists(path_dir_fig):
             os.makedirs(path_dir_fig)
 
-        path_fig = os.path.join(path_dir_fig, 'BestVsEval: dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
+        path_fig = os.path.join(path_dir_fig, 'BestVsEval - dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
         plt.savefig(path_fig)
 
         plt.close()
 
-    def get_min_f0_val(self):
-        if self.action_space == 1:
-            min_val = 0
-            f0 = 1
-        else:
-            min_df = pd.read_csv(os.path.join(consts.baseline_dir, 'min_val.csv'))
-            tmp_df = min_df[(min_df.dim == self.action_space) & (min_df.iter_index == self.iter_index)]
-
-            min_val = float(tmp_df.min_val)
-            f0 = float(tmp_df.f0)
-        return min_val, f0
+    # def get_min_f0_val(self):
+    #     if self.action_space == 1:
+    #         min_val = 0
+    #         f0 = 1
+    #     else:
+    #         min_df = pd.read_csv(os.path.join(consts.baseline_dir, 'min_val.csv'))
+    #         tmp_df = min_df[(min_df.dim == self.action_space) & (min_df.iter_index == self.iter_index)]
+    #
+    #         min_val = float(tmp_df.min_val)
+    #         f0 = float(tmp_df.f0)
+    #     return min_val, f0

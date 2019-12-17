@@ -4,8 +4,12 @@ from config import args
 class Env(object):
 
     def __init__(self, need_norm = True):
-        self.max_budget = float('inf')
         self.need_norm = need_norm
+        self.observed_list = []
+        self.pi_list = []
+
+    def get_observed_and_pi_list(self):
+        return self.observed_list, self.pi_list
 
     def get_problem_dim(self):
         raise NotImplementedError
@@ -33,9 +37,6 @@ class Env(object):
 
     def get_f0(self):
         raise NotImplementedError
-
-    def limit_budget(self, max_budget):
-        self.max_budget = max_budget
 
 class EnvCoco(Env):
 
@@ -109,11 +110,11 @@ class EnvCoco(Env):
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
-        if self.problem.evaluations < self.max_budget:
-            policy = self.denormalize(policy)
-            return self.problem(policy)
-        else:
-            return 1e100
+        policy = self.denormalize(policy)
+        res = self.problem(policy)
+        self.observed_list.append(res)
+        self.pi_list.append(policy)
+        return res
 
     def get_problem_index(self):
         return self.problem.index
@@ -177,11 +178,10 @@ class EnvVae(Env):
         self.t = self.vae_problem.problem.final_target_hit
 
     def f(self, policy):
-        if self.vae_problem.evaluations < self.max_budget:
-            return self.vae_problem.func(policy)
-        else:
-            return 1e100
-
+        res = self.vae_problem.func(policy)
+        self.observed_list.append(res)
+        self.pi_list.append(policy)
+        return res
 
     def get_f0(self):
         return self.vae_problem.func(self.initial_solution)
@@ -265,11 +265,11 @@ class EnvOneD(Env):
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
-        if self.problem.evaluations < self.max_budget:
-            policy = self.denormalize(one_d_change_dim(policy)).flatten()
-            return self.problem(policy)
-        else:
-            return 1e100
+        self.pi_list.append(policy)
+        policy = self.denormalize(one_d_change_dim(policy)).flatten()
+        res = self.problem(policy)
+        self.observed_list.append(res)
+        return res
 
 def one_d_change_dim(policy):
     policy = policy.reshape(-1, 1)
