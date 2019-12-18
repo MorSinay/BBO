@@ -39,7 +39,7 @@ class BBOAgent(object):
         self.warmup_minibatch = 2
         self.replay_memory_size = self.batch*args.replay_memory_factor
         self.replay_memory_factor = args.replay_memory_factor
-        self.problem_index = args.problem_index
+        self.problem_index = env.problem_iter
         self.value_lr = args.value_lr
         self.budget = args.budget
         self.checkpoint = checkpoint
@@ -397,7 +397,7 @@ class BBOAgent(object):
         if self.algorithm_method in ['spline']:
             optimizer = self.optimizer_spline
             net = self.spline_net
-        elif self.algorithm_method in ['value']:
+        elif self.algorithm_method in ['value', 'anchor']:
             optimizer = self.optimizer_value
             net = self.value_net
         else:

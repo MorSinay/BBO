@@ -21,7 +21,7 @@ import scipy.optimize  # to define the solver to be benchmarked
 
 class Experiment(object):
 
-    def __init__(self, logger_file, env, iter_index):
+    def __init__(self, logger_file, env):
 
         # parameters
         self.action_space = args.action_space
@@ -33,7 +33,7 @@ class Experiment(object):
         self.env = env
         self.problem_id = self.env.get_problem_id()
         self.algorithm = args.algorithm
-        self.iter_index = iter_index
+        self.iter_index = env.problem_iter
         # temp_name = "%s_%s_%s_bbo_%s" % (args.game, args.algorithm, args.identifier, str(args.action_space))
         # self.exp_name = ""
         # if self.load_model:
@@ -65,7 +65,7 @@ class Experiment(object):
         self.root = self.dirs_locks.root
 
         # set dirs
-        self.tensorboard_dir = os.path.join(self.dirs_locks.tensorboard_dir, self.problem_id)
+        self.tensorboard_dir = os.path.join(self.dirs_locks.tensorboard_dir, str(self.iter_index))
         if not os.path.exists(self.tensorboard_dir):
             try:
                 os.makedirs(self.tensorboard_dir)
@@ -123,7 +123,7 @@ class Experiment(object):
             best_observe = bbo_results['best_observed'][-1]
             divergence = bbo_results['divergence'][-1]
 
-            if not n % 20:
+            if not n % 50:
                 logger.info("---------------- iteration: {} - Problem ID :{} ---------------".format(n, self.problem_id))
                 logger.info("Problem iter index     :{}\t\t\tDim: {}\t\t\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
                 if self.algorithm in ['first_order', 'second_order']:
@@ -134,8 +134,8 @@ class Experiment(object):
                     logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
                 logger.info("Best observe      : |\t %f \t \tPi_evaluate: = %f|" % (best_observe, pi_evaluate))
 
-                if (self.algorithm in ['value', 'spline']) and (self.action_space == 1):
-                    self.value_vs_f_one_d(n)
+                if self.algorithm in ['value', 'spline']:
+                    self.value_vs_f_eval(n)
 
             # log to tensorboard
             if args.tensorboard:
@@ -164,21 +164,27 @@ class Experiment(object):
             self.plot_2D_contour()
         return divergence
 
-    def value_vs_f_one_d(self, n):
-        path_res = os.path.join(consts.baseline_dir, '1D', '1D_index_{}.pkl'.format(self.iter_index))
+    def value_vs_f_eval(self, n):
+        path_res = os.path.join(consts.baseline_dir, '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
             max_f = res['f'].max()
             min_f = res['f'].min()
-            value, pi, pi_value, grad = self.agent.get_evaluation_function(res['norm_policy'][:, 0])
+            if self.action_space == 1:
+                value, pi, pi_value, grad = self.agent.get_evaluation_function(res['norm_policy'][:, 0])
+            else:
+                value, pi, pi_value, grad = self.agent.get_evaluation_function(res['norm_policy'])
+
+            pi = pi.reshape(-1, 1)
+            grad = grad.reshape(-1, 1)
 
             plt.subplot(111)
             plt.plot(res['policy'][:, 0], (res['f'] - min_f)/(max_f - min_f), color='g', markersize=1, label='f')
             plt.plot(res['policy'][:, 0], (value - min_f)/(max_f - min_f), '-o', color='b', markersize=1, label='value')
-            plt.plot(5*pi, (pi_value - min_f)/(max_f - min_f), 'X', color='r', markersize=4, label='pi')
-            plt.plot(5 * np.tanh(pi - grad), (pi_value - min_f)/(max_f - min_f), 'v', color='c', markersize=4, label='gard')
+            plt.plot(5*pi[0], (pi_value - min_f)/(max_f - min_f), 'X', color='r', markersize=4, label='pi')
+            plt.plot(5 * np.tanh(pi - grad)[0], (pi_value - min_f)/(max_f - min_f), 'v', color='c', markersize=4, label='gard')
 
-            plt.title('1D_index_{} - iteration {}'.format(self.iter_index, n))
+            plt.title('{}D_index_{} - iteration {}'.format(self.action_space, self.iter_index, n))
             plt.xlabel('x')
             plt.ylabel('f(x)')
             plt.legend()
@@ -190,6 +196,7 @@ class Experiment(object):
             path_fig = os.path.join(path_dir_fig, 'iter {}.pdf'.format(n))
             plt.savefig(path_fig)
             plt.close()
+
 
     def plot_2D_contour(self):
 
@@ -233,9 +240,9 @@ class Experiment(object):
         plt.subplot(111)
 
         colors = consts.color
+        plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
         plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='pi_evaluate')
         plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[1], label='best_observed')
-        plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
 
         for i, op in enumerate(optimizer_res['fmin']):
             res = optimizer_res[optimizer_res['fmin'] == op]

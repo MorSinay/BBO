@@ -38,15 +38,15 @@ class MainRun(object):
             self.suite.reset()
             self.problem = self.suite.get_problem(problem_index)
 
-        self.set_env()
+        self.set_env(problem_index)
 
-    def set_env(self):
+    def set_env(self, problem_index):
         if self.action_space == 784:
-            self.env = EnvVae(self.problem)
+            self.env = EnvVae(self.problem, problem_index)
         elif self.action_space == 1:
-            self.env = EnvOneD(self.problem, True)
+            self.env = EnvOneD(self.problem, problem_index, True)
         else:
-            self.env = EnvCoco(self.problem, True)
+            self.env = EnvCoco(self.problem, problem_index, True)
 
 
 def main():
@@ -70,7 +70,7 @@ def main():
 
     if problem_index != -1:
         main_run.reset(problem_index)
-        divergence = run_exp(main_run.env, problem_index)
+        divergence = run_exp(main_run.env)
     else:
         res_dir = os.path.join('/data/', username, 'gan_rl', 'baseline', 'results', algorithm)
         if not os.path.exists(res_dir):
@@ -80,20 +80,20 @@ def main():
                 pass
 
         for i in range(0, 360, filter_mod):
-            main_run.reset(problem_index)
-            divergence = run_exp(main_run.env, i)
+            main_run.reset(i)
+            divergence = run_exp(main_run.env)
 
             data['iter_index'].append(i)
             data['divergence'].append(divergence)
-            data['index'].append(main_run.env.index)
-            data['hit'].append(main_run.env.final_target_hit)
-            data['id'].append(main_run.env.id)
-            data['dimension'].append(main_run.env.dimension)
-            data['best_observed'].append(main_run.env.best_observed_fvalue1)
+            data['index'].append(main_run.env.problem.index)
+            data['hit'].append(main_run.env.problem.final_target_hit)
+            data['id'].append(main_run.env.problem.id)
+            data['dimension'].append(main_run.env.problem.dimension)
+            data['best_observed'].append(main_run.env.problem.best_observed_fvalue1)
             data['initial_solution'].append(main_run.env.initial_solution)
             data['upper_bound'].append(main_run.env.upper_bounds)
             data['lower_bound'].append(main_run.env.lower_bounds)
-            data['number_of_evaluations'].append(main_run.env.evaluations)
+            data['number_of_evaluations'].append(main_run.env.problem.evaluations)
 
             df = pd.DataFrame(data)
             fmin_file = os.path.join(res_dir, algorithm + '_' + str(args.action_space) + '.csv')
@@ -101,8 +101,8 @@ def main():
 
     logger.info("End of simulation divergence = {}".format(divergence))
 
-def run_exp(env, iter_index):
-    with Experiment(logger.filename, env, iter_index) as exp:
+def run_exp(env):
+    with Experiment(logger.filename, env) as exp:
         logger.info("BBO Session with VALUE net, it might take a while")
         divergence = exp.bbo()
     return divergence

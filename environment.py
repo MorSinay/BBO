@@ -3,8 +3,9 @@ from config import args
 
 class Env(object):
 
-    def __init__(self, need_norm = True):
+    def __init__(self, problem_iter, need_norm=True):
         self.need_norm = need_norm
+        self.problem_iter = problem_iter
         self.observed_list = []
         self.pi_list = []
 
@@ -40,8 +41,8 @@ class Env(object):
 
 class EnvCoco(Env):
 
-    def __init__(self, problem, need_norm):
-        super(EnvCoco, self).__init__(need_norm)
+    def __init__(self, problem, problem_index, need_norm):
+        super(EnvCoco, self).__init__(problem_index, need_norm)
         self.best_observed = None
         self.reward = None
         self.t = 0
@@ -124,8 +125,8 @@ class EnvCoco(Env):
 
 class EnvVae(Env):
 
-    def __init__(self, vae_problem):
-        super(EnvVae, self).__init__(False)
+    def __init__(self, vae_problem, problem_index):
+        super(EnvVae, self).__init__(problem_index, False)
         self.best_observed = None
         self.reward = None
         self.t = 0
@@ -188,8 +189,8 @@ class EnvVae(Env):
 
 class EnvOneD(Env):
 
-    def __init__(self, problem, need_norm):
-        super(EnvOneD, self).__init__(need_norm)
+    def __init__(self, problem, problem_index, need_norm):
+        super(EnvOneD, self).__init__(problem_index, need_norm)
         self.best_observed = None
         self.reward = None
         self.t = 0

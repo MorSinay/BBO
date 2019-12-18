@@ -26,6 +26,7 @@ else:
 
 filter_mod = 1
 
+# TODO: add VAE data base
 
 def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
 
@@ -254,6 +255,61 @@ def D1_plot(problem_index):
     with open(path_res, 'wb') as handle:
         pickle.dump({'norm_policy':norm_policy, 'policy':policy, 'f':f}, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+def nD_plot(dim, problem_index):
+    suite = cocoex.Suite("bbob", "", ("dimensions: {}".format(dim)))
+    problem = suite.get_problem(problem_index)
+
+    upper_bound = problem.upper_bounds
+    lower_bound = problem.lower_bounds
+    interval = 0.0001
+
+    norm_policy = np.arange(-1, 1 + interval, interval).reshape(-1,1)
+    norm_policy = np.repeat(norm_policy, dim, axis=1)
+    f = np.zeros(norm_policy.shape[0])
+    policy = 0.5 * (norm_policy + 1) * (upper_bound - lower_bound) + lower_bound
+
+    for i in range(policy.shape[0]):
+        f[i] = problem(policy[i])
+
+    res_dir = os.path.join(base_dir, 'baseline', '{}D'.format(dim))
+    if not os.path.exists(res_dir):
+        try:
+            os.makedirs(res_dir)
+        except:
+            pass
+
+    path_res = os.path.join(res_dir, '{}D_index_{}.pkl'.format(dim, problem_index))
+
+    with open(path_res, 'wb') as handle:
+        pickle.dump({'norm_policy':norm_policy, 'policy':policy, 'f':f}, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+def vaeD_plot(problem_index):
+    problem = VaeProblem(problem_index)
+
+    upper_bound = problem.upper_bounds
+    lower_bound = problem.lower_bounds
+    interval = 0.0001
+
+    norm_policy = np.arange(-1, 1 + interval, interval).reshape(-1,1)
+    norm_policy = np.repeat(norm_policy, problem.dimension, axis=1)
+    f = np.zeros(norm_policy.shape[0])
+    policy = 0.5 * (norm_policy + 1) * (upper_bound - lower_bound) + lower_bound
+
+    for i in range(policy.shape[0]):
+        f[i] = problem.func(policy[i])
+
+    res_dir = os.path.join(base_dir, 'baseline', '{}D'.format(problem.dimension))
+    if not os.path.exists(res_dir):
+        try:
+            os.makedirs(res_dir)
+        except:
+            pass
+
+    path_res = os.path.join(res_dir, '{}D_index_{}.pkl'.format(problem.dimension, problem_index))
+
+    with open(path_res, 'wb') as handle:
+        pickle.dump({'norm_policy':norm_policy, 'policy':policy, 'f':f}, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 def get_baseline_cmp(dim, index):
     path_res = os.path.join(base_dir, 'baseline', 'compare', 'dim_{} index_{}'.format(dim, index) + ".pkl")
     with open(path_res, 'rb') as handle:
@@ -292,11 +348,14 @@ def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
     merge_baseline_one_line_compare(dims)
 
 if __name__ == '__main__':
-    run_baseline()
+    #run_baseline()
 
-    # for i in tqdm(range(0, 360, 1)):
-    #      D1_plot(i)
-    #
+    #for dim in [2, 3, 5, 10, 20, 40]:
+    for i in tqdm(range(0, 360, 1)):
+        vaeD_plot(i)
+        #nD_plot(dim, i)
+    # D1_plot(i)
+
     #      treeD_plot_contour(i)  #treeD_plot
 
     #create_copy_file("CMP", 2, 0)

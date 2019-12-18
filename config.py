@@ -54,7 +54,7 @@ parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment')
 
 # #exploration parameters
-parser.add_argument('--epsilon', type=float, default=0.01, metavar='ε', help='exploration parameter before behavioral period')
+parser.add_argument('--epsilon', type=float, default=0.1, metavar='ε', help='exploration parameter before behavioral period')
 parser.add_argument('--norm', type=str, default='mean', metavar='norm', help='normalization option - min_max | mean | mean_std')
 parser.add_argument('--explore', type=str, default='grad_direct', metavar='explore', help='exploration option - grad_rand | grad_direct | rand')
 parser.add_argument('--update-step', type=str, default='n_step', metavar='update', help='beta update step - n_step | best_step | first_vs_last | no_update')
