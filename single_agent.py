@@ -660,15 +660,11 @@ class BBOAgent(object):
     def f_policy(self, policy):
         policy = self.pi_net(policy)
         policy = policy.data.cpu().numpy()
-        assert (policy.max() <= 1), "policy.max() {}".format(policy.max())
-        assert (policy.min() >= -1), "policy.min() {}".format(policy.min())
         return self.env.f(policy)
 
     def step_policy(self, policy):
         policy = self.pi_net(policy)
         policy = policy.data.cpu().numpy()
-        assert (policy.max() <= 1), "policy.max() {}".format(policy.max())
-        assert (policy.min() >= -1), "policy.min() {}".format(policy.min())
         self.env.step_policy(policy)
 
     def pi_optimize(self):
@@ -705,7 +701,7 @@ class BBOAgent(object):
 
         return pi_explore, rewards
 
-    def get_evaluation_function(self, policy):
+    def get_evaluation_function(self, policy, target):
         if self.algorithm_method in 'value':
             net = self.value_net
         elif self.algorithm_method in 'spline':
@@ -714,9 +710,37 @@ class BBOAgent(object):
             raise NotImplementedError
 
         #self.value_net.eval()
-        policy_tensor = torch.tensor(policy, dtype=torch.float).to(self.device)
-        value = net(policy_tensor).view(-1).detach().cpu().numpy()
+
+        net.eval()
+        batch = 1000
+        value = []
+        grads_norm = []
+        for i in range(0, policy.shape[0], batch):
+            from_index = i
+            to_index = min(i + batch, policy.shape[0])
+            policy_tensor = torch.tensor(policy[from_index:to_index], dtype=torch.float).to(self.device)
+            policy_tensor = autograd.Variable(policy_tensor, requires_grad=True)
+            target_tensor = torch.tensor(target[from_index:to_index], dtype=torch.float).to(self.device)
+            q_value = net(policy_tensor).view(-1)
+            value.append(q_value.detach().cpu().numpy())
+            loss_q = self.q_loss(q_value, target_tensor).mean()
+            grads = autograd.grad(outputs=loss_q, inputs=policy_tensor, grad_outputs=torch.cuda.FloatTensor(loss_q.size()).fill_(1.),
+                                      create_graph=True, retain_graph=True, only_inputs=True)[0].detach()
+            grads_norm.append(torch.norm(torch.clamp(grads.view(-1, self.action_space), -1, 1), p=2, dim=1).cpu().numpy())
+
+        value = np.hstack(value)
+        grads_norm = np.hstack(grads_norm)
         pi = self.pi_net().detach().cpu().numpy()
         pi_value = net(self.pi_net.pi).detach().cpu().numpy()
         grad = self.get_grad().cpu().numpy()
-        return self.output_denorm(value), pi, self.output_denorm(np.array(pi_value)), self.pi_lr*grad
+
+        return self.output_denorm(value), pi, self.output_denorm(np.array(pi_value)), self.pi_lr*grad, grads_norm
+
+    def get_grad_norm_evaluation_function(self, policy):
+        policy_tensor = torch.tensor(policy, dtype=torch.float).to(self.device)
+        grad_norm = torch.norm(torch.clamp(self.derivative_net(policy_tensor).detach(), -1, 1), p=2, dim=1).cpu().numpy()
+        pi = self.pi_net().detach().cpu().numpy()
+        pi_grad = torch.clamp(self.derivative_net(self.pi_net.pi).detach(), -1, 1)
+        pi_with_grad = pi - self.pi_lr*pi_grad.cpu().numpy()
+        pi_grad_norm = torch.norm(pi_grad).cpu().numpy()
+        return grad_norm, pi, pi_grad_norm, pi_with_grad

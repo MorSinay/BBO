@@ -134,8 +134,11 @@ class Experiment(object):
                     logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
                 logger.info("Best observe      : |\t %f \t \tPi_evaluate: = %f|" % (best_observe, pi_evaluate))
 
-                if self.algorithm in ['value', 'spline']:
+                if self.algorithm in ['value', 'spline', 'anchor']:
                     self.value_vs_f_eval(n)
+
+                if self.algorithm in ['first_order', 'second_order', 'anchor']:
+                    self.grad_norm_on_f_eval(n)
 
             # log to tensorboard
             if args.tensorboard:
@@ -171,9 +174,9 @@ class Experiment(object):
             max_f = res['f'].max()
             min_f = res['f'].min()
             if self.action_space == 1:
-                value, pi, pi_value, grad = self.agent.get_evaluation_function(res['norm_policy'][:, 0])
+                value, pi, pi_value, grad, policy_grads = self.agent.get_evaluation_function(res['norm_policy'][:, 0], res['f'])
             else:
-                value, pi, pi_value, grad = self.agent.get_evaluation_function(res['norm_policy'])
+                value, pi, pi_value, grad, policy_grads = self.agent.get_evaluation_function(res['norm_policy'], res['f'])
 
             pi = pi.reshape(-1, 1)
             grad = grad.reshape(-1, 1)
@@ -181,10 +184,11 @@ class Experiment(object):
             plt.subplot(111)
             plt.plot(res['policy'][:, 0], (res['f'] - min_f)/(max_f - min_f), color='g', markersize=1, label='f')
             plt.plot(res['policy'][:, 0], (value - min_f)/(max_f - min_f), '-o', color='b', markersize=1, label='value')
+            plt.plot(res['policy'][:, 0], policy_grads, 'H', color='m', markersize=1, label='norm_grad')
             plt.plot(5*pi[0], (pi_value - min_f)/(max_f - min_f), 'X', color='r', markersize=4, label='pi')
             plt.plot(5 * np.tanh(pi - grad)[0], (pi_value - min_f)/(max_f - min_f), 'v', color='c', markersize=4, label='gard')
 
-            plt.title('{}D_index_{} - iteration {}'.format(self.action_space, self.iter_index, n))
+            plt.title('value net for alg {} - {}D_index_{} - iteration {}'.format(self.algorithm, self.action_space, self.iter_index, n))
             plt.xlabel('x')
             plt.ylabel('f(x)')
             plt.legend()
@@ -193,10 +197,43 @@ class Experiment(object):
             if not os.path.exists(path_dir_fig):
                 os.makedirs(path_dir_fig)
 
-            path_fig = os.path.join(path_dir_fig, 'iter {}.pdf'.format(n))
+            path_fig = os.path.join(path_dir_fig, 'value iter {}.pdf'.format(n))
             plt.savefig(path_fig)
             plt.close()
 
+    def grad_norm_on_f_eval(self, n):
+        path_res = os.path.join(consts.baseline_dir, '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
+        with open(path_res, 'rb') as handle:
+            res = pickle.load(handle)
+            max_f = res['f'].max()
+            min_f = res['f'].min()
+
+            if self.action_space == 1:
+                grad_norm, pi, pi_grad_norm, pi_with_grad = self.agent.get_grad_norm_evaluation_function(res['norm_policy'][:, 0])
+            else:
+                grad_norm, pi, pi_grad_norm, pi_with_grad = self.agent.get_grad_norm_evaluation_function(res['norm_policy'])
+
+            pi = pi.reshape(-1, 1)
+            pi_with_grad = pi_with_grad.reshape(-1, 1)
+
+            plt.subplot(111)
+            plt.plot(res['policy'][:, 0], (res['f'] - min_f)/(max_f - min_f), color='g', markersize=1, label='f')
+            plt.plot(res['policy'][:, 0], grad_norm, '-o', color='b', markersize=1, label='grad_norm')
+            plt.plot(5*pi[0], pi_grad_norm, 'X', color='r', markersize=4, label='pi')
+            plt.plot(5 * np.tanh(pi_with_grad)[0], pi_grad_norm, 'v', color='c', markersize=4, label='pi_with_grad')
+
+            plt.title('derivative net for alg {} - {}D_index_{} - iteration {}'.format(self.algorithm, self.action_space, self.iter_index, n))
+            plt.xlabel('x')
+            plt.ylabel('f(x)')
+            plt.legend()
+
+            path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
+            if not os.path.exists(path_dir_fig):
+                os.makedirs(path_dir_fig)
+
+            path_fig = os.path.join(path_dir_fig, 'derivative iter {}.pdf'.format(n))
+            plt.savefig(path_fig)
+            plt.close()
 
     def plot_2D_contour(self):
 
@@ -212,7 +249,7 @@ class Experiment(object):
         cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
         plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color='r', markersize=1)
         plt.plot(x[:, 0], x[:, 1], '-o', color='b', markersize=1)
-        plt.title('2D_Contour index {}'.format(self.iter_index))
+        plt.title('alg {} - 2D_Contour index {}'.format(self.algorithm, self.iter_index))
         fig.colorbar(cs)
 
         path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
@@ -235,12 +272,12 @@ class Experiment(object):
         pi_eval = np.repeat(pi_eval, self.n_explore, axis=0)
         pi_best = np.load(os.path.join(path, 'best_observed.npy'))
         pi_best = np.repeat(pi_best, self.n_explore, axis=0)
-        rewards = np.hstack(np.load(os.path.join(path, 'rewards.npy')))
+        #rewards = np.hstack(np.load(os.path.join(path, 'rewards.npy')))
 
         plt.subplot(111)
 
         colors = consts.color
-        plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
+        #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
         plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='pi_evaluate')
         plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[1], label='best_observed')
 
@@ -250,7 +287,7 @@ class Experiment(object):
             plt.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), linestyle='None', marker='x', color=colors[3+i], label=op)
 
         plt.legend()
-        plt.title('dim = {} index = {} ----- best vs eval'.format(self.action_space, self.iter_index))
+        plt.title('alg {} - dim = {} index = {} ----- best vs eval'.format(self.algorithm, self.action_space, self.iter_index))
         plt.grid(True, which='both')
 
         path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))

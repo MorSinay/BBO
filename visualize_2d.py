@@ -17,16 +17,17 @@ from environment import EnvCoco, EnvOneD, EnvVae
 from environment import one_d_change_dim
 import pickle
 username = pwd.getpwuid(os.geteuid()).pw_name
+from config import Consts
 
-if username == 'morsi':
-    base_dir = os.path.join('/Users', username, 'Desktop')
-else:
-    from vae import VaeProblem, VAE
-    base_dir = os.path.join('/data/', username, 'gan_rl')
+# if username == 'morsi':
+#     base_dir = os.path.join('/Users', username, 'Desktop')
+# else:
+#     from vae import VaeProblem, VAE
+#     base_dir = os.path.join('/data/', username, 'gan_rl')
+
+epsilon = 1
 
 filter_mod = 1
-
-# TODO: add VAE data base
 
 def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
 
@@ -84,7 +85,7 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
     data['min_opt'] = (len(data['best_observed'])*[min(data['best_observed'])])
     df = pd.DataFrame(data)
     title = 'dim_{} index_{}'.format(dim, index)
-    save_dir = os.path.join(base_dir, 'baseline', 'compare')
+    save_dir = os.path.join(Consts.baseline_dir, 'compare')
     if not os.path.exists(save_dir):
         try:
             os.makedirs(save_dir)
@@ -172,7 +173,7 @@ def treeD_plot(problem_index):
             res_list.append(np.concatenate([x, fx], axis=None))
 
     res = np.stack(res_list)
-    res_dir = os.path.join(base_dir, 'baseline', '2D')
+    res_dir = os.path.join(Consts.baseline_dir, '2D')
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)
@@ -183,7 +184,7 @@ def treeD_plot(problem_index):
     np.save(path_res, res)
 
 def calc_f0():
-    save_dir = os.path.join(base_dir, 'baseline')
+    save_dir = Consts.baseline_dir
     data_dict = defaultdict(list)
     for dim in [2,3,5,10,20,40]:
         suite = cocoex.Suite("bbob", "", ("dimensions: {}".format(dim)))
@@ -215,7 +216,7 @@ def treeD_plot_contour(problem_index):
             x = np.array([x0[i,j], x1[i,j]])
             z[i,j] = problem(x)
 
-    res_dir = os.path.join(base_dir, 'baseline', '2D_Contour')
+    res_dir = os.path.join(Consts.baseline_dir, '2D_Contour')
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)
@@ -243,7 +244,7 @@ def D1_plot(problem_index):
     for i in range(x0.shape[0]):
         f[i] = problem(policy[i])
 
-    res_dir = os.path.join(base_dir, 'baseline', '1D')
+    res_dir = os.path.join(Consts.baseline_dir, '1D')
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)
@@ -271,7 +272,7 @@ def nD_plot(dim, problem_index):
     for i in range(policy.shape[0]):
         f[i] = problem(policy[i])
 
-    res_dir = os.path.join(base_dir, 'baseline', '{}D'.format(dim))
+    res_dir = os.path.join(Consts.baseline_dir, '{}D'.format(dim))
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)
@@ -298,7 +299,7 @@ def vaeD_plot(problem_index):
     for i in range(policy.shape[0]):
         f[i] = problem.func(policy[i])
 
-    res_dir = os.path.join(base_dir, 'baseline', '{}D'.format(problem.dimension))
+    res_dir = os.path.join(Consts.baseline_dir, '{}D'.format(problem.dimension))
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)
@@ -311,7 +312,7 @@ def vaeD_plot(problem_index):
         pickle.dump({'norm_policy':norm_policy, 'policy':policy, 'f':f}, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def get_baseline_cmp(dim, index):
-    path_res = os.path.join(base_dir, 'baseline', 'compare', 'dim_{} index_{}'.format(dim, index) + ".pkl")
+    path_res = os.path.join(Consts.baseline_dir, 'compare', 'dim_{} index_{}'.format(dim, index) + ".pkl")
     with open(path_res, 'rb') as handle:
         res = pickle.load(handle)
         return res
@@ -332,11 +333,11 @@ def merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
             data['min_opt'].append(optimizer_res['min_opt'][0])
             for i, op in enumerate(optimizer_res['fmin']):
                 res = optimizer_res[optimizer_res['fmin'] == op]
-                data[op + '_best_observed'].append(res['best_observed'])
-                data[op + '_budget'].append(res['number_of_evaluations'])
+                data[op + '_best_observed'].append(float(res['best_observed']))
+                data[op + '_budget'].append(float(res['number_of_evaluations']))
 
     df = pd.DataFrame(data)
-    file = os.path.join(base_dir, 'compare.csv')
+    file = os.path.join(Consts.baseline_dir, 'compare.csv')
     df.to_csv(file)
 
 def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
@@ -347,12 +348,75 @@ def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
 
     merge_baseline_one_line_compare(dims)
 
+def merge_bbo(optimizers = [], dimension = [1, 2, 3, 5, 10, 20, 40, 784], save_file='baseline_cmp.pdf', plot_sum=False):
+    compare_file = os.path.join(Consts.baseline_dir, 'compare.csv')
+    assert os.path.exists(compare_file), 'no compare file'
+
+    baseline_df = pd.read_csv(os.path.join(compare_file))
+    res_dir = os.path.join(Consts.baseline_dir, 'results')
+
+    for op in optimizers:
+        op_df = pd.read_csv(os.path.join(res_dir, op, op+'_{}'.format(dimension[0]) + ".csv"))
+
+        for dim in dimension[1:]:
+            df_d = pd.read_csv(os.path.join(res_dir, op, op+'_{}'.format(dim) + ".csv"))
+            op_df = op_df.append(df_d, ignore_index=True)
+
+        op_df = op_df[['id', 'best_observed', 'number_of_evaluations']]
+        op_df = op_df.rename(columns={"best_observed": op+"_best_observed",
+                                "number_of_evaluations": op+"_number_of_evaluations"})
+
+        baseline_df = baseline_df.merge(op_df, on='id')
+
+    columns = baseline_df.columns
+    best_observed = []
+    for item in columns:
+        if item.endswith('_best_observed'):
+            best_observed.append(item)
+
+    baseline_df['min_val'] = baseline_df[best_observed].min(axis=1)
+
+    file = os.path.join(Consts.baseline_dir, 'tmp_compare.csv')
+    baseline_df.to_csv(file)
+
+    X = [20*i for i in range(len(dimension))]
+    ax = plt.subplot(111)
+    w = 1
+
+    for j, best_observed_op in enumerate(best_observed):
+        res = []
+        x = [X[i] + j*w for i in range(len(dimension))]
+        for dim in dimension:
+            temp_df = baseline_df[baseline_df.dim == dim]
+            if plot_sum:
+                compare_method = (temp_df[best_observed_op].values - temp_df['min_val'].values) / temp_df['f0'].values
+            else:
+                compare_method = (temp_df[best_observed_op].values - temp_df['min_val'].values) < epsilon
+            count = len(compare_method)
+            res.append(compare_method.sum()/count)
+        optim = best_observed_op[:-len('_best_observed')]
+        ax.bar(x, res, width=w, color=Consts.color[j], align='center', label=optim)
+
+    ax.set_xticks([i + len(dimension)//2 for i in X])
+    ax.set_xticklabels(dimension)
+   # ax.autoscale(tight=True)
+    #ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=4)
+    ax.legend()
+    #plt.title("BASELINE COMPARE - BUDGET {}".format(max_budget))
+    path_fig = os.path.join(res_dir, save_file)
+    plt.savefig(path_fig)
+    plt.close()
+
 if __name__ == '__main__':
-    #run_baseline()
+    merge_bbo(optimizers=['value', 'first_order'], dimension=[2, 3, 5])
+    #run_baseline(dims=[1, 2, 3, 5, 10])
+
+    #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
+
 
     #for dim in [2, 3, 5, 10, 20, 40]:
-    for i in tqdm(range(0, 360, 1)):
-        vaeD_plot(i)
+    # for i in tqdm(range(0, 360, 1)):
+    #     vaeD_plot(i)
         #nD_plot(dim, i)
     # D1_plot(i)
 

@@ -87,7 +87,7 @@ def main():
             data['divergence'].append(divergence)
             data['index'].append(main_run.env.problem.index)
             data['hit'].append(main_run.env.problem.final_target_hit)
-            data['id'].append(main_run.env.problem.id)
+            data['id'].append(main_run.env.get_problem_id())
             data['dimension'].append(main_run.env.problem.dimension)
             data['best_observed'].append(main_run.env.problem.best_observed_fvalue1)
             data['initial_solution'].append(main_run.env.initial_solution)

@@ -3,6 +3,7 @@ from torch import nn
 from config import args
 from torch.nn.utils import spectral_norm
 import math
+from collections import defaultdict
 
 
 action_space = args.action_space
@@ -42,16 +43,26 @@ class MultipleOptimizer:
         for op in self.optimizers:
             op.step()
 
+    def state_dict(self):
+        op_dict = defaultdict()
+        for op in self.optimizers:
+            op_dict[op.__name__] = op.state_dict()
+
+    def load_state_dict(self, op_dict):
+        for op in self.optimizers:
+            op.load_state_dict(op_dict[op.__name__])
+
 class SplineNet(nn.Module):
 
     def __init__(self, device, output=1):
         super(SplineNet, self).__init__()
-
+        self.norm = nn.Tanh()
         self.embedding = SplineEmbedding(device)
         self.head = SplineHead(output)
 
     def forward(self, x):
         x = x.view(-1, action_space)
+        x = self.norm(x)
         x_emb, x_emb2 = self.embedding(x)
         x = self.head(x, x_emb, x_emb2)
 
@@ -286,31 +297,6 @@ class PiNet(nn.Module):
      #       grads = grads.squeeze(0)
         with torch.no_grad():
             self.pi.grad = grads
-
-class PiNetClamp(nn.Module):
-
-    def __init__(self, init, device, action_space):
-
-        super(PiNet, self).__init__()
-
-        self.pi = nn.Parameter(init)
-        self.device = device
-        self.action_space = action_space
-
-    def forward(self, pi=None):
-        if pi is None:
-            return torch.clamp(self.pi, -1, 1)
-        else:
-            return torch.clamp(pi, -1, 1)
-
-    def pi_update(self, pi):
-        with torch.no_grad():
-            self.pi.data = torch.clamp(pi)
-
-    def grad_update(self, grads):
-        with torch.no_grad():
-            self.pi.grad = grads
-
 
 class DerivativeNet(nn.Module):
 

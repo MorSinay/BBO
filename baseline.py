@@ -31,39 +31,39 @@ color = ['b', 'g', 'r', 'y', 'c', 'm', 'k', 'lime', 'gold', 'slategray', 'indigo
 
 epsilon = 1
 
-def merge_baseline(dims=[2, 3, 5, 10, 20, 40, 784]):
-
-    data = defaultdict(list)
-    min_data = defaultdict(list)
-    for dim in dims:
-        for index in range(360):
-            optimizer_res = get_baseline_cmp(dim, index)
-            if dim == 784:
-                min_res_cmp = get_baseline_cmp(20, index)
-            else:
-                min_res_cmp = get_baseline_cmp(dim, index)
-            min_val = float(min(min_res_cmp.best_observed))
-            min_data['dim'].append(dim)
-            min_data['iter_index'].append(index)
-            min_data['min_val'].append(min_val)
-            for op in optimizer_res['fmin']:
-                res = optimizer_res[optimizer_res['fmin'] == op]
-                best_observed = float(res['best_observed'])
-                data['dim'].append(dim)
-                data['iter_index'].append(index)
-                data['optimizer'].append(op)
-                data['budget'].append(float(res.number_of_evaluations))
-                if np.abs(best_observed - min_val) < epsilon:
-                    data['success'].append(1)
-                else:
-                    data['success'].append(0)
-
-    df = pd.DataFrame(data)
-    file = os.path.join(base_dir, 'success.csv')
-    df.to_csv(file)
-    df = pd.DataFrame(min_data)
-    file = os.path.join(base_dir, 'min_val.csv')
-    df.to_csv(file)
+# def merge_baseline(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
+#
+#     data = defaultdict(list)
+#     min_data = defaultdict(list)
+#     for dim in dims:
+#         for index in range(360):
+#             optimizer_res = get_baseline_cmp(dim, index)
+#             if dim == 784:
+#                 min_res_cmp = get_baseline_cmp(20, index)
+#             else:
+#                 min_res_cmp = get_baseline_cmp(dim, index)
+#             min_val = float(min(min_res_cmp.best_observed))
+#             min_data['dim'].append(dim)
+#             min_data['iter_index'].append(index)
+#             min_data['min_val'].append(min_val)
+#             for op in optimizer_res['fmin']:
+#                 res = optimizer_res[optimizer_res['fmin'] == op]
+#                 best_observed = float(res['best_observed'])
+#                 data['dim'].append(dim)
+#                 data['iter_index'].append(index)
+#                 data['optimizer'].append(op)
+#                 data['budget'].append(float(res.number_of_evaluations))
+#                 if np.abs(best_observed - min_val) < epsilon:
+#                     data['success'].append(1)
+#                 else:
+#                     data['success'].append(0)
+#
+#     df = pd.DataFrame(data)
+#     file = os.path.join(base_dir, 'success.csv')
+#     df.to_csv(file)
+#     df = pd.DataFrame(min_data)
+#     file = os.path.join(base_dir, 'min_val.csv')
+#     df.to_csv(file)
 
 def merge_baseline_one_line_compare(dims=[2, 3, 5, 10, 20, 40, 784]):
 
@@ -92,8 +92,7 @@ def merge_baseline_one_line_compare(dims=[2, 3, 5, 10, 20, 40, 784]):
 
 def merge_bbo(optimizers = [], dimension = [2, 3, 5, 10, 20, 40, 784], plot_sum=False):
     compare_file = os.path.join(base_dir, 'compare.csv')
-    if not os.path.exists(compare_file):
-        merge_baseline_one_line_compare(dimension)
+    assert os.path.exists(compare_file), 'no compare file'
 
     baseline_df = pd.read_csv(os.path.join(compare_file))
     res_dir = os.path.join(base_dir, 'results')
@@ -382,7 +381,7 @@ if __name__ == '__main__':
 
     #merge_baseline_one_line_compare()
     #merge_bbo(optimizers=[], dimension=[2, 3, 5, 10, 20, 40, 784], plot_sum=False)
-    #merge_bbo(optimizers=["first_order", "second_order"], dimension=[2, 3, 5, 10, 20, 40], plot_sum=True)
+    merge_bbo(optimizers=['value', 'first_order', 'second_order'], dimension=[1, 2, 3, 5, 10], plot_sum=False)
     dim = 2
     index = 0
     dir_name = 'CMP'
@@ -391,14 +390,14 @@ if __name__ == '__main__':
     path = os.path.join(base_dir, 'analysis', dir_name, str(dim))
 
     title = "{} dim = {} index = {}".format(dir_name, dim, index)
-    compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
+    #compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
 
 
     #plot_res(optimizers=["value", "first_order", "second_order", "anchor"], max_budget=12000, compare_baseline=True)
 
-    for i in range(360):
-        plot_1D(i, True)
-     #   plot_2D_contour_tmp(i, True)
+    # for i in range(360):
+    #     plot_1D(i, True)
+    #  #   plot_2D_contour_tmp(i, True)
     #     plot_2D(i, save_fig=True)
 
     prefix = 'value_direct_3'
