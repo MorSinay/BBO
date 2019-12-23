@@ -168,7 +168,7 @@ class Experiment(object):
         return divergence
 
     def value_vs_f_eval(self, n):
-        path_res = os.path.join(consts.baseline_dir, '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
+        path_res = os.path.join(consts.baseline_dir, 'f_eval', '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
             max_f = res['f'].max()
@@ -202,7 +202,7 @@ class Experiment(object):
             plt.close()
 
     def grad_norm_on_f_eval(self, n):
-        path_res = os.path.join(consts.baseline_dir, '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
+        path_res = os.path.join(consts.baseline_dir, 'f_eval', '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
             max_f = res['f'].max()
@@ -238,7 +238,7 @@ class Experiment(object):
     def plot_2D_contour(self):
 
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
-        path_dir = os.path.join(consts.baseline_dir, '2D_Contour')
+        path_dir = os.path.join(consts.baseline_dir, 'f_eval', '2D_Contour')
         path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(self.iter_index))
         res = np.load(path_res).item()
 

@@ -55,7 +55,7 @@ def main():
     username = pwd.getpwuid(os.geteuid()).pw_name
     algorithm = args.algorithm
 
-    torch.set_num_threads(1000)
+    torch.set_num_threads(100)
     print("Torch %d" % torch.get_num_threads())
     # print args of current run
     logger.info("Welcome to Gan simulation")

@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 
-algorithm=$1
-dim=$2
-index=$3
-aux="${@:4}"
+dim=$1
+index=$2
+aux="${@:3}"
 
-echo algorithm=$1 dim=$2 index=$3
+echo dim=$dim index=$index
 
-args="--game=CMP --explore=grad_direct --epsilon=0.1 --norm=robust_scaler --budget=400 --grad-clip=1e-3 --best-explore-update --no-bandage --update-step=n_step --action-space=$dim --problem-index=$index"
+args_value="--algorithm=value --layer=256 --grad-steps=10 --beta-lr=1e-3 --grad-clip=1e-3 --importance-sampling --game=CMP --budget=800 --alpha=1 --replay-memory-factor=30 --batch=1000 --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --no-bandage --norm=robust_scaler"
+args_f="--algorithm=first_order --layer=256 --grad-steps=1 --beta-lr=1e-2 --grad-clip=1e-2 --importance-sampling --game=CMP --budget=800  --alpha=1 --replay-memory-factor=100 --batch=1000 --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --norm=mean_std --no-bandage"
+args_s="--algorithm=second_order --layer=256 --grad-steps=1 --beta-lr=1e-2 --grad-clip=1e-2 --importance-sampling --game=CMP --budget=800 --alpha=1 --replay-memory-factor=100 --batch=1000 --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --norm=mean_std --no-bandage"
 
-CUDA_VISIBLE_DEVICES=3, python main.py --algorithm=$algorithm --alpha=1 --replay-memory-factor=30 --batch=100 --identifier=direct --beta-lr=1e-3 $args $aux &
+CUDA_VISIBLE_DEVICES=0, python main.py --explore=cone --identifier=cone --action-space=$dim --problem-index=$index $args_value $aux &
+CUDA_VISIBLE_DEVICES=1, python main.py --explore=cone --identifier=cone --action-space=$dim --problem-index=$index $args_f $aux &
+
+CUDA_VISIBLE_DEVICES=2, python main.py --explore=grad_direct --identifier=grad_direct --action-space=$dim --problem-index=$index $args_value $aux &
+CUDA_VISIBLE_DEVICES=2, python main.py --explore=grad_direct --identifier=grad_direct --action-space=$dim --problem-index=$index $args_f $aux &
 
 #CUDA_VISIBLE_DEVICES=1, python main.py --algorithm=first_order --explore=grad_direct --identifier=direct --beta-lr=1e-3 $args $aux &
 #CUDA_VISIBLE_DEVICES=2, python main.py --algorithm=second_order --explore=grad_direct --identifier=direct --beta-lr=1e-3 $args $aux &

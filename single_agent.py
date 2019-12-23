@@ -11,7 +11,7 @@ from torchvision.utils import save_image
 from sklearn.preprocessing import RobustScaler
 from config import consts, args, DirsAndLocksSingleton
 from model_ddpg import DuelNet, DerivativeNet, PiNet, SplineNet, MultipleOptimizer
-
+import math
 import os
 import copy
 
@@ -84,6 +84,8 @@ class BBOAgent(object):
             self.exploration = self.exploration_rand
         elif args.explore == 'rand_test':
             self.exploration = self.exploration_rand_test
+        elif args.explore == 'cone':
+            self.exploration = self.cone_explore
         else:
             print("explore:"+args.explore)
             raise NotImplementedError
@@ -116,7 +118,7 @@ class BBOAgent(object):
         self.pi_net.train()
 
         if self.algorithm_method in ['first_order', 'second_order']:
-            self.value_iter = 100
+            self.value_iter = 20
             self.derivative_net = DerivativeNet()
             self.derivative_net.to(self.device)
             # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
@@ -157,7 +159,7 @@ class BBOAgent(object):
 
     def update_pi_optimizer_lr(self):
         op_dict = self.optimizer_pi.state_dict()
-        self.pi_lr *= 0.97
+        self.pi_lr *= 0.85
         op_dict['param_groups'][0]['lr'] = self.pi_lr
         self.optimizer_pi.load_state_dict(op_dict)
 
@@ -302,7 +304,14 @@ class BBOAgent(object):
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
                 self.save_results()
                 print("VALUE IS NOT CHANGING - FRAME %d" % self.frame)
-                break
+                if np.abs(self.results['best_observed'][-1] - self.results['pi_evaluate'][-1]) > 1:
+                    print("RESTART")
+                    self.update_best_pi()
+                    self.update_pi_optimizer_lr()
+                    self.divergence += 1
+                    self.warmup()
+                else:
+                    break
 
             if self.frame >= self.budget:
                 self.save_results()
@@ -519,7 +528,7 @@ class BBOAgent(object):
 
         optimizer_state = copy.deepcopy(self.optimizer_pi.state_dict())
         pi_array = [self.pi_net.pi.detach().clone()]
-        for _ in range(n-1):
+        for _ in range(n):
             pi, _ = self.grad_step()
             pi_array.append(pi)
 
@@ -602,7 +611,7 @@ class BBOAgent(object):
             pi_explore = -2 * torch.rand(n_explore, self.action_space) + 1
             return pi_explore
 
-    def exploration_grad_rand_old(self, n_explore):
+    def exploration_grad_rand(self, n_explore):
         grads = self.get_grad().cpu()
         pi = self.pi_net.pi.detach().clone().cpu()
         explore_factor = self.delta * grads + self.epsilon * torch.randn(n_explore, self.action_space)
@@ -611,25 +620,56 @@ class BBOAgent(object):
         return pi_explore
 
     def exploration_grad_direct(self, n_explore):
-        pi_array = self.get_n_grad_ahead(self.grad_steps).reshape(self.grad_steps, self.action_space).cpu()
+        pi_array = self.get_n_grad_ahead(self.grad_steps).reshape(self.grad_steps+1, self.action_space).cpu()
         n_explore = (n_explore // self.grad_steps)
 
-        epsilon_array = self.epsilon ** (3 - 2 * torch.arange(self.grad_steps, dtype=torch.float) / (self.grad_steps - 1))
+        epsilon_array = self.epsilon ** (3 - 2 * torch.arange(self.grad_steps+1, dtype=torch.float) / (self.grad_steps))
         epsilon_array = epsilon_array.unsqueeze(1) # .expand_dims(epsilon_array, axis=1)
-        pi_explore = torch.cat([pi_array + epsilon_array * torch.randn(self.grad_steps, self.action_space) for _ in range(n_explore)], dim=0)
+        pi_explore = torch.cat([pi_array + epsilon_array * torch.randn(self.grad_steps+1, self.action_space) for _ in range(n_explore)], dim=0)
         return pi_explore
 
-    def exploration_grad_direct_prop(self, n_explore):
-        pi_array = self.get_n_grad_ahead(self.grad_steps + 1).cpu()
-        n_explore = (n_explore // self.grad_steps)
+    def cone_explore(self, n_explore):
+        alpha=math.pi / 4
+        n = n_explore - 1
+        pi = self.pi_net.pi.detach().cpu()
+        d = self.get_grad().cpu()
+        m = len(pi)
+        pi = pi.unsqueeze(0)
 
-        diff_pi = torch.norm(pi_array[1:] - pi_array[:-1], 2, dim=1)
+        x = torch.FloatTensor(n, m).normal_()
+        mag = torch.FloatTensor(n, 1).uniform_()
 
-        epsilon_array = diff_pi * 10 ** (torch.arange(self.grad_steps, dtype=torch.float) / (self.grad_steps - 1))
-        epsilon_array = epsilon_array.unsqueeze(1)#np.expand_dims(epsilon_array, axis=1)
-        pi_explore = torch.cat([pi_array[:-1] - epsilon_array * torch.randn(self.grad_steps, self.action_space) for _ in range(n_explore)], dim=0)
+        x = x / torch.norm(x, dim=1, keepdim=True)
+        d = d / torch.norm(d)
 
-        return pi_explore
+        cos = (x @ d).unsqueeze(1)
+
+        dp = x - cos * d.unsqueeze(0)
+
+        dp = dp / torch.norm(dp, dim=1, keepdim=True)
+
+        acos = torch.acos(torch.abs(cos))
+
+        new_cos = torch.cos(acos * alpha / (math.pi / 2))
+        new_sin = torch.sin(acos * alpha / (math.pi / 2))
+
+        cone = new_sin * dp + new_cos * d
+
+        explore = pi - self.epsilon * mag * cone
+
+        return torch.cat([pi, explore])
+
+    # def exploration_grad_direct_prop(self, n_explore):
+    #     pi_array = self.get_n_grad_ahead(self.grad_steps + 1).cpu()
+    #     n_explore = (n_explore // self.grad_steps)
+    #
+    #     diff_pi = torch.norm(pi_array[1:] - pi_array[:-1], 2, dim=1)
+    #
+    #     epsilon_array = diff_pi * 10 ** (torch.arange(self.grad_steps, dtype=torch.float) / (self.grad_steps - 1))
+    #     epsilon_array = epsilon_array.unsqueeze(1)#np.expand_dims(epsilon_array, axis=1)
+    #     pi_explore = torch.cat([pi_array[:-1] - epsilon_array * torch.randn(self.grad_steps, self.action_space) for _ in range(n_explore)], dim=0)
+    #
+    #     return pi_explore
 
     def get_grad(self):
 

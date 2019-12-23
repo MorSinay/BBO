@@ -1,3 +1,9 @@
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib import cm
+from mpl_toolkits.mplot3d import axes3d, Axes3D
+
 try: import cocoex
 except: pass
 
@@ -10,7 +16,6 @@ import numpy as np
 import pwd
 import os
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from collections import defaultdict
 from vae import VaeProblem, VAE
 from environment import EnvCoco, EnvOneD, EnvVae
@@ -45,15 +50,15 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
     for fmin in optimization_function:
         if dim == 784:
             problem.reset(index)
-            env = EnvVae(problem)
+            env = EnvVae(problem, index)
         elif dim == 1:
             suite.reset()
             problem = suite.get_problem(index)
-            env = EnvOneD(problem, False)
+            env = EnvOneD(problem,index,  False)
         else:
             suite.reset()
             problem = suite.get_problem(index)
-            env = EnvCoco(problem, False)
+            env = EnvCoco(problem, index, False)
 
         func = env.f
 
@@ -85,7 +90,7 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
     data['min_opt'] = (len(data['best_observed'])*[min(data['best_observed'])])
     df = pd.DataFrame(data)
     title = 'dim_{} index_{}'.format(dim, index)
-    save_dir = os.path.join(Consts.baseline_dir, 'compare')
+    save_dir = os.path.join(Consts.baseline_dir, 'compare', 'D_{}'.format(dim))
     if not os.path.exists(save_dir):
         try:
             os.makedirs(save_dir)
@@ -106,7 +111,7 @@ def run_problem(fmin,  problem, x0, budget):
             x, best_val, _, eval_num, _ = fmin(problem, x0, maxfun=budget, disp=False, full_output=True)
 
         elif fmin_name is 'fmin2':
-            x, _ = fmin(problem, x0, 2, {'maxfevals': budget, 'verbose':-9}, restarts=9)
+            x, _ = fmin(problem, x0, 2, {'maxfevals': budget, 'verbose':-9}, restarts=0)
 
         elif fmin_name is 'fmin_cobyla':
             x = fmin(problem, x0, cons=lambda x: None, maxfun=budget, disp=0, rhoend=1e-9)
@@ -130,8 +135,8 @@ def create_copy_file(prefix, dim, index):
     if username == 'morsi':
         assert False, "create_copy_file"
 
-    res_dir = os.path.join(base_dir, 'results')
     local_path = os.path.join('/Users', 'morsi', 'Desktop', 'baseline', 'analysis')
+    res_dir = Consts.outdir
     dirs = os.listdir(res_dir)
 
     create_dirs = []
@@ -173,7 +178,7 @@ def treeD_plot(problem_index):
             res_list.append(np.concatenate([x, fx], axis=None))
 
     res = np.stack(res_list)
-    res_dir = os.path.join(Consts.baseline_dir, '2D')
+    res_dir = os.path.join(Consts.baseline_dir, 'f_eval', '2D')
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)
@@ -216,7 +221,7 @@ def treeD_plot_contour(problem_index):
             x = np.array([x0[i,j], x1[i,j]])
             z[i,j] = problem(x)
 
-    res_dir = os.path.join(Consts.baseline_dir, '2D_Contour')
+    res_dir = os.path.join(Consts.baseline_dir, 'f_eval', '2D_Contour')
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)
@@ -234,7 +239,7 @@ def D1_plot(problem_index):
 
     upper_bound = problem.upper_bounds
     lower_bound = problem.lower_bounds
-    interval = 0.0001
+    interval = 0.001
 
     x0 = np.arange(-1, 1 + interval, interval)
     norm_policy = np.clip(one_d_change_dim(x0), -1, 1)
@@ -244,15 +249,11 @@ def D1_plot(problem_index):
     for i in range(x0.shape[0]):
         f[i] = problem(policy[i])
 
-    res_dir = os.path.join(Consts.baseline_dir, '1D')
+    res_dir = os.path.join(Consts.baseline_dir, 'f_eval', '1D')
     if not os.path.exists(res_dir):
-        try:
-            os.makedirs(res_dir)
-        except:
-            pass
+        os.makedirs(res_dir)
 
     path_res = os.path.join(res_dir, '1D_index_{}.pkl'.format(problem_index))
-
     with open(path_res, 'wb') as handle:
         pickle.dump({'norm_policy':norm_policy, 'policy':policy, 'f':f}, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -262,7 +263,7 @@ def nD_plot(dim, problem_index):
 
     upper_bound = problem.upper_bounds
     lower_bound = problem.lower_bounds
-    interval = 0.0001
+    interval = 0.001
 
     norm_policy = np.arange(-1, 1 + interval, interval).reshape(-1,1)
     norm_policy = np.repeat(norm_policy, dim, axis=1)
@@ -272,7 +273,7 @@ def nD_plot(dim, problem_index):
     for i in range(policy.shape[0]):
         f[i] = problem(policy[i])
 
-    res_dir = os.path.join(Consts.baseline_dir, '{}D'.format(dim))
+    res_dir = os.path.join(Consts.baseline_dir, 'f_eval', '{}D'.format(dim))
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)
@@ -283,6 +284,69 @@ def nD_plot(dim, problem_index):
 
     with open(path_res, 'wb') as handle:
         pickle.dump({'norm_policy':norm_policy, 'policy':policy, 'f':f}, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def visualization(problem_index):
+    suite = cocoex.Suite("bbob", "", ("dimensions: 2"))
+    problem = suite.get_problem(problem_index)
+    upper_bound = problem.upper_bounds
+    lower_bound = problem.lower_bounds
+    interval = 0.1
+
+    #fig, (ax1, ax2) = plt.subplots(1, 2)
+    fig = plt.figure()
+    fig.suptitle('index_{} -- {}'.format(problem_index, problem.id))
+    ax1 = plt.subplot(311)
+    ax2 = plt.subplot(312, projection='3d')
+    ax3 = plt.subplot(313)
+
+    res_dir = os.path.join(Consts.baseline_dir, 'visualization')
+    if not os.path.exists(res_dir):
+        os.makedirs(res_dir)
+
+    x0 = np.arange(lower_bound[0], upper_bound[0] + interval, interval)
+    x1 = np.arange(lower_bound[1], upper_bound[1] + interval, interval)
+    x0, x1 = np.meshgrid(x0, x1)
+    z = np.zeros(x0.shape)
+
+    for i in range(x0.shape[0]):
+        for j in range(x1.shape[1]):
+            x = np.array([x0[i, j], x1[i, j]])
+            z[i, j] = problem(x)
+
+    ax1.contour(x0, x1, z, 100)
+
+    f_list = []
+    x_list = []
+    for x0 in np.arange(lower_bound[0], upper_bound[0] + interval, interval):
+        for x1 in np.arange(lower_bound[1], upper_bound[1] + interval, interval):
+            x = np.array([x0, x1])
+            fx = problem(x)
+            f_list.append(fx)
+            x_list.append(x)
+
+    f_list = np.array(f_list)
+    x_list = np.array(x_list)
+    #ax2 = fig.gca(projection='3d')
+    ax2.plot_trisurf(x_list[:, 0], x_list[:, 1], f_list, cmap='winter')
+
+    x0 = np.arange(-1, 1 + interval, interval)
+    norm_policy = np.clip(one_d_change_dim(x0), -1, 1)
+    f = np.zeros(x0.shape)
+    policy = 0.5 * (norm_policy + 1) * (upper_bound - lower_bound) + lower_bound
+
+    for i in range(x0.shape[0]):
+        f[i] = problem(policy[i])
+
+    ax3.plot(policy, f, color='g', markersize=1, label='f')
+    ax3.set_xlabel('x')
+    ax3.set_ylabel('f(x)')
+    ax3.grid(True, which='both')
+
+    path_fig = os.path.join(res_dir, 'index_{:03d}.pdf'.format(problem_index))
+    plt.savefig(path_fig)
+    plt.close()
+
 
 def vaeD_plot(problem_index):
     problem = VaeProblem(problem_index)
@@ -299,7 +363,7 @@ def vaeD_plot(problem_index):
     for i in range(policy.shape[0]):
         f[i] = problem.func(policy[i])
 
-    res_dir = os.path.join(Consts.baseline_dir, '{}D'.format(problem.dimension))
+    res_dir = os.path.join(Consts.baseline_dir, 'f_eval', '{}D'.format(problem.dimension))
     if not os.path.exists(res_dir):
         try:
             os.makedirs(res_dir)
@@ -312,7 +376,7 @@ def vaeD_plot(problem_index):
         pickle.dump({'norm_policy':norm_policy, 'policy':policy, 'f':f}, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def get_baseline_cmp(dim, index):
-    path_res = os.path.join(Consts.baseline_dir, 'compare', 'dim_{} index_{}'.format(dim, index) + ".pkl")
+    path_res = os.path.join(Consts.baseline_dir, 'compare', 'D_{}'.format(dim), 'dim_{} index_{}'.format(dim, index) + ".pkl")
     with open(path_res, 'rb') as handle:
         res = pickle.load(handle)
         return res
@@ -389,9 +453,9 @@ def merge_bbo(optimizers = [], dimension = [1, 2, 3, 5, 10, 20, 40, 784], save_f
         for dim in dimension:
             temp_df = baseline_df[baseline_df.dim == dim]
             if plot_sum:
-                compare_method = (temp_df[best_observed_op].values - temp_df['min_val'].values) / temp_df['f0'].values
+                compare_method = (temp_df[best_observed_op].values - temp_df['min_val'].values) / np.abs(temp_df['f0'].values)
             else:
-                compare_method = (temp_df[best_observed_op].values - temp_df['min_val'].values) < epsilon
+                compare_method = np.abs(temp_df[best_observed_op].values - temp_df['min_val'].values) < epsilon
             count = len(compare_method)
             res.append(compare_method.sum()/count)
         optim = best_observed_op[:-len('_best_observed')]
@@ -407,24 +471,70 @@ def merge_bbo(optimizers = [], dimension = [1, 2, 3, 5, 10, 20, 40, 784], save_f
     plt.savefig(path_fig)
     plt.close()
 
+
+def bbo_evaluate_compare(dim, index, prefix='CMP'):
+
+    optimizer_res = get_baseline_cmp(dim, index)
+    min_val = optimizer_res['min_opt'][0]
+    f0 = optimizer_res['f0'][0]
+
+    res_dir = Consts.outdir
+    dirs = os.listdir(res_dir)
+
+    compare_dirs = defaultdict()
+
+    dim_len = int(np.log10(dim)) + 2
+
+    for dir in dirs:
+        if dir.startswith(prefix) and dir.endswith(str(dim)):
+            alg = dir[len(prefix)+1 : -dim_len]
+            compare_dirs[alg] = os.path.join(res_dir, dir, 'analysis', str(index))
+        else:
+            continue
+
+
+    plt.subplot(111)
+
+    colors = Consts.color
+
+    for i, key in enumerate(compare_dirs.keys()):
+        path = compare_dirs[key]
+        pi_eval = np.load(os.path.join(path, 'pi_evaluate.npy'))
+        pi_best = np.load(os.path.join(path, 'best_observed.npy'))
+
+        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[2*i], label=key+'_pi_evaluate')
+        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[2*i+1], label=key+'_best_observed')
+
+    plt.legend()
+    plt.title('compare dim = {} index = {}'.format(dim, index))
+    plt.grid(True, which='both')
+
+    path_fig = os.path.join(Consts.baseline_dir, 'Compare bbo - dim = {} index = {}.pdf'.format(dim, index))
+    plt.savefig(path_fig)
+
+    plt.close()
+
 if __name__ == '__main__':
-    merge_bbo(optimizers=['value', 'first_order'], dimension=[2, 3, 5])
-    #run_baseline(dims=[1, 2, 3, 5, 10])
 
     #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
 
+    optimizers = ['value', 'value_', 'first_order_', 'first_order', 'second_order']
+    dims = [1, 2, 3, 5, 10, 20, 40]
+  #  merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
+  #  merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 
-    #for dim in [2, 3, 5, 10, 20, 40]:
-    # for i in tqdm(range(0, 360, 1)):
-    #     vaeD_plot(i)
-        #nD_plot(dim, i)
-    # D1_plot(i)
+   # bbo_evaluate_compare(dim=40, index=75, prefix = 'CMP')
 
-    #      treeD_plot_contour(i)  #treeD_plot
+    for i in tqdm(range(0, 360, 1)):
+        visualization(i)
 
-    #create_copy_file("CMP", 2, 0)
 
 
     #treeD_plot_contour(0)
     #calc_f0()
     #twoD_plot_contour(index)
+
+    # dim = 784
+    # for i in tqdm(range(0, 360, filter_mod)):
+    #     compare_problem_baseline(dim, i, budget=150000)
+

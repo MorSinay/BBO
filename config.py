@@ -47,7 +47,7 @@ boolean_feature("load-last-model", False, 'Load the last saved model')
 boolean_feature("tensorboard", False, "Log results to tensorboard")
 boolean_feature('importance-sampling', False, "Derivative eval")
 boolean_feature('bandage', False, "Bandage")
-parser.add_argument('--grad-clip', type=float, default=1e-3, help='grad clipping')
+parser.add_argument('--grad-clip', type=float, default=1e-2, help='grad clipping')
 parser.add_argument('--vae', type=str, default='uniform', help='gaussian | uniform')
 parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
 # parameters
@@ -59,8 +59,8 @@ parser.add_argument('--norm', type=str, default='mean', metavar='norm', help='no
 parser.add_argument('--explore', type=str, default='grad_direct', metavar='explore', help='exploration option - grad_rand | grad_direct | rand')
 parser.add_argument('--update-step', type=str, default='n_step', metavar='update', help='beta update step - n_step | best_step | first_vs_last | no_update')
 boolean_feature("best-explore-update", False, 'move to the best value of exploration')
-parser.add_argument('--grad-steps', type=int, default=10, metavar='grad', help='Gradient step')
-parser.add_argument('--stop-con', type=int, default=200, metavar='stop', help='Stopping Condition')
+parser.add_argument('--grad-steps', type=int, default=1, metavar='grad', help='Gradient step')
+parser.add_argument('--stop-con', type=int, default=100, metavar='stop', help='Stopping Condition')
 
 #
 # #dataloader
@@ -78,7 +78,7 @@ parser.add_argument('--alpha', type=float, default=1, metavar='moving avg', help
 #
 # #actors parameters
 parser.add_argument('--problem-index', type=int, default=-1, help='Problem Index or -1 for all')
-parser.add_argument('--beta-lr', type=float, default=1e-3, metavar='LR', help='beta learning rate')
+parser.add_argument('--beta-lr', type=float, default=1e-2, metavar='LR', help='beta learning rate')
 parser.add_argument('--value-lr', type=float, default=1e-3, metavar='LR', help='value learning rate')
 parser.add_argument('--action-space', type=int, default=10, metavar='dimension', help='Problem dimension')
 parser.add_argument('--layer', type=int, default=128, metavar='layer', help='Value hidden layer size')
