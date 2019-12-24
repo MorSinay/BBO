@@ -161,7 +161,7 @@ class Experiment(object):
                         self.writer.add_histogram("evaluation/value_net/%s" % name, param.clone().cpu().data.numpy(), n, 'fd')
 
         print("End BBO evaluation")
-        self.compare_beta_evaluate()
+        self.compare_pi_evaluate()
 
         if self.action_space == 2:
             self.plot_2D_contour()
@@ -171,22 +171,20 @@ class Experiment(object):
         path_res = os.path.join(consts.baseline_dir, 'f_eval', '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
-            max_f = res['f'].max()
-            min_f = res['f'].min()
             if self.action_space == 1:
-                value, pi, pi_value, grad, policy_grads = self.agent.get_evaluation_function(res['norm_policy'][:, 0], res['f'])
+                value, pi, pi_value, grad, policy_grads, norm_f = self.agent.get_evaluation_function(res['norm_policy'][:, 0], res['f'])
             else:
-                value, pi, pi_value, grad, policy_grads = self.agent.get_evaluation_function(res['norm_policy'], res['f'])
+                value, pi, pi_value, grad, policy_grads, norm_f = self.agent.get_evaluation_function(res['norm_policy'], res['f'])
 
             pi = pi.reshape(-1, 1)
             grad = grad.reshape(-1, 1)
 
             plt.subplot(111)
-            plt.plot(res['policy'][:, 0], (res['f'] - min_f)/(max_f - min_f), color='g', markersize=1, label='f')
-            plt.plot(res['policy'][:, 0], (value - min_f)/(max_f - min_f), '-o', color='b', markersize=1, label='value')
+            plt.plot(res['policy'][:, 0], norm_f, color='g', markersize=1, label='f')
+            plt.plot(res['policy'][:, 0], value, '-o', color='b', markersize=1, label='value')
             plt.plot(res['policy'][:, 0], policy_grads, 'H', color='m', markersize=1, label='norm_grad')
-            plt.plot(5*pi[0], (pi_value - min_f)/(max_f - min_f), 'X', color='r', markersize=4, label='pi')
-            plt.plot(5 * np.tanh(pi - grad)[0], (pi_value - min_f)/(max_f - min_f), 'v', color='c', markersize=4, label='gard')
+            plt.plot(5*pi[0], pi_value, 'X', color='r', markersize=4, label='pi')
+            plt.plot(5 * np.tanh(pi - grad)[0], pi_value, 'v', color='c', markersize=4, label='gard')
 
             plt.title('value net for alg {} - {}D_index_{} - iteration {}'.format(self.algorithm, self.action_space, self.iter_index, n))
             plt.xlabel('x')
@@ -205,34 +203,36 @@ class Experiment(object):
         path_res = os.path.join(consts.baseline_dir, 'f_eval', '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
-            max_f = res['f'].max()
-            min_f = res['f'].min()
 
             if self.action_space == 1:
-                grad_norm, pi, pi_grad_norm, pi_with_grad = self.agent.get_grad_norm_evaluation_function(res['norm_policy'][:, 0])
+                policy = res['norm_policy'][:, 0, np.newaxis]
             else:
-                grad_norm, pi, pi_grad_norm, pi_with_grad = self.agent.get_grad_norm_evaluation_function(res['norm_policy'])
+                policy = res['norm_policy']
+
+            grad_direct, pi, pi_grad_norm, pi_with_grad, norm_f = self.agent.get_grad_norm_evaluation_function(policy, res['f'])
+
+            num_grad = (norm_f[1:] - norm_f[:-1]) / np.linalg.norm(policy[1:] - policy[:-1], axis=1)
 
             pi = pi.reshape(-1, 1)
             pi_with_grad = pi_with_grad.reshape(-1, 1)
 
-            plt.subplot(111)
-            plt.plot(res['policy'][:, 0], (res['f'] - min_f)/(max_f - min_f), color='g', markersize=1, label='f')
-            plt.plot(res['policy'][:, 0], grad_norm, '-o', color='b', markersize=1, label='grad_norm')
-            plt.plot(5*pi[0], pi_grad_norm, 'X', color='r', markersize=4, label='pi')
-            plt.plot(5 * np.tanh(pi_with_grad)[0], pi_grad_norm, 'v', color='c', markersize=4, label='pi_with_grad')
+            fig, (ax1, ax2) = plt.subplots(1, 2)
+            ax1.plot(res['policy'][:-1, 0], norm_f[:-1], color='g', markersize=1, label='f')
+            ax2.plot(res['policy'][:-1, 0], grad_direct, '-o', color='b', markersize=1, label='grad_norm')
+            ax2.plot(res['policy'][:-1, 0], num_grad, '-o', color='r', markersize=1, label='grad_numerical')
 
-            plt.title('derivative net for alg {} - {}D_index_{} - iteration {}'.format(self.algorithm, self.action_space, self.iter_index, n))
-            plt.xlabel('x')
-            plt.ylabel('f(x)')
-            plt.legend()
+            ax2.plot(5*pi[0], pi_grad_norm, 'X', color='r', markersize=4, label='pi')
+            ax2.plot(5 * np.tanh(pi_with_grad)[0], pi_grad_norm, 'v', color='c', markersize=4, label='pi_with_grad')
+
+            fig.suptitle('derivative net for alg {} - {}D_index_{} - iteration {}'.format(self.algorithm, self.action_space, self.iter_index, n))
+            fig.legend()
 
             path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
             if not os.path.exists(path_dir_fig):
                 os.makedirs(path_dir_fig)
 
             path_fig = os.path.join(path_dir_fig, 'derivative iter {}.pdf'.format(n))
-            plt.savefig(path_fig)
+            fig.savefig(path_fig)
             plt.close()
 
     def plot_2D_contour(self):
@@ -262,7 +262,7 @@ class Experiment(object):
         plt.close()
 
 
-    def compare_beta_evaluate(self):
+    def compare_pi_evaluate(self):
         optimizer_res = get_baseline_cmp(self.action_space, self.iter_index)
         min_val = optimizer_res['min_opt'][0]
         f0 = optimizer_res['f0'][0]

@@ -9,22 +9,22 @@ echo resume $1 algorithm $2
 loc=`dirname "%0"`
 
 case "$algorithm" in
-    ("value") args="--algorithm=$algorithm --grad-steps=10 --beta-lr=1e-3 --grad-clip=1e-3 --importance-sampling --game=RUN --budget=800 --explore=grad_direct --alpha=1 --replay-memory-factor=30 --batch=100 --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --no-bandage --norm=robust_scaler";;
-    ("first_order") args="--algorithm=$algorithm --grad-steps=1 --beta-lr=1e-2 --grad-clip=1e-2 --importance-sampling --game=RUN --budget=800 --explore=grad_direct --alpha=1 --replay-memory-factor=100 --batch=100 --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --norm=mean_std --no-bandage";;
-    ("second_order") args="--algorithm=$algorithm --grad-steps=1 --beta-lr=1e-2 --grad-clip=1e-2 --importance-sampling --game=RUN --budget=800 --explore=grad_direct --alpha=1 --replay-memory-factor=100 --batch=100 --delta=0.1 --epsilon=0.1 --update-step=n_step --no-best-explore-update --norm=mean_std --no-bandage";;#    ("anchor") args="--algorithm=$algorithm  --beta-lr=1e-3 --game=RUN --budget=400 --explore=grad_rand --delta=0.01 --epsilon=0.01 --update-step=n_step --no-best-explore-update --grad-clip --no-bandage";;
+    ("value") args="--algorithm=$algorithm --grad-clip=1e-3 --game=RUN --budget=800 --explore=cone --alpha=1 --replay-memory-factor=80 --batch=1024 --epsilon=0.1 --no-best-explore-update";;
+    ("first_order") args="--algorithm=$algorithm --grad-clip=1e-3 --game=RUN --budget=800 --explore=cone --alpha=1 --replay-memory-factor=80 --batch=1024 --epsilon=0.1 --no-best-explore-update";;
+    ("second_order") args="--algorithm=$algorithm --grad-clip=1e-3 --game=RUN --budget=800 --explore=cone --alpha=1 --replay-memory-factor=80 --batch=1024 --epsilon=0.1 --no-best-explore-update";;
     (*) echo "$algorithm: Not Implemented" ;;
 esac
 
-#CUDA_VISIBLE_DEVICES=0, python main.py --identifier=debug1 --action-space=1 --resume=$resume --load-last-model $args $aux &
+CUDA_VISIBLE_DEVICES=0, python main.py --identifier=debug1 --action-space=1 --resume=$resume --load-last-model $args $aux &
 
 CUDA_VISIBLE_DEVICES=1, python main.py --identifier=debug2 --action-space=2 --resume=$resume --load-last-model $args $aux &
-#CUDA_VISIBLE_DEVICES=2, python main.py --identifier=debug3 --action-space=3 --resume=$resume --load-last-model $args $aux &
+CUDA_VISIBLE_DEVICES=2, python main.py --identifier=debug3 --action-space=3 --resume=$resume --load-last-model $args $aux &
 
-#CUDA_VISIBLE_DEVICES=0, python main.py --identifier=debug5 --action-space=5 --resume=$resume --load-last-model $args $aux &
-#CUDA_VISIBLE_DEVICES=0, python main.py --identifier=debug10 --action-space=10 --resume=$resume --load-last-model $args $aux &
+CUDA_VISIBLE_DEVICES=0, python main.py --identifier=debug5 --action-space=5 --resume=$resume --load-last-model $args $aux &
+CUDA_VISIBLE_DEVICES=1, python main.py --identifier=debug10 --action-space=10 --resume=$resume --load-last-model $args $aux &
 
-#CUDA_VISIBLE_DEVICES=2, python main.py --identifier=debug20 --action-space=20 --resume=$resume --load-last-model $args $aux &
-#CUDA_VISIBLE_DEVICES=1, python main.py --identifier=debug40 --action-space=40 --resume=$resume --load-last-model $args $aux &
+CUDA_VISIBLE_DEVICES=2, python main.py --identifier=debug20 --action-space=20 --resume=$resume --load-last-model $args $aux &
+CUDA_VISIBLE_DEVICES=1, python main.py --identifier=debug40 --action-space=40 --resume=$resume --load-last-model $args $aux &
 
 #CUDA_VISIBLE_DEVICES=1, python main.py --identifier=debug784 --action-space=784 --resume=$resume --load-last-model $args $aux &
 

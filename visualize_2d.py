@@ -475,7 +475,7 @@ def merge_bbo(optimizers = [], dimension = [1, 2, 3, 5, 10, 20, 40, 784], save_f
 def bbo_evaluate_compare(dim, index, prefix='CMP'):
 
     optimizer_res = get_baseline_cmp(dim, index)
-    min_val = optimizer_res['min_opt'][0]
+    min_val = optimizer_res['min_opt'][0] - 0.0001
     f0 = optimizer_res['f0'][0]
 
     res_dir = Consts.outdir
@@ -492,22 +492,32 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
         else:
             continue
 
-
-    plt.subplot(111)
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    fig.suptitle('compare dim = {} index = {}'.format(dim, index))
 
     colors = Consts.color
 
+    x_max = -1
     for i, key in enumerate(compare_dirs.keys()):
         path = compare_dirs[key]
-        pi_eval = np.load(os.path.join(path, 'pi_evaluate.npy'))
-        pi_best = np.load(os.path.join(path, 'best_observed.npy'))
+        try:
+            pi_eval = np.load(os.path.join(path, 'pi_evaluate.npy'))
+            pi_best = np.load(os.path.join(path, 'best_observed.npy'))
 
-        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[2*i], label=key+'_pi_evaluate')
-        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[2*i+1], label=key+'_best_observed')
+            ax1.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[i], label=key)
+            ax2.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[i])
 
-    plt.legend()
-    plt.title('compare dim = {} index = {}'.format(dim, index))
-    plt.grid(True, which='both')
+            x_max = max(x_max, len(pi_eval), len(pi_best))
+        except:
+            pass
+
+    fig.legend(loc='lower left', prop={'size': 6}, ncol=3)
+    ax1.grid(True, which='both')
+    ax2.grid(True, which='both')
+    ax1.set_title('pi_evaluate')
+    ax2.set_title('best_observed')
+    ax1.set_xlim([10, x_max])
+    ax2.set_xlim([10, x_max])
 
     path_fig = os.path.join(Consts.baseline_dir, 'Compare bbo - dim = {} index = {}.pdf'.format(dim, index))
     plt.savefig(path_fig)
@@ -518,15 +528,15 @@ if __name__ == '__main__':
 
     #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
 
-    optimizers = ['value', 'value_', 'first_order_', 'first_order', 'second_order']
-    dims = [1, 2, 3, 5, 10, 20, 40]
-  #  merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
-  #  merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
+    optimizers = ['value', 'value_', 'first_order_', 'first_order']
+    dims = [1, 3, 5, 10, 20, 40]
+    merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
+    merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 
-   # bbo_evaluate_compare(dim=40, index=75, prefix = 'CMP')
+    # bbo_evaluate_compare(dim=40, index=75, prefix='CMP')
 
-    for i in tqdm(range(0, 360, 1)):
-        visualization(i)
+    # for i in tqdm(range(0, 360, 1)):
+    #     visualization(i)
 
 
 

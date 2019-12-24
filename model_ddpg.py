@@ -31,6 +31,46 @@ def init_weights(net, init='ortho'):
 
         net.param_count += sum([p.data.nelement() for p in module.parameters()])
 
+
+class RobustNormalizer(object):
+
+    def __init__(self, outlayer=0.1, delta=1, lr=0.1):
+        self.outlayer = outlayer
+        self.delta = delta
+        self.lr = lr
+        self.squash = nn.Tanh()
+        self.eps = 1e-5
+        self.squash_eps = 1e-9
+        self.mu = 0.
+        self.sigma = 1.
+
+    def desquash(self, x):
+
+        x = torch.clamp(x, -1 + self.squash_eps, 1 + self.squash_eps)
+        return 0.5 * (torch.log(1 + x) - torch.log(1 - x))
+
+    def __call__(self, x, training=False):
+        if training:
+            n = len(x)
+            outlayer = int(n * self.outlayer + .5)
+            up = torch.kthvalue(x, n - outlayer, dim=0)[0]
+            down = torch.kthvalue(x, outlayer + 1, dim=0)[0]
+
+            mu = torch.median(x, outlayer - 1, dim=0)[0]
+            sigma = (up - down) * self.delta
+
+            self.mu = (1 - self.lr) * self.mu + self.lr * mu
+            self.sigma = (1 - self.lr) * self.sigma + self.lr * sigma
+
+        x = self.squash((x - self.mu) / (self.sigma + self.eps))
+
+        return x
+
+    def inverse(self, x):
+        x = self.desquash(x)
+        x = x * (self.sigma + self.eps) + self.mu
+        return x
+
 class MultipleOptimizer:
     def __init__(self, *op):
         self.optimizers = op
@@ -54,15 +94,16 @@ class MultipleOptimizer:
 
 class SplineNet(nn.Module):
 
-    def __init__(self, device, output=1):
+    def __init__(self, pi_net, device, output=1):
         super(SplineNet, self).__init__()
-        self.norm = nn.Tanh()
+        self.pi_net = pi_net
         self.embedding = SplineEmbedding(device)
         self.head = SplineHead(output)
 
-    def forward(self, x):
+    def forward(self, x, normalize=True):
         x = x.view(-1, action_space)
-        x = self.norm(x)
+        if normalize:
+            x = self.pi_net(x)
         x_emb, x_emb2 = self.embedding(x)
         x = self.head(x, x_emb, x_emb2)
 
@@ -238,14 +279,13 @@ class GlobalBlock(nn.Module):
 
 class DuelNet(nn.Module):
 
-    def __init__(self):
+    def __init__(self, pi_net):
 
         super(DuelNet, self).__init__()
-
+        self.pi_net = pi_net
         layer = args.layer
 
-        self.fc = nn.Sequential(nn.Tanh(),
-                                nn.Linear(action_space, layer, bias=True),
+        self.fc = nn.Sequential(nn.Linear(action_space, layer, bias=True),
                                 nn.ReLU(),
                                 nn.Linear(layer, 2*layer, bias=True),
                                 #nn.BatchNorm1d(2*layer),
@@ -265,8 +305,10 @@ class DuelNet(nn.Module):
         for weight in self.parameters():
             nn.init.xavier_uniform(weight.data)
 
-    def forward(self, pi):
+    def forward(self, pi, normalize=True):
         pi = pi.view(-1, action_space)
+        if normalize:
+            pi = self.pi_net(pi)
         x = self.fc(pi)
 
         return x
@@ -276,7 +318,6 @@ class PiNet(nn.Module):
     def __init__(self, init, device, action_space):
 
         super(PiNet, self).__init__()
-
         self.pi = nn.Parameter(init)
         self.normalize = nn.Tanh()
         self.device = device
@@ -300,14 +341,13 @@ class PiNet(nn.Module):
 
 class DerivativeNet(nn.Module):
 
-    def __init__(self):
+    def __init__(self, pi_net):
 
         super(DerivativeNet, self).__init__()
-
+        self.pi_net = pi_net
         layer = args.layer
 
-        self.fc = nn.Sequential(nn.Tanh(),
-                                nn.Linear(action_space, 2*layer, bias=True),
+        self.fc = nn.Sequential(nn.Linear(action_space, 2*layer, bias=True),
                                 #nn.BatchNorm1d(2*layer),
                                 nn.ReLU(),
                                 #nn.Dropout(drop),
@@ -325,8 +365,10 @@ class DerivativeNet(nn.Module):
         for weight in self.parameters():
             nn.init.xavier_uniform(weight.data)
 
-    def forward(self, pi):
+    def forward(self, pi, normalize=True):
         pi = pi.view(-1, action_space)
+        if normalize:
+            pi = self.pi_net(pi)
         x = self.fc(pi)
 
         return x

@@ -162,7 +162,7 @@ def get_min_f0_val(dim, index):
     f0 = float(tmp_df.f0)
     return min_val, f0
 
-def compare_beta_evaluate(dim, index, path, title, baseline_cmp = False):
+def compare_pi_evaluate(dim, index, path, title, baseline_cmp = False):
 
     min_val, f0 = get_min_f0_val(dim, index)
     compare_file = 'pi_evaluate.npy'#'best_observed.npy' #pi_evaluate
@@ -356,7 +356,7 @@ if __name__ == '__main__':
     path = os.path.join(base_dir, 'analysis', dir_name, str(dim))
 
     title = "{} dim = {} index = {}".format(dir_name, dim, index)
-    #compare_beta_evaluate(dim, index, path, title, baseline_cmp=False)
+    #compare_pi_evaluate(dim, index, path, title, baseline_cmp=False)
 
 
     #plot_res(optimizers=["value", "first_order", "second_order", "anchor"], max_budget=12000, compare_baseline=True)
