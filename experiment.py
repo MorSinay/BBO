@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from tensorboardX import SummaryWriter
 from single_agent import BBOAgent
+from robust_agent import RobustAgent
 #from np_agent_temp import NPAgent
 from config import consts, args, DirsAndLocksSingleton
 import matplotlib
@@ -109,7 +110,10 @@ class Experiment(object):
             self.writer.close()
 
     def bbo(self):
-        self.agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
+        if args.debug:
+            self.agent = RobustAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
+        else:
+            self.agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
         self.n_explore = args.batch
         player = self.agent.minimize(self.n_explore)
         divergence = 0
@@ -132,7 +136,8 @@ class Experiment(object):
                     logger.info("Actions statistics: |\t value = %.3f \t avg_reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'][-1], avg_reward, bbo_results['value_loss'][-1]))
                 elif self.algorithm == 'anchor':
                     logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
-                logger.info("Best observe      : |\t %f \t \tPi_evaluate: = %f|" % (best_observe, pi_evaluate))
+                logger.info("Best observe      : |\t %f \t \tPi_evaluate: = %f| \t\tBest_pi_evaluate: = %f" % (best_observe, pi_evaluate, bbo_results['best_pi_evaluate'][-1]))
+                logger.info("dist_x            : |\t %f \t \tdist_f: = %f|" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1]))
 
                 if self.algorithm in ['value', 'spline', 'anchor']:
                     self.value_vs_f_eval(n)
@@ -172,9 +177,11 @@ class Experiment(object):
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
             if self.action_space == 1:
-                value, pi, pi_value, grad, policy_grads, norm_f = self.agent.get_evaluation_function(res['norm_policy'][:, 0], res['f'])
+                policy = res['norm_policy'][:, 0, np.newaxis]
             else:
-                value, pi, pi_value, grad, policy_grads, norm_f = self.agent.get_evaluation_function(res['norm_policy'], res['f'])
+                policy = res['norm_policy']
+
+            value, pi, pi_value, grad, policy_grads, norm_f = self.agent.get_evaluation_function(policy, res['f'])
 
             pi = pi.reshape(-1, 1)
             grad = grad.reshape(-1, 1)
@@ -218,8 +225,8 @@ class Experiment(object):
 
             fig, (ax1, ax2) = plt.subplots(1, 2)
             ax1.plot(res['policy'][:-1, 0], norm_f[:-1], color='g', markersize=1, label='f')
-            ax2.plot(res['policy'][:-1, 0], grad_direct, '-o', color='b', markersize=1, label='grad_norm')
             ax2.plot(res['policy'][:-1, 0], num_grad, '-o', color='r', markersize=1, label='grad_numerical')
+            ax2.plot(res['policy'][:-1, 0], grad_direct, '-o', color='b', markersize=1, label='grad_norm')
 
             ax2.plot(5*pi[0], pi_grad_norm, 'X', color='r', markersize=4, label='pi')
             ax2.plot(5 * np.tanh(pi_with_grad)[0], pi_grad_norm, 'v', color='c', markersize=4, label='pi_with_grad')
@@ -284,7 +291,7 @@ class Experiment(object):
         for i, op in enumerate(optimizer_res['fmin']):
             res = optimizer_res[optimizer_res['fmin'] == op]
             op_eval = np.array(res['f'].values[0])
-            plt.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), linestyle='None', marker='x', color=colors[3+i], label=op)
+            plt.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
 
         plt.legend()
         plt.title('alg {} - dim = {} index = {} ----- best vs eval'.format(self.algorithm, self.action_space, self.iter_index))

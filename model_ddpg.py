@@ -41,8 +41,12 @@ class RobustNormalizer(object):
         self.squash = nn.Tanh()
         self.eps = 1e-5
         self.squash_eps = 1e-9
-        self.mu = 0.
-        self.sigma = 1.
+        self.mu = None
+        self.sigma = None
+
+    def reset(self):
+        self.mu = None
+        self.sigma = None
 
     def desquash(self, x):
 
@@ -56,15 +60,19 @@ class RobustNormalizer(object):
             up = torch.kthvalue(x, n - outlayer, dim=0)[0]
             down = torch.kthvalue(x, outlayer + 1, dim=0)[0]
 
-            mu = torch.median(x, outlayer - 1, dim=0)[0]
+            mu = torch.median(x, dim=0)[0]
             sigma = (up - down) * self.delta
 
-            self.mu = (1 - self.lr) * self.mu + self.lr * mu
-            self.sigma = (1 - self.lr) * self.sigma + self.lr * sigma
+            if self.mu is None or self.sigma is None:
+                self.mu = mu
+                self.sigma = sigma
+            else:
+                self.mu = (1 - self.lr) * self.mu + self.lr * mu
+                self.sigma = (1 - self.lr) * self.sigma + self.lr * sigma
 
-        x = self.squash((x - self.mu) / (self.sigma + self.eps))
-
-        return x
+        else:
+            x = self.squash((x - self.mu) / (self.sigma + self.eps))
+            return x
 
     def inverse(self, x):
         x = self.desquash(x)

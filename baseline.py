@@ -154,62 +154,6 @@ def get_baseline_cmp(dim, index):
     return optimizer_res
 
 
-def get_min_f0_val(dim, index):
-    min_df = pd.read_csv(os.path.join(base_dir, 'compare.csv'))
-    tmp_df = min_df[(min_df.dim == dim) & (min_df.iter_index == index)]
-
-    min_val = float(tmp_df.min_val)
-    f0 = float(tmp_df.f0)
-    return min_val, f0
-
-def compare_pi_evaluate(dim, index, path, title, baseline_cmp = False):
-
-    min_val, f0 = get_min_f0_val(dim, index)
-    compare_file = 'pi_evaluate.npy'#'best_observed.npy' #pi_evaluate
-    analysis_path = os.path.join(path)
-    dirs = os.listdir(analysis_path)
-    compare_dict = {}
-
-    my_optim = []
-    for dir in dirs:
-        try:
-            my_optim.append(dir)
-            path = os.path.join(analysis_path, dir, str(index))
-            files = os.listdir(path)
-            if compare_file in files:
-                f_val = np.load(os.path.join(path, compare_file))
-                compare_dict[dir] = [np.arange(f_val.size), f_val]
-        except:
-            continue
-
-    if baseline_cmp:
-        baseline_df = get_baseline_cmp(dim, index)
-        for i in range(len(baseline_df)):
-            f_val = np.array([float(i) for i in baseline_df.iloc[i].f[1:-1].split(',')])
-            e_val = np.array([float(i) for i in baseline_df.iloc[i].eval[1:-1].split(',')])
-            compare_dict[baseline_df.iloc[i].fmin] = [e_val, f_val]
-
-    res_keys = compare_dict.keys()
-    if len(res_keys) is 0:
-        return
-
-    plt.subplot(111)
-
-    for i, key in enumerate(res_keys):
-        if key in my_optim:
-        #plt.plot(t, v.cumsum()/t, color=color[i], label=key)
-            plt.loglog(compare_dict[key][0], (compare_dict[key][1] - min_val)/(f0 - min_val), color=color[i], label=key)
-        else:
-            plt.loglog(compare_dict[key][0], (compare_dict[key][1] - min_val)/(f0 - min_val), markerfacecolor='None', marker='x', color=color[i], label=key)
-
-    #plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=5)
-    plt.legend()
-    plt.title(title)
-    plt.grid(True, which='both')
-    #plt.ylim([0, 100000])
-    #plt.xlim([350, 400])
-    plt.show()
-
 def plot_1D(problem_index, save_fig=False):
 
     path_dir = os.path.join(base_dir, 'f_eval', '1D')

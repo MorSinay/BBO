@@ -65,13 +65,15 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
         x = env.initial_solution
         f = []
         eval = []
+        best_f = []
         try:
             run_problem(fmin, func, x, budget)
-            f, x = env.get_observed_and_pi_list()
+            best_f, f, x = env.get_observed_and_pi_list()
 
         except:
             x = env.initial_solution
             f.append(func(x))
+            best_f.append(f[0])
 
         data['fmin'].append(fmin.__name__)
         data['index'].append(problem.index)
@@ -82,6 +84,7 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
         data['number_of_evaluations'].append(problem.evaluations)
         data['eval'].append(problem.evaluations)
         data['f'].append(f)
+        data['best_list'].append(best_f)
         data['f0'].append(func(env.initial_solution))
 
         # print(data['fmin'][-1] + ":\tevaluations: " + str(data['number_of_evaluations'][-1]) + "\tf(x): "
@@ -330,6 +333,7 @@ def visualization(problem_index):
     #ax2 = fig.gca(projection='3d')
     ax2.plot_trisurf(x_list[:, 0], x_list[:, 1], f_list, cmap='winter')
 
+    interval = 0.0001
     x0 = np.arange(-1, 1 + interval, interval)
     norm_policy = np.clip(one_d_change_dim(x0), -1, 1)
     f = np.zeros(x0.shape)
@@ -404,13 +408,75 @@ def merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
     file = os.path.join(Consts.baseline_dir, 'compare.csv')
     df.to_csv(file)
 
-def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
+def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40]):
 
     for dim in dims:
         for i in tqdm(range(0, 360, filter_mod)):
             compare_problem_baseline(dim, i, budget=150000)
 
     merge_baseline_one_line_compare(dims)
+
+def avg_dim_best_observed(dim, save_file, prefix):
+
+    max_len = -1
+    res_dir = Consts.outdir
+    dirs = os.listdir(res_dir)
+
+    compare_dirs = defaultdict()
+
+    dim_len = int(np.log10(dim)) + 2
+    indexes = set([str(x) for x in range(360)])
+    for dir in dirs:
+        if dir.startswith(prefix) and dir.endswith(str(dim)):
+            alg = dir[len(prefix) + 1: -dim_len]
+            compare_dirs[alg] = os.path.join(res_dir, dir, 'analysis')
+            dir_index = os.listdir(compare_dirs[alg])
+            indexes = indexes.intersection(dir_index)
+        else:
+            continue
+
+    data = defaultdict(list)
+    for index in indexes:
+        optimizer_res = get_baseline_cmp(dim, index)
+        min_val = optimizer_res['min_opt'][0] - 0.0001
+        f0 = optimizer_res['f0'][0]
+
+
+        for i, op in enumerate(optimizer_res['fmin']):
+            res = optimizer_res[optimizer_res['fmin'] == op]
+            arr = np.array(res['best_list'][i])
+            arr = (arr - min_val) / f0
+            data[op].append(arr)
+            max_len = max(max_len, len(data[op][-1]))
+
+        for key, path in compare_dirs.items():
+            try:
+                pi_best = np.load(os.path.join(path, index, 'best_observed.npy'))
+                pi_best = (pi_best - min_val) / f0
+            except:
+                pi_best = np.ones(1)
+
+            data[key].append(pi_best)
+            max_len = max(max_len, len(pi_best))
+
+    plt.subplot(111)
+    for j, (key, l) in enumerate(data.items()):
+        i = 0
+        list_sum = np.zeros(max_len)
+        for x in l:
+            i+=1
+            lastval = x[-1]
+            list_sum += np.concatenate([x, lastval * np.ones(max_len-len(x))])
+        list_sum /= i
+        plt.loglog(np.arange(max_len), list_sum, color=Consts.color[j], label=key)
+
+
+    plt.legend()
+    plt.title("AVG COMPARE - DIM {}".format(dim))
+    path_fig = os.path.join(Consts.baseline_dir, save_file)
+    plt.savefig(path_fig)
+    plt.close()
+
 
 def merge_bbo(optimizers = [], dimension = [1, 2, 3, 5, 10, 20, 40, 784], save_file='baseline_cmp.pdf', plot_sum=False):
     compare_file = os.path.join(Consts.baseline_dir, 'compare.csv')
@@ -524,27 +590,40 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
 
     plt.close()
 
+def get_best_solution(dim, index):
+    optimizer_res = get_baseline_cmp(dim, index)
+    best_idx = optimizer_res['best_observed'].values.argmin()
+    best_array = np.array(optimizer_res['best_list'][best_idx])
+    best_x_idx = best_array.argmin()
+    x = optimizer_res['x'][best_idx][best_x_idx]
+    best_val = best_array[best_x_idx]
+
+    return x, best_val
+
 if __name__ == '__main__':
-
-    #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
-
-    optimizers = ['value', 'value_', 'first_order_', 'first_order']
-    dims = [1, 3, 5, 10, 20, 40]
-    merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
-    merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
-
-    # bbo_evaluate_compare(dim=40, index=75, prefix='CMP')
-
-    # for i in tqdm(range(0, 360, 1)):
-    #     visualization(i)
-
-
-
-    #treeD_plot_contour(0)
-    #calc_f0()
-    #twoD_plot_contour(index)
-
-    # dim = 784
-    # for i in tqdm(range(0, 360, filter_mod)):
-    #     compare_problem_baseline(dim, i, budget=150000)
-
+    get_best_solution(2, 15)
+    # #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
+    #
+    # optimizers = ['value', 'value_', 'first_order_', 'first_order']
+    # dims = [1, 2, 3, 5, 10, 20, 40]
+    # merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
+    # merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
+    #
+    # # bbo_evaluate_compare(dim=40, index=255, prefix='CMP')
+    #
+    # for dim in dims:
+    #     prefix = 'RUN'
+    #     fig_name = '{} dim {} avg.pdf'.format(prefix,dim)
+    #     avg_dim_best_observed(dim=dim, save_file=fig_name, prefix=prefix)
+    #
+    # # for i in tqdm(range(0, 360, 1)):
+    # #     visualization(i)
+    #
+    # #treeD_plot_contour(0)
+    # #calc_f0()
+    # #twoD_plot_contour(index)
+    #
+    # # dim = 40
+    # # for i in tqdm(range(0, 360, filter_mod)):
+    # #     compare_problem_baseline(dim, i, budget=150000)
+    #

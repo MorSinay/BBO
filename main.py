@@ -54,6 +54,8 @@ def main():
     set_seed(args.seed)
     username = pwd.getpwuid(os.geteuid()).pw_name
     algorithm = args.algorithm
+    identifier = args.identifier
+    run_id = algorithm + '_' + identifier
 
     torch.set_num_threads(100)
     print("Torch %d" % torch.get_num_threads())
@@ -72,7 +74,7 @@ def main():
         main_run.reset(problem_index)
         divergence = run_exp(main_run.env)
     else:
-        res_dir = os.path.join('/data/', username, 'gan_rl', 'baseline', 'results', algorithm)
+        res_dir = os.path.join('/data/', username, 'gan_rl', 'baseline', 'results', run_id)
         if not os.path.exists(res_dir):
             try:
                 os.makedirs(res_dir)
@@ -96,7 +98,7 @@ def main():
             data['number_of_evaluations'].append(main_run.env.problem.evaluations)
 
             df = pd.DataFrame(data)
-            fmin_file = os.path.join(res_dir, algorithm + '_' + str(args.action_space) + '.csv')
+            fmin_file = os.path.join(res_dir, run_id + '_' + str(args.action_space) + '.csv')
             df.to_csv(fmin_file)
 
     logger.info("End of simulation divergence = {}".format(divergence))

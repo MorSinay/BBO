@@ -10,7 +10,7 @@ import torch.autograd as autograd
 from torchvision.utils import save_image
 from sklearn.preprocessing import RobustScaler
 from config import consts, args, DirsAndLocksSingleton
-from model_ddpg import DuelNet, DerivativeNet, PiNet, SplineNet, MultipleOptimizer
+from model_ddpg import DuelNet, DerivativeNet, PiNet, SplineNet, MultipleOptimizer, RobustNormalizer
 import math
 import os
 import copy
@@ -24,12 +24,12 @@ mem_threshold = consts.mem_threshold
 # ELAD - 1d visualizetion of bbo function - eval function and derivative using projection in a specific direction
 
 
-class BBOAgent(object):
+class RobustAgent(object):
 
     def __init__(self, exp_name, env, checkpoint):
 
-        reward_str = "BBO"
-        print("Learning POLICY method using {} with BBOAgent".format(reward_str))
+        reward_str = "Robust"
+        print("Learning POLICY method using {} with RobustAgent".format(reward_str))
         self.cuda_id = args.cuda_default
         use_cuda = not args.no_cuda and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
@@ -98,20 +98,8 @@ class BBOAgent(object):
             print("explore:"+args.explore)
             raise NotImplementedError
 
-        if args.norm == 'mean':
-            self.output_norm = self.mean_norm
-        elif args.norm == 'mean_std':
-            self.output_norm = self.mean_std_norm
-        elif args.norm == 'min_max':
-            self.output_norm = self.min_max_norm
-        elif args.norm == 'no_norm':
-            self.output_norm = self.no_norm
-        elif args.norm == 'robust_scaler':
-            self.output_norm = self.robust_scaler_norm
-        else:
-            print("norm:" + args.norm)
-            raise NotImplementedError
-
+        self.pi_norm = RobustNormalizer()
+        self.r_norm = RobustNormalizer()
 
         self.init = torch.FloatTensor(self.env.get_initial_solution()).to(self.device)
         self.pi_net = PiNet(self.init, self.device, self.action_space)
@@ -177,7 +165,7 @@ class BBOAgent(object):
                 assert ((len(policy.shape) == 2) and (policy.shape[1] == self.action_space)), "save_results"
                 np.save(path, policy.cpu().numpy())
             elif k in ['grad']:
-                grad = self.pi_net(np.vstack(self.results[k]))
+                grad = np.vstack(self.results[k])
                 assert ((len(grad.shape) == 2) and (grad.shape[1] == self.action_space)), "save_results"
                 np.save(path, grad)
             else:
@@ -248,6 +236,10 @@ class BBOAgent(object):
 
         return state['aux']
 
+    def print_robust_norm_params(self):
+        if (self.frame % 50) == 0:
+            print("frame {} -- r_norm: mu {} sigma {}\n\n".format(self.frame, self.r_norm.mu, self.r_norm.sigma))
+
     def warmup(self):
         if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
             self.derivative_net.load_state_dict(self.derivative_net_zero)
@@ -259,6 +251,9 @@ class BBOAgent(object):
             self.spline_net.load_state_dict(self.spline_net_zero)
             self.optimizer_spline.state = defaultdict(dict)
 
+        self.pi_norm.reset()
+        self.r_norm.reset()
+
         explore_policies = self.exploration_rand(self.warmup_minibatch * self.batch)
         self.step_policy(explore_policies)
         rewards = self.env.reward
@@ -268,6 +263,11 @@ class BBOAgent(object):
         self.std = rewards.std()
         self.max = rewards.max()
         self.min = rewards.min()
+        self.pi_norm(explore_policies, training=True)
+        rewards_torch = torch.FloatTensor(rewards)
+        self.r_norm(rewards_torch, training=True)
+
+       # self.print_robust_norm_params()
         self.value_optimize(100)
 
 
@@ -291,8 +291,8 @@ class BBOAgent(object):
             self.results['pi_evaluate'].append(pi_eval)
             self.results['best_pi_evaluate'].append(min(self.results['pi_evaluate']))
             self.results['grad'].append(self.get_grad().cpu().numpy().reshape(1, -1))
-            self.results['dist_x'].append(torch.norm(self.env.denormalize(self.pi_net(pi)) - self.best_op_x, 2))
-            self.results['dist_f'].append(self.best_op_f - pi_eval)
+            self.results['dist_x'].append(torch.norm(self.env.denormalize(self.pi_net().detach().cpu().numpy()) - self.best_op_x, 2))
+            self.results['dist_f'].append(pi_eval - self.best_op_f)
 
             if self.bandage:
                 self.bandage_update()
@@ -302,11 +302,11 @@ class BBOAgent(object):
                 grad_norm = torch.norm(self.derivative_net(self.pi_net.pi.detach()).detach(), 2).detach().item()
                 self.results['grad_norm'].append(grad_norm)
             if self.algorithm_method in ['value', 'anchor']:
-                value = self.value_net(self.pi_net.pi.detach()).detach().item()
-                self.results['value'].append(self.output_denorm(np.array(value)))
+                value = self.r_norm.inverse(self.value_net(self.pi_net.pi.detach()).detach().cpu()).item()
+                self.results['value'].append(np.array(value))
             if self.algorithm_method in ['spline']:
-                value = self.spline_net(self.pi_net.pi.detach()).detach().item()
-                self.results['value'].append(self.output_denorm(np.array(value)))
+                value = self.r_norm.inverse(self.spline_net(self.pi_net.pi.detach()).detach().cpu()).item()
+                self.results['value'].append(np.array(value))
 
             self.results['ts'].append(self.env.t)
             self.results['divergence'].append(self.divergence)
@@ -360,8 +360,8 @@ class BBOAgent(object):
         replay_buffer_rewards = np.hstack(self.results['rewards'])[-self.replay_memory_size:]
         replay_buffer_policy = torch.cat(self.results['explore_policies'], dim=0)[-self.replay_memory_size:]
 
-        self.calc_clip_and_scaler(replay_buffer_rewards[-self.batch:])
-        self.tensor_replay_reward = torch.FloatTensor(self.norm(replay_buffer_rewards)).to(self.device, non_blocking=True)
+        self.tensor_replay_reward = torch.FloatTensor(replay_buffer_rewards)
+        self.tensor_replay_reward = self.r_norm(self.tensor_replay_reward).to(self.device, non_blocking=True)
         self.tensor_replay_policy = replay_buffer_policy.to(self.device)
 
         len_replay_buffer = len(replay_buffer_rewards)
@@ -646,48 +646,6 @@ class BBOAgent(object):
         pi = self.pi_net.pi.detach().clone()
         return pi, self.f_policy(pi)
 
-    def calc_clip_and_scaler(self, data):
-        delta = np.quantile(data, 0.9) - np.quantile(data, 0.1)
-
-        self.clip_up = np.quantile(data, 0.9) + delta
-        self.clip_down = np.quantile(data, 0.1) - delta
-        data = np.clip(data, a_max=self.clip_up, a_min=self.clip_down)
-        self.output_norm(data)
-
-    def mean_std_norm(self, data):
-        self.mean = self.mean*(1-self.alpha) + self.alpha*data.mean()
-        self.std = self.std*(1-self.alpha) + self.alpha*data.std()
-        return self.norm(data)
-
-    def mean_norm(self, data):
-        self.mean = self.mean*(1-self.alpha) + self.alpha*data.mean()
-        self.std = 1 - 1e-5
-        return self.norm(data)
-
-    def min_max_norm(self, data):
-        self.max = self.max*(1-self.alpha) + self.alpha*data.max()
-        self.min = self.min*(1-self.alpha) + self.alpha*data.min()
-
-        self.std = self.max - self.min
-        self.mean = self.min
-
-        return self.norm(data)
-
-    def norm(self, data):
-        data = np.clip(data, a_max=self.clip_up, a_min=self.clip_down)
-        return (data - self.mean) / (self.std + 1e-5)
-
-    def no_norm(self, data):
-        return data
-
-    def robust_scaler_norm(self, data):
-        self.mean = np.median(data)
-        self.std = np.quantile(data, 0.75) - np.quantile(data, 0.25)
-        return self.norm(data)
-
-    def output_denorm(self, data):
-        return data * (self.std + 1e-5) + self.mean
-
     def exploration_rand(self, n_explore):
             pi = self.pi_net.pi.detach().clone().cpu()
             pi_explore = pi + self.warmup_factor*self.epsilon * torch.randn(n_explore, self.action_space)
@@ -831,9 +789,15 @@ class BBOAgent(object):
             best_explore = rewards.argmin()
             self.pi_net.pi_update(pi_explore[best_explore].to(self.device))
 
+        self.pi_norm(pi_explore, training=True)
+        rewards_torch = torch.FloatTensor(rewards)
+        self.r_norm(rewards_torch, training=True)
+
+        self.print_robust_norm_params()
         return pi_explore, rewards
 
     def get_evaluation_function(self, policy, target):
+        target = torch.FloatTensor(target)
         if self.algorithm_method in 'value':
             net = self.value_net
         elif self.algorithm_method in 'spline':
@@ -864,9 +828,10 @@ class BBOAgent(object):
         pi_value = net(self.pi_net.pi).detach().cpu().numpy()
         grad = self.get_grad().cpu().numpy()
 
-        return value, pi, np.array(pi_value), self.pi_lr*grad, grads_norm, self.norm(target)
+        return value, pi, np.array(pi_value), self.pi_lr*grad, grads_norm, self.r_norm(target).numpy()
 
     def get_grad_norm_evaluation_function(self, policy, f):
+        f = torch.FloatTensor(f)
         self.derivative_net.eval()
         policy_tensor = torch.FloatTensor(policy).to(self.device)
         policy_diff = policy_tensor[1:]-policy_tensor[:-1]
@@ -876,4 +841,4 @@ class BBOAgent(object):
         pi_grad = self.derivative_net(self.pi_net.pi).detach()
         pi_with_grad = pi - self.pi_lr*pi_grad.cpu().numpy()
         pi_grad_norm = torch.norm(pi_grad).cpu().numpy()
-        return grad_direct, pi, pi_grad_norm, pi_with_grad, self.norm(f)
+        return grad_direct, pi, pi_grad_norm, pi_with_grad, self.r_norm(f).numpy()

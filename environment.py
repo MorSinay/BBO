@@ -7,10 +7,11 @@ class Env(object):
         self.need_norm = need_norm
         self.problem_iter = problem_iter
         self.observed_list = []
+        self.best_list = []
         self.pi_list = []
 
     def get_observed_and_pi_list(self):
-        return self.observed_list, self.pi_list
+        return self.best_list, self.observed_list, self.pi_list
 
     def get_problem_dim(self):
         raise NotImplementedError
@@ -37,6 +38,9 @@ class Env(object):
         raise NotImplementedError
 
     def get_f0(self):
+        raise NotImplementedError
+
+    def denormalize(self):
         raise NotImplementedError
 
 class EnvCoco(Env):
@@ -114,6 +118,7 @@ class EnvCoco(Env):
         policy = self.denormalize(policy)
         res = self.problem(policy)
         self.observed_list.append(res)
+        self.best_list.append(self.problem.best_observed_fvalue1)
         self.pi_list.append(policy)
         return res
 
@@ -181,6 +186,7 @@ class EnvVae(Env):
     def f(self, policy):
         res = self.vae_problem.func(policy)
         self.observed_list.append(res)
+        self.best_list.append(self.problem.best_observed_fvalue1)
         self.pi_list.append(policy)
         return res
 
@@ -270,6 +276,7 @@ class EnvOneD(Env):
         policy = self.denormalize(one_d_change_dim(policy)).flatten()
         res = self.problem(policy)
         self.observed_list.append(res)
+        self.best_list.append(self.problem.best_observed_fvalue1)
         return res
 
 def one_d_change_dim(policy):
