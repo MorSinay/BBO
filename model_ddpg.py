@@ -74,9 +74,18 @@ class RobustNormalizer(object):
             x = self.squash((x - self.mu) / (self.sigma + self.eps))
             return x
 
-    def inverse(self, x):
-        x = self.desquash(x)
-        x = x * (self.sigma + self.eps) + self.mu
+class TrustRegion(object):
+
+    def __init__(self, pi):
+        self.mu = pi
+        self.sigma = torch.ones_like(pi)
+
+    def squeeze(self, pi):
+        self.mu = pi
+        self.sigma /= 2
+
+    def __call__(self, x):
+        x = self.mu + x * self.sigma
         return x
 
 class MultipleOptimizer:
@@ -102,7 +111,7 @@ class MultipleOptimizer:
 
 class SplineNet(nn.Module):
 
-    def __init__(self, pi_net, device, output=1):
+    def __init__(self, device, pi_net, output=1):
         super(SplineNet, self).__init__()
         self.pi_net = pi_net
         self.embedding = SplineEmbedding(device)

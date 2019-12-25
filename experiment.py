@@ -6,6 +6,7 @@ import torch
 from tensorboardX import SummaryWriter
 from single_agent import BBOAgent
 from robust_agent import RobustAgent
+from trust_region_agent import TrustRegionAgent
 #from np_agent_temp import NPAgent
 from config import consts, args, DirsAndLocksSingleton
 import matplotlib
@@ -111,7 +112,8 @@ class Experiment(object):
 
     def bbo(self):
         if args.debug:
-            self.agent = RobustAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
+            #self.agent = RobustAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
+            self.agent = TrustRegionAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
         else:
             self.agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
         self.n_explore = args.batch

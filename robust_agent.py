@@ -121,7 +121,7 @@ class RobustAgent(object):
             self.value_net.eval()
             self.value_net_zero = copy.deepcopy(self.value_net.state_dict())
         elif self.algorithm_method == 'spline':
-            self.spline_net = SplineNet(self.pi_net, self.device, output=1)
+            self.spline_net = SplineNet(self.device, self.pi_net, output=1)
             self.spline_net.to(self.device)
             # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
             opt_sparse = torch.optim.SparseAdam(self.spline_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
@@ -266,7 +266,8 @@ class RobustAgent(object):
         self.pi_norm(explore_policies, training=True)
         rewards_torch = torch.FloatTensor(rewards)
         self.r_norm(rewards_torch, training=True)
-
+        self.tensor_replay_reward = torch.FloatTensor(rewards)
+        self.tensor_replay_policy = torch.FloatTensor(explore_policies)
        # self.print_robust_norm_params()
         self.value_optimize(100)
 
@@ -356,15 +357,11 @@ class RobustAgent(object):
             self.divergence += 1
 
     def value_optimize(self, value_iter):
-        #self.pi_net.eval()
-        replay_buffer_rewards = np.hstack(self.results['rewards'])[-self.replay_memory_size:]
-        replay_buffer_policy = torch.cat(self.results['explore_policies'], dim=0)[-self.replay_memory_size:]
 
-        self.tensor_replay_reward = torch.FloatTensor(replay_buffer_rewards)
-        self.tensor_replay_reward = self.r_norm(self.tensor_replay_reward).to(self.device, non_blocking=True)
-        self.tensor_replay_policy = replay_buffer_policy.to(self.device)
+        self.tensor_replay_reward_norm = self.r_norm(self.tensor_replay_reward).to(self.device)
+        self.tensor_replay_policy_norm = self.tensor_replay_policy.to(self.device)
 
-        len_replay_buffer = len(replay_buffer_rewards)
+        len_replay_buffer = len(self.tensor_replay_reward_norm)
         minibatches = len_replay_buffer // self.batch
 
         if self.algorithm_method == 'first_order':
@@ -389,11 +386,11 @@ class RobustAgent(object):
             shuffle_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch), replace=True)
             for i in range(minibatches):
                 samples = shuffle_indexes[i]
-                pi_1 = self.tensor_replay_policy[samples]
+                pi_1 = self.tensor_replay_policy_norm[samples]
                 pi_tag_1 = self.derivative_net(pi_1)
                 pi_2 = pi_1.detach() + torch.randn(self.batch, self.action_space).to(self.device, non_blocking=True)
 
-                r_1 = self.tensor_replay_reward[samples]
+                r_1 = self.tensor_replay_reward_norm[samples]
                 r_2 = self.value_net(pi_2).squeeze(1).detach()
 
                 if self.importance_sampling:
@@ -435,8 +432,8 @@ class RobustAgent(object):
             shuffle_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch), replace=False)
             for i in range(minibatches):
                 samples = shuffle_indexes[i]
-                r = self.tensor_replay_reward[samples]
-                pi_explore = self.tensor_replay_policy[samples]
+                r = self.tensor_replay_reward_norm[samples]
+                pi_explore = self.tensor_replay_policy_norm[samples]
 
                 optimizer.zero_grad()
                 self.optimizer_pi.zero_grad()
@@ -462,10 +459,10 @@ class RobustAgent(object):
             for i, anchor_index in enumerate(anchor_indexes):
                 ref_index = torch.LongTensor(self.batch * batch_indexes[i][:, np.newaxis] + np.arange(self.batch)[np.newaxis, :])
 
-                r_1 = self.tensor_replay_reward[anchor_index].unsqueeze(1).repeat(1, self.batch)
-                r_2 = self.tensor_replay_reward[ref_index]
-                pi_1 = self.tensor_replay_policy[anchor_index]
-                pi_2 = self.tensor_replay_policy[ref_index]
+                r_1 = self.tensor_replay_reward_norm[anchor_index].unsqueeze(1).repeat(1, self.batch)
+                r_2 = self.tensor_replay_reward_norm[ref_index]
+                pi_1 = self.tensor_replay_policy_norm[anchor_index]
+                pi_2 = self.tensor_replay_policy_norm[ref_index]
                 pi_tag_1 = self.derivative_net(pi_1).unsqueeze(1).repeat(1, self.batch, 1)
                 pi_1 = pi_1.unsqueeze(1).repeat(1, self.batch, 1)
 
@@ -500,10 +497,10 @@ class RobustAgent(object):
             for i, anchor_index in enumerate(anchor_indexes):
                 ref_index = torch.LongTensor(self.batch * batch_indexes[i] + ref_indexes[i])
 
-                r_1 = self.tensor_replay_reward[anchor_index]
-                r_2 = self.tensor_replay_reward[ref_index]
-                pi_1 = self.tensor_replay_policy[anchor_index]
-                pi_2 = self.tensor_replay_policy[ref_index]
+                r_1 = self.tensor_replay_reward_norm[anchor_index]
+                r_2 = self.tensor_replay_reward_norm[ref_index]
+                pi_1 = self.tensor_replay_policy_norm[anchor_index]
+                pi_2 = self.tensor_replay_policy_norm[ref_index]
                 pi_tag_1 = self.derivative_net(pi_1)
 
                 if self.importance_sampling:
@@ -531,10 +528,10 @@ class RobustAgent(object):
         self.derivative_net.train()
         for _ in range(value_iter):
             shuffle_index = np.random.randint(0, self.batch, size=(minibatches,)) + np.arange(0, self.batch * minibatches, self.batch)
-            r_1 = self.tensor_replay_reward[shuffle_index].unsqueeze(1).repeat(1, self.batch)
-            r_2 = self.tensor_replay_reward.view(minibatches, self.batch)
-            pi_1 = self.tensor_replay_policy[shuffle_index]
-            pi_2 = self.tensor_replay_policy.view(minibatches, self.batch, -1)
+            r_1 = self.tensor_replay_reward_norm[shuffle_index].unsqueeze(1).repeat(1, self.batch)
+            r_2 = self.tensor_replay_reward_norm.view(minibatches, self.batch)
+            pi_1 = self.tensor_replay_policy_norm[shuffle_index]
+            pi_2 = self.tensor_replay_policy_norm.view(minibatches, self.batch, -1)
             pi_tag_1 = self.derivative_net(pi_1).unsqueeze(1).repeat(1, self.batch, 1)
             pi_1 = pi_1.unsqueeze(1).repeat(1, self.batch, 1)
 
@@ -565,10 +562,10 @@ class RobustAgent(object):
         for _ in range(value_iter):
 
             shuffle_index = np.random.randint(0, self.batch, size=(minibatches,)) + np.arange(0, self.batch * minibatches, self.batch)
-            r_1 = self.tensor_replay_reward[shuffle_index].unsqueeze(1).repeat(1, self.batch)
-            r_2 = self.tensor_replay_reward.view(minibatches, self.batch)
-            pi_1 = self.tensor_replay_policy[shuffle_index].unsqueeze(1).repeat(1, self.batch, 1).reshape(-1,self.action_space)
-            pi_2 = self.tensor_replay_policy.view(minibatches * self.batch, -1)
+            r_1 = self.tensor_replay_reward_norm[shuffle_index].unsqueeze(1).repeat(1, self.batch)
+            r_2 = self.tensor_replay_reward_norm.view(minibatches, self.batch)
+            pi_1 = self.tensor_replay_policy_norm[shuffle_index].unsqueeze(1).repeat(1, self.batch, 1).reshape(-1,self.action_space)
+            pi_2 = self.tensor_replay_policy_norm.view(minibatches * self.batch, -1)
             delta_pi = pi_2 - pi_1
             if mid_val:
                 mid_pi = (pi_1 + pi_2) / 2
@@ -792,6 +789,9 @@ class RobustAgent(object):
         self.pi_norm(pi_explore, training=True)
         rewards_torch = torch.FloatTensor(rewards)
         self.r_norm(rewards_torch, training=True)
+
+        self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, torch.FloatTensor(rewards)])
+        self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, torch.FloatTensor(pi_explore)])
 
         self.print_robust_norm_params()
         return pi_explore, rewards
