@@ -76,16 +76,21 @@ class RobustNormalizer(object):
 
 class TrustRegion(object):
 
-    def __init__(self, pi):
-        self.mu = pi
-        self.sigma = torch.ones_like(pi)
+    def __init__(self, pi_net):
+        self.mu = torch.zeros_like(pi_net.pi).cpu()
+        self.sigma = torch.ones_like(self.mu).cpu()
+        self.pi_net = pi_net
 
     def squeeze(self, pi):
         self.mu = pi
-        self.sigma /= 2
+        self.sigma /= 4
+
+    def inverse(self, x):
+        x = self.mu + x * self.sigma
+        return self.pi_net(x)
 
     def __call__(self, x):
-        x = self.mu + x * self.sigma
+        x = (x - self.mu + self.sigma)/self.sigma - 1
         return x
 
 class MultipleOptimizer:
@@ -340,6 +345,9 @@ class PiNet(nn.Module):
         self.device = device
         self.action_space = action_space
 
+    def inverse(self,  policy):
+        return 0.5 * (torch.log(1 + policy) - torch.log(1 - policy))
+
     def forward(self, pi=None):
         if pi is None:
             return self.normalize(self.pi)
@@ -353,6 +361,31 @@ class PiNet(nn.Module):
     def grad_update(self, grads):
     #    if self.action_space == 1:
      #       grads = grads.squeeze(0)
+        with torch.no_grad():
+            self.pi.grad = grads
+
+class PiClamp(nn.Module):
+
+    def __init__(self, init, device, action_space):
+
+        super(PiClamp, self).__init__()
+        self.pi = nn.Parameter(init)
+        self.device = device
+        self.action_space = action_space
+
+    def forward(self, pi=None):
+        if pi is None:
+            with torch.no_grad():
+                self.pi.data = torch.clamp(self.pi.data, -1, 1)
+            return self.pi
+        else:
+            return torch.clamp(pi, -1, 1)
+
+    def pi_update(self, pi):
+        with torch.no_grad():
+            self.pi.data = self.forward(pi)
+
+    def grad_update(self, grads):
         with torch.no_grad():
             self.pi.grad = grads
 

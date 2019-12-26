@@ -54,7 +54,6 @@ class BBOAgent(object):
         self.grad_clip = args.grad_clip
         self.divergence = 0
         self.importance_sampling = args.importance_sampling
-        self.bandage = args.bandage
         self.update_step = args.update_step
         self.best_explore_update = args.best_explore_update
         self.analysis_dir = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
@@ -296,9 +295,6 @@ class BBOAgent(object):
             self.results['dist_x'].append(torch.norm(self.env.denormalize(self.pi_net().detach().cpu().numpy()) - self.best_op_x, 2))
             self.results['dist_f'].append(pi_eval - self.best_op_f)
 
-            if self.bandage:
-                self.bandage_update()
-
             self.results['policies'].append(pi)
             if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
                 grad_norm = torch.norm(self.derivative_net(self.pi_net.pi.detach()).detach(), 2).detach().item()
@@ -340,22 +336,6 @@ class BBOAgent(object):
         best_idx = rewards.argmin()
         pi = torch.cat(self.results['explore_policies'], dim=0)[best_idx]
         self.pi_net.pi_update(pi.to(self.device))
-
-    def bandage_update(self):
-
-        replay_observed = np.hstack(self.results['rewards'])[-self.replay_memory_size:]
-        replay_evaluate = np.array(self.results['pi_evaluate'])[-self.replay_memory_factor:]
-
-        best_observed = self.results['best_observed'][-1]
-        best_evaluate = np.min(self.results['pi_evaluate'])
-
-        bst_bandage = best_observed < np.min(replay_observed)
-        bte_bandage = best_evaluate < np.min(replay_evaluate)
-
-        if bst_bandage or bte_bandage:
-            self.update_best_pi()
-            self.update_pi_optimizer_lr()
-            self.divergence += 1
 
     def value_optimize(self, value_iter):
 
@@ -863,9 +843,9 @@ class BBOAgent(object):
         grads_norm = np.hstack(grads_norm)
         pi = self.pi_net().detach().cpu().numpy()
         pi_value = net(self.pi_net.pi).detach().cpu().numpy()
-        grad = self.get_grad().cpu().numpy()
+        pi_with_grad = self.pi_net(self.pi_net.pi - self.pi_lr*self.get_grad()).cpu().numpy()
 
-        return value, pi, np.array(pi_value), self.pi_lr*grad, grads_norm, self.norm(target)
+        return value, pi, np.array(pi_value), pi_with_grad, grads_norm, self.norm(target)
 
     def get_grad_norm_evaluation_function(self, policy, f):
         self.derivative_net.eval()

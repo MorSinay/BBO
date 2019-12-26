@@ -601,14 +601,13 @@ def get_best_solution(dim, index):
     return x, best_val
 
 if __name__ == '__main__':
-    get_best_solution(2, 15)
-    # #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
-    #
-    # optimizers = ['value', 'value_', 'first_order_', 'first_order']
-    # dims = [1, 2, 3, 5, 10, 20, 40]
-    # merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
-    # merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
-    #
+    #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
+
+    optimizers = ['value_cone', 'value_cone_beu', 'value_', 'first_order_', 'first_order_cone', 'first_order_cone_beu']
+    dims = [1, 2, 3, 5, 10, 20, 40]
+    merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
+    merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
+
     # # bbo_evaluate_compare(dim=40, index=255, prefix='CMP')
     #
     # for dim in dims:

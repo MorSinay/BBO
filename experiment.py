@@ -183,17 +183,16 @@ class Experiment(object):
             else:
                 policy = res['norm_policy']
 
-            value, pi, pi_value, grad, policy_grads, norm_f = self.agent.get_evaluation_function(policy, res['f'])
+            value, pi, pi_value, pi_with_grad, policy_grads, norm_f = self.agent.get_evaluation_function(policy, res['f'])
 
             pi = pi.reshape(-1, 1)
-            grad = grad.reshape(-1, 1)
 
             plt.subplot(111)
             plt.plot(res['policy'][:, 0], norm_f, color='g', markersize=1, label='f')
             plt.plot(res['policy'][:, 0], value, '-o', color='b', markersize=1, label='value')
             plt.plot(res['policy'][:, 0], policy_grads, 'H', color='m', markersize=1, label='norm_grad')
             plt.plot(5*pi[0], pi_value, 'X', color='r', markersize=4, label='pi')
-            plt.plot(5 * np.tanh(pi - grad)[0], pi_value, 'v', color='c', markersize=4, label='gard')
+            plt.plot(5*pi_with_grad[0], pi_value, 'v', color='c', markersize=4, label='gard')
 
             plt.title('value net for alg {} - {}D_index_{} - iteration {}'.format(self.algorithm, self.action_space, self.iter_index, n))
             plt.xlabel('x')
@@ -220,7 +219,7 @@ class Experiment(object):
 
             grad_direct, pi, pi_grad_norm, pi_with_grad, norm_f = self.agent.get_grad_norm_evaluation_function(policy, res['f'])
 
-            num_grad = (norm_f[1:] - norm_f[:-1]) / np.linalg.norm(policy[1:] - policy[:-1], axis=1)
+            num_grad = (norm_f[1:] - norm_f[:-1]) / (np.linalg.norm(policy[1:] - policy[:-1], axis=1) + 1e-5)
 
             pi = pi.reshape(-1, 1)
             pi_with_grad = pi_with_grad.reshape(-1, 1)
@@ -231,7 +230,7 @@ class Experiment(object):
             ax2.plot(res['policy'][:-1, 0], grad_direct, '-o', color='b', markersize=1, label='grad_norm')
 
             ax2.plot(5*pi[0], pi_grad_norm, 'X', color='r', markersize=4, label='pi')
-            ax2.plot(5 * np.tanh(pi_with_grad)[0], pi_grad_norm, 'v', color='c', markersize=4, label='pi_with_grad')
+            ax2.plot(5*pi_with_grad[0], pi_grad_norm, 'v', color='c', markersize=4, label='pi_with_grad')
 
             fig.suptitle('derivative net for alg {} - {}D_index_{} - iteration {}'.format(self.algorithm, self.action_space, self.iter_index, n))
             fig.legend()
