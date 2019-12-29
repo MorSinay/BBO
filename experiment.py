@@ -28,7 +28,7 @@ class Experiment(object):
         # parameters
         self.action_space = args.action_space
         dirs = os.listdir(consts.outdir)
-
+        self.n_explore = args.n_explore
         self.load_model = args.load_last_model
         self.load_last = args.load_last_model
         self.resume = args.resume
@@ -110,14 +110,21 @@ class Experiment(object):
             self.writer.export_scalars_to_json(os.path.join(self.tensorboard_dir, "all_scalars.json"))
             self.writer.close()
 
-    def bbo(self):
-        if args.debug:
-            #self.agent = RobustAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
-            self.agent = TrustRegionAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
+    def select_agent(self):
+        agent_type = args.agent
+        if agent_type == 'trust':
+            return TrustRegionAgent
+        elif agent_type == 'robust':
+            return RobustAgent
+        elif agent_type == 'BBOAgent':
+            return BBOAgent
         else:
-            self.agent = BBOAgent(self.exp_name, self.env, checkpoint=self.checkpoint)
-        self.n_explore = args.batch
-        player = self.agent.minimize(self.n_explore)
+            raise NotImplementedError
+
+    def bbo(self):
+        self.agent = self.select_agent()(self.exp_name, self.env, checkpoint=self.checkpoint)
+
+        player = self.agent.minimize()
         divergence = 0
 
         for n, bbo_results in (enumerate(player)):
@@ -276,11 +283,8 @@ class Experiment(object):
         f0 = optimizer_res['f0'][0]
 
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
-        pi_eval = np.load(os.path.join(path, 'pi_evaluate.npy'))
-        pi_eval = np.repeat(pi_eval, self.n_explore, axis=0)
-        pi_best = np.load(os.path.join(path, 'best_observed.npy'))
-        pi_best = np.repeat(pi_best, self.n_explore, axis=0)
-        #rewards = np.hstack(np.load(os.path.join(path, 'rewards.npy')))
+        pi_eval = np.load(os.path.join(path, 'observed_list_with_explore.npy'))
+        pi_best = np.load(os.path.join(path, 'best_list_with_explore.npy'))
 
         plt.subplot(111)
 

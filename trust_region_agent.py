@@ -41,7 +41,7 @@ class TrustRegionAgent(object):
         self.best_op_x = torch.FloatTensor(self.best_op_x).to(self.device)
 
         self.batch = args.batch
-        self.n_explore = self.batch
+        self.n_explore = args.n_explore
         self.warmup_minibatch = args.warmup_minibatch
         self.replay_memory_size = self.batch*args.replay_memory_factor
         self.replay_memory_factor = args.replay_memory_factor
@@ -174,6 +174,10 @@ class TrustRegionAgent(object):
                     assert False, "save_results"
                 np.save(path, tmp)
 
+        best_list, observed_list, _ = self.env.get_observed_and_pi_list()
+        np.save(os.path.join(self.analysis_dir, 'best_list_with_explore.npy'), best_list)
+        np.save(os.path.join(self.analysis_dir, 'observed_list_with_explore.npy'), best_list)
+
         path = os.path.join(self.analysis_dir, 'f0.npy')
         np.save(path, self.env.get_f0())
 
@@ -271,11 +275,12 @@ class TrustRegionAgent(object):
         self.value_optimize(100)
 
 
-    def minimize(self, n_explore):
-        self.n_explore = n_explore
+    def minimize(self):
+        counter = -1
         self.env.reset()
         self.warmup()
         for self.frame in tqdm(itertools.count()):
+            counter += 1
             pi_explore, reward = self.exploration_step()
             self.results['explore_policies'].append(self.pi_trust_region.inverse(pi_explore))
             self.results['rewards'].append(reward)
@@ -299,10 +304,10 @@ class TrustRegionAgent(object):
                 grad_norm = torch.norm(self.derivative_net(self.pi_net().detach(), normalize=False).detach(), 2).detach().item()
                 self.results['grad_norm'].append(grad_norm)
             if self.algorithm_method in ['value', 'anchor']:
-                value = self.r_norm.inverse(self.value_net(self.pi_net().detach(), normalize=False).detach().cpu()).item()
+                value = self.r_norm.desquash(self.value_net(self.pi_net().detach(), normalize=False).detach().cpu()).item()
                 self.results['value'].append(np.array(value))
             if self.algorithm_method in ['spline']:
-                value = self.r_norm.inverse(self.spline_net(self.pi_net().detach(), normalize=False).detach().cpu()).item()
+                value = self.r_norm.desquash(self.spline_net(self.pi_net().detach(), normalize=False).detach().cpu()).item()
                 self.results['value'].append(np.array(value))
 
             self.results['ts'].append(self.env.t)
@@ -316,7 +321,14 @@ class TrustRegionAgent(object):
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
                 break
 
-            if len(self.results['best_pi_evaluate']) > self.stop_con and self.results['best_pi_evaluate'][-1] == self.results['best_pi_evaluate'][-self.stop_con]:
+            if self.r_norm.sigma < 0.2:
+                self.save_checkpoint(self.checkpoint, {'n': self.frame})
+                self.save_results()
+                print("SIGMA R %.2f - FRAME %d" % (self.r_norm.sigma, self.frame))
+                break
+
+            if counter > self.stop_con and self.results['best_pi_evaluate'][-1] == self.results['best_pi_evaluate'][-self.stop_con]:
+                counter = 0
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
                 self.save_results()
                 self.update_best_pi()
@@ -325,7 +337,7 @@ class TrustRegionAgent(object):
                 self.divergence += 1
                 self.warmup()
 
-            if self.divergence >= 10:
+            if self.divergence >= 20:
                 print("DIVERGANCE - FAILED")
                 break
 
@@ -477,11 +489,11 @@ class TrustRegionAgent(object):
         self.derivative_net.train()
         for _ in range(value_iter):
             anchor_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch), replace=False)
-            ref_indexes = np.random.randint(0, self.batch, size=(minibatches, self.batch))
-            batch_indexes = anchor_indexes // self.batch
+            ref_indexes = np.random.randint(0, self.n_explore, size=(minibatches, self.batch))
+            explore_indexes = anchor_indexes // self.n_explore
 
             for i, anchor_index in enumerate(anchor_indexes):
-                ref_index = torch.LongTensor(self.batch * batch_indexes[i] + ref_indexes[i])
+                ref_index = torch.LongTensor(self.n_explore * explore_indexes[i] + ref_indexes[i])
 
                 r_1 = self.tensor_replay_reward_norm[anchor_index]
                 r_2 = self.tensor_replay_reward_norm[ref_index]
@@ -818,11 +830,11 @@ class TrustRegionAgent(object):
 
         value = np.hstack(value)
         grads_norm = np.hstack(grads_norm)
-        pi = self.pi_net().detach().cpu().numpy()
+        pi = self.pi_net().detach().cpu()
         pi_value = net(self.pi_net(), normalize=False).detach().cpu().numpy()
-        pi_with_grad = pi - self.pi_lr*self.get_grad().cpu().numpy()
+        pi_with_grad = pi - self.pi_lr*self.get_grad().cpu()
 
-        return value, self.pi_trust_region.inverse(pi), np.array(pi_value), self.pi_trust_region.inverse(pi_with_grad), grads_norm, self.r_norm(target).numpy()
+        return value, self.pi_trust_region.inverse(pi).numpy(), np.array(pi_value), self.pi_trust_region.inverse(pi_with_grad).numpy(), grads_norm, self.r_norm(target).numpy()
 
     def get_grad_norm_evaluation_function(self, policy, f):
         upper = (self.pi_trust_region.mu + self.pi_trust_region.sigma).numpy()

@@ -41,6 +41,8 @@ class BBOAgent(object):
         self.best_op_x = torch.FloatTensor(self.best_op_x).to(self.device)
 
         self.batch = args.batch
+        self.n_explore = args.n_explore
+        assert self.batch == self.n_explore, 'n_explore diff from batch'
         self.warmup_minibatch = args.warmup_minibatch
         self.replay_memory_size = self.batch*args.replay_memory_factor
         self.replay_memory_factor = args.replay_memory_factor
@@ -185,6 +187,10 @@ class BBOAgent(object):
                     assert False, "save_results"
                 np.save(path, tmp)
 
+        best_list, observed_list, _ = self.env.get_observed_and_pi_list()
+        np.save(os.path.join(self.analysis_dir, 'best_list_with_explore.npy'), best_list)
+        np.save(os.path.join(self.analysis_dir, 'observed_list_with_explore.npy'), best_list)
+
         path = os.path.join(self.analysis_dir, 'f0.npy')
         np.save(path, self.env.get_f0())
 
@@ -272,12 +278,12 @@ class BBOAgent(object):
         self.value_optimize(100)
 
 
-    def minimize(self, n_explore):
+    def minimize(self):
         self.env.reset()
         self.warmup()
         #self.pi_net.eval()
         for self.frame in tqdm(itertools.count()):
-            pi_explore, reward = self.exploration_step(n_explore)
+            pi_explore, reward = self.exploration_step()
             self.results['explore_policies'].append(pi_explore)
             self.results['rewards'].append(reward)
 

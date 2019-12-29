@@ -451,7 +451,7 @@ def avg_dim_best_observed(dim, save_file, prefix):
 
         for key, path in compare_dirs.items():
             try:
-                pi_best = np.load(os.path.join(path, index, 'best_observed.npy'))
+                pi_best = np.load(os.path.join(path, index, 'best_list_with_explore.npy'))
                 pi_best = (pi_best - min_val) / f0
             except:
                 pi_best = np.ones(1)
@@ -603,18 +603,18 @@ def get_best_solution(dim, index):
 if __name__ == '__main__':
     #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
 
-    optimizers = ['value_cone', 'value_cone_beu', 'value_', 'first_order_', 'first_order_cone', 'first_order_cone_beu']
+    optimizers = ['value_cone_beu', 'first_order_mor', 'first_order_cone_beu']
     dims = [1, 2, 3, 5, 10, 20, 40]
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 
-    # # bbo_evaluate_compare(dim=40, index=255, prefix='CMP')
-    #
+    # # # bbo_evaluate_compare(dim=40, index=255, prefix='CMP')
+    # #
     # for dim in dims:
     #     prefix = 'RUN'
     #     fig_name = '{} dim {} avg.pdf'.format(prefix,dim)
     #     avg_dim_best_observed(dim=dim, save_file=fig_name, prefix=prefix)
-    #
+
     # # for i in tqdm(range(0, 360, 1)):
     # #     visualization(i)
     #

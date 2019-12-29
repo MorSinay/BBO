@@ -83,7 +83,7 @@ class TrustRegion(object):
 
     def squeeze(self, pi):
         self.mu = pi
-        self.sigma /= 4
+        self.sigma /= 2
 
     def inverse(self, x):
         x = self.mu + x * self.sigma
