@@ -78,7 +78,7 @@ class TrustRegion(object):
 
     def __init__(self, pi_net):
         self.mu = torch.zeros_like(pi_net.pi).cpu()
-        self.sigma = torch.ones_like(self.mu).cpu()
+        self.sigma = 1.
         self.pi_net = pi_net
 
     def squeeze(self, pi):

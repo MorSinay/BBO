@@ -47,7 +47,7 @@ parser.add_argument('--latent', type=int, default=40, help='Size of latent space
 boolean_feature("load-last-model", False, 'Load the last saved model')
 boolean_feature("tensorboard", False, "Log results to tensorboard")
 boolean_feature('importance-sampling', False, "Derivative eval")
-parser.add_argument('--grad-clip', type=float, default=1e-2, help='grad clipping')
+parser.add_argument('--grad-clip', type=float, default=0, help='grad clipping')
 parser.add_argument('--vae', type=str, default='uniform', help='gaussian | uniform')
 parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
 # parameters
@@ -60,7 +60,7 @@ parser.add_argument('--explore', type=str, default='cone', help='exploration opt
 parser.add_argument('--update-step', type=str, default='n_step', help='pi update step - n_step | best_step | first_vs_last | no_update')
 boolean_feature("best-explore-update", False, 'move to the best value of exploration')
 parser.add_argument('--grad-steps', type=int, default=1, help='Gradient step')
-parser.add_argument('--stop-con', type=int, default=50, help='Stopping Condition')
+parser.add_argument('--stop-con', type=int, default=100, help='Stopping Condition')
 parser.add_argument('--agent', type=str, default='trust', help='Agent type - trust|robust|single')
 
 #
@@ -72,9 +72,9 @@ parser.add_argument('--cuda-default', type=int, default=0, help='Default GPU')
 parser.add_argument('--checkpoint-interval', type=int, default=1000, help='Number of training steps between evaluations')
 parser.add_argument('--replay-updates-interval', type=int, default=50, help='Number of training iterations between q-target updates')
 parser.add_argument('--replay-memory-factor', type=int, default=10, help='Replay factor')
-parser.add_argument('--warmup-minibatch', type=int, default=2, help='Warm up batches')
+parser.add_argument('--warmup-minibatch', type=int, default=3, help='Warm up batches')
 parser.add_argument('--warmup-factor', type=int, default=4, help='Warm up factor')
-parser.add_argument('--learn-iteration', type=int, default=20, help='Learning iteration')
+parser.add_argument('--learn-iteration', type=int, default=10, help='Learning iteration')
 parser.add_argument('--drop', type=float, default=0, help='Drop out')
 parser.add_argument('--alpha', type=float, default=1, help='moving avg factor')
 
@@ -82,7 +82,7 @@ parser.add_argument('--alpha', type=float, default=1, help='moving avg factor')
 #
 # #actors parameters
 parser.add_argument('--problem-index', type=int, default=-1, help='Problem Index or -1 for all')
-parser.add_argument('--pi-lr', type=float, default=1e-3, help='pi learning rate')
+parser.add_argument('--pi-lr', type=float, default=1e-2, help='pi learning rate')
 parser.add_argument('--value-lr', type=float, default=1e-3, help='value learning rate')
 parser.add_argument('--action-space', type=int, default=10, help='Problem dimension')
 parser.add_argument('--layer', type=int, default=256, help='Value hidden layer size')

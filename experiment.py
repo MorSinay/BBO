@@ -290,13 +290,13 @@ class Experiment(object):
 
         colors = consts.color
         #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
-        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='pi_evaluate')
-        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[1], label='best_observed')
+        plt.loglog(np.arange(len(pi_eval)), 1 + (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='pi_evaluate')
+        plt.loglog(np.arange(len(pi_best)), 1 + (pi_best - min_val) / (f0 - min_val), color=colors[1], label='best_observed')
 
         for i, op in enumerate(optimizer_res['fmin']):
             res = optimizer_res[optimizer_res['fmin'] == op]
             op_eval = np.array(res['f'].values[0])
-            plt.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
+            plt.loglog(np.arange(len(op_eval)), 1 + (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
 
         plt.legend()
         plt.title('alg {} - dim = {} index = {} ----- best vs eval'.format(self.algorithm, self.action_space, self.iter_index))
