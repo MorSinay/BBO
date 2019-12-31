@@ -4,72 +4,20 @@ import torch.utils.data.sampler
 import torch.optim.lr_scheduler
 import numpy as np
 from tqdm import tqdm
-import torch.nn as nn
-from collections import defaultdict
 import torch.autograd as autograd
-from torchvision.utils import save_image
-from sklearn.preprocessing import RobustScaler
-from config import consts, args, DirsAndLocksSingleton
-from model_ddpg import DuelNet, DerivativeNet, PiNet, SplineNet, MultipleOptimizer
-import math
-import os
-import copy
-from visualize_2d import get_best_solution
+from config import args
 import itertools
-mem_threshold = consts.mem_threshold
-
-#TODO:
-# vae change logvar to
-# curl regularization
-# ELAD - 1d visualizetion of bbo function - eval function and derivative using projection in a specific direction
+from agent import Agent
 
 
-class BBOAgent(object):
+class BBOAgent(Agent):
 
     def __init__(self, exp_name, env, checkpoint):
-
+        super(BBOAgent, self).__init__(exp_name, env, checkpoint)
         reward_str = "BBO"
         print("Learning POLICY method using {} with BBOAgent".format(reward_str))
-        self.cuda_id = args.cuda_default
-        use_cuda = not args.no_cuda and torch.cuda.is_available()
-        self.device = torch.device("cuda" if use_cuda else "cpu")
-        self.action_space = args.action_space
-        self.env = env
-        self.dirs_locks = DirsAndLocksSingleton(exp_name)
-
-        self.best_op_x, self.best_op_f = get_best_solution(self.action_space, self.env.problem_iter)
-        self.best_op_x = torch.FloatTensor(self.best_op_x).to(self.device)
-
-        self.batch = args.batch
-        self.n_explore = args.n_explore
         assert self.batch == self.n_explore, 'n_explore diff from batch'
-        self.warmup_minibatch = args.warmup_minibatch
-        self.replay_memory_size = self.batch*args.replay_memory_factor
-        self.replay_memory_factor = args.replay_memory_factor
-        self.problem_index = env.problem_iter
-        self.value_lr = args.value_lr
-        self.budget = args.budget
-        self.checkpoint = checkpoint
-        self.algorithm_method = args.algorithm
-        self.grad_steps = args.grad_steps
-        self.stop_con = args.stop_con
-        self.grad_clip = args.grad_clip
-        self.divergence = 0
-        self.importance_sampling = args.importance_sampling
-        self.update_step = args.update_step
-        self.best_explore_update = args.best_explore_update
-        self.analysis_dir = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
-        if not os.path.exists(self.analysis_dir):
-            try:
-                os.makedirs(self.analysis_dir)
-            except:
-                pass
 
-        self.frame = 0
-        self.n_offset = 0
-        self.results = defaultdict(list)
-        self.tensor_replay_reward = None
-        self.tensor_replay_policy = None
         self.mean = None
         self.std = None
         self.max = None
@@ -77,27 +25,6 @@ class BBOAgent(object):
         self.clip_up = np.inf
         self.clip_down = -np.inf
         self.alpha = args.alpha
-        self.pi_lr = args.pi_lr
-        self.epsilon = args.epsilon
-        self.delta = self.pi_lr
-        self.warmup_factor = args.warmup_factor
-
-        if args.explore == 'grad_rand':
-            self.exploration = self.exploration_grad_rand
-        elif args.explore == 'grad_direct':
-            self.exploration = self.exploration_grad_direct
-        elif args.explore == 'rand':
-            self.exploration = self.exploration_rand
-        elif args.explore == 'rand_test':
-            self.exploration = self.exploration_rand_test
-        elif args.explore == 'cone':
-            if self.action_space == 1:
-                self.exploration = self.exploration_grad_direct
-            else:
-                self.exploration = self.cone_explore
-        else:
-            print("explore:"+args.explore)
-            raise NotImplementedError
 
         if args.norm == 'mean':
             self.output_norm = self.mean_norm
@@ -113,190 +40,13 @@ class BBOAgent(object):
             print("norm:" + args.norm)
             raise NotImplementedError
 
-
-        self.init = torch.FloatTensor(self.env.get_initial_solution()).to(self.device)
-        self.pi_net = PiNet(self.init, self.device, self.action_space)
-        self.optimizer_pi = torch.optim.SGD([self.pi_net.pi], lr=self.pi_lr)
-        self.pi_net.eval()
-        self.value_iter = args.learn_iteration
-        if self.algorithm_method in ['first_order', 'second_order']:
-            self.derivative_net = DerivativeNet(self.pi_net)
-            self.derivative_net.to(self.device)
-            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
-            self.optimizer_derivative = torch.optim.Adam(self.derivative_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-            self.derivative_net.eval()
-            self.derivative_net_zero = copy.deepcopy(self.derivative_net.state_dict())
-        elif self.algorithm_method == 'value':
-            self.value_net = DuelNet(self.pi_net)
-            self.value_net.to(self.device)
-            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
-            self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-            self.value_net.eval()
-            self.value_net_zero = copy.deepcopy(self.value_net.state_dict())
-        elif self.algorithm_method == 'spline':
-            self.spline_net = SplineNet(self.device, self.pi_net, output=1)
-            self.spline_net.to(self.device)
-            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
-            opt_sparse = torch.optim.SparseAdam(self.spline_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
-            opt_dense = torch.optim.Adam(self.spline_net.head.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-04)
-            self.optimizer_spline = MultipleOptimizer(opt_sparse, opt_dense)
-            self.spline_net.eval()
-            self.spline_net_zero = copy.deepcopy(self.spline_net.state_dict())
-        elif self.algorithm_method == 'anchor':
-            self.derivative_net = DerivativeNet(self.pi_net)
-            self.derivative_net.to(self.device)
-            self.value_net = DuelNet(self.pi_net)
-            self.value_net.to(self.device)
-            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
-            self.optimizer_derivative = torch.optim.Adam(self.derivative_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-            self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-            self.value_net.eval()
-            self.derivative_net.eval()
-            self.value_net_zero = copy.deepcopy(self.value_net.state_dict())
-            self.derivative_net_zero = copy.deepcopy(self.derivative_net.state_dict())
-        else:
-            raise NotImplementedError
-
-
-        self.q_loss = nn.SmoothL1Loss(reduction='none')
-
-    def update_pi_optimizer_lr(self):
-        op_dict = self.optimizer_pi.state_dict()
-        self.pi_lr *= 0.85
-        op_dict['param_groups'][0]['lr'] = self.pi_lr
-        self.optimizer_pi.load_state_dict(op_dict)
-
-    def save_results(self, normalize_policy=False):
-        for k in self.results.keys():
-            path = os.path.join(self.analysis_dir, k +'.npy')
-            if k in ['explore_policies']:
-                policy = torch.cat(self.results[k], dim=0)
-                if normalize_policy:
-                    policy = self.pi_net(policy)
-                assert ((len(policy.shape) == 2) and (policy.shape[1] == self.action_space)), "save_results"
-                np.save(path, policy.cpu().numpy())
-            elif k in ['policies']:
-                policy = torch.stack(self.results[k])
-                if normalize_policy:
-                    policy = self.pi_net(policy)
-                assert ((len(policy.shape) == 2) and (policy.shape[1] == self.action_space)), "save_results"
-                np.save(path, policy.cpu().numpy())
-            elif k in ['grad']:
-                grad = np.vstack(self.results[k])
-                assert ((len(grad.shape) == 2) and (grad.shape[1] == self.action_space)), "save_results"
-                np.save(path, grad)
-            else:
-                tmp = np.array(self.results[k]).flatten()
-                if tmp is None:
-                    assert False, "save_results"
-                np.save(path, tmp)
-
-        best_list, observed_list, _ = self.env.get_observed_and_pi_list()
-        np.save(os.path.join(self.analysis_dir, 'best_list_with_explore.npy'), np.array(best_list))
-        np.save(os.path.join(self.analysis_dir, 'observed_list_with_explore.npy'), np.array(best_list))
-
-        path = os.path.join(self.analysis_dir, 'f0.npy')
-        np.save(path, self.env.get_f0())
-
-        if self.action_space == 784:
-            path = os.path.join(self.analysis_dir, 'reconstruction.png')
-            save_image(self.pi_net.pi.cpu().view(1, 28, 28), path)
-
-    def save_checkpoint(self, path, aux=None):
-        if self.algorithm_method in ['first_order', 'second_order']:
-            state = {'pi_net': self.pi_net.pi.detach(),
-                     'derivative_net': self.derivative_net.state_dict(),
-                     'optimizer_derivative': self.optimizer_derivative.state_dict(),
-                     'optimizer_pi': self.optimizer_pi.state_dict(),
-                     'aux': aux}
-        elif self.algorithm_method == 'value':
-            state = {'pi_net': self.pi_net.pi.detach(),
-                     'value_net': self.value_net.state_dict(),
-                     'optimizer_value': self.optimizer_value.state_dict(),
-                     'optimizer_pi': self.optimizer_pi.state_dict(),
-                     'aux': aux}
-        elif self.algorithm_method == 'anchor':
-            state = {'pi_net': self.pi_net.pi.detach(),
-                     'derivative_net': self.derivative_net.state_dict(),
-                     'optimizer_derivative': self.optimizer_derivative.state_dict(),
-                     'value_net': self.value_net.state_dict(),
-                     'optimizer_value': self.optimizer_value.state_dict(),
-                     'optimizer_pi': self.optimizer_pi.state_dict(),
-                     'aux': aux}
-        elif self.algorithm_method == 'spline':
-            state = {'pi_net': self.pi_net.pi.detach(),
-                     'spline_net': self.spline_net.state_dict(),
-                     'optimizer_spline': self.optimizer_spline.state_dict(),
-                     'optimizer_pi': self.optimizer_pi.state_dict(),
-                     'aux': aux}
-        else:
-            raise NotImplementedError
-
-        torch.save(state, path)
-
-    def load_checkpoint(self, path):
-        if not os.path.exists(path):
-            assert False, "load_checkpoint"
-        state = torch.load(path, map_location="cuda:%d" % self.cuda_id)
-        self.pi_net = state['pi_net'].to(self.device)
-        self.optimizer_pi.load_state_dict(state['optimizer_pi'])
-        if self.algorithm_method in ['first_order', 'second_order']:
-            self.derivative_net.load_state_dict(state['derivative_net'])
-            self.optimizer_derivative.load_state_dict(state['optimizer_derivative'])
-        elif self.algorithm_method == 'value':
-            self.value_net.load_state_dict(state['value_net'])
-            self.optimizer_value.load_state_dict(state['optimizer_value'])
-        elif self.algorithm_method == 'anchor':
-            self.derivative_net.load_state_dict(state['derivative_net'])
-            self.optimizer_derivative.load_state_dict(state['optimizer_derivative'])
-            self.value_net.load_state_dict(state['value_net'])
-            self.optimizer_value.load_state_dict(state['optimizer_value'])
-        elif self.algorithm_method == 'spline':
-            self.spline_net.load_state_dict(state['spline_net'])
-            self.optimizer_spline.load_state_dict(state['optimizer_spline'])
-        else:
-            raise NotImplementedError
-        self.n_offset = state['aux']['n']
-
-        return state['aux']
-
-    def reset_net(self):
-        if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
-            self.derivative_net.load_state_dict(self.derivative_net_zero)
-            self.optimizer_derivative.state = defaultdict(dict)
-        if self.algorithm_method in ['value', 'anchor']:
-            self.value_net.load_state_dict(self.value_net_zero)
-            self.optimizer_value.state = defaultdict(dict)
-        if self.algorithm_method in ['spline']:
-            self.spline_net.load_state_dict(self.spline_net_zero)
-            self.optimizer_spline.state = defaultdict(dict)
-
     def update_replay_buffer(self):
-        if self.tensor_replay_reward is not None:
-            pi = self.pi_trust_region.mu
-            explore_policies = torch.cat(self.results['explore_policies'], dim=0)
-            rewards = np.hstack(self.results['rewards'])
 
-            in_range = torch.norm(explore_policies - pi, 1, dim=1) < self.pi_trust_region.sigma
-            explore_policies_from_buf = self.pi_trust_region.real_to_unconstrained(explore_policies[in_range])
-            rewards_from_buf = rewards[in_range]
-        else:
-            explore_policies_from_buf = torch.FloatTensor([])
-            rewards_from_buf = np.array([])
-
-        explore_policies_rand = self.exploration_rand(self.warmup_minibatch * self.n_explore)
-        self.step_policy(explore_policies_rand)
-        rewards_rand = self.env.reward
-        self.results['explore_policies'].append(self.pi_trust_region.unconstrained_to_real(explore_policies_rand))
-        self.results['rewards'].append(rewards_rand)
-
-        explore_policies = torch.cat([explore_policies_from_buf, explore_policies_rand])
-        rewards = np.concatenate([rewards_from_buf, rewards_rand])
-
-        replay_size = (len(explore_policies) // self.n_explore) * self.n_explore
-
-        explore_policies = explore_policies[-replay_size:]
-        rewards = rewards[-replay_size:]
+        explore_policies = self.exploration_rand(self.warmup_minibatch * self.n_explore)
+        self.step_policy(explore_policies)
+        rewards = self.env.reward
+        self.results['explore_policies'].append(explore_policies)
+        self.results['rewards'].append(rewards)
 
         self.tensor_replay_reward = torch.FloatTensor(rewards)
         self.tensor_replay_policy = torch.FloatTensor(explore_policies)
@@ -311,13 +61,12 @@ class BBOAgent(object):
         self.min = self.tensor_replay_reward.min()
         self.value_optimize(100)
 
-
     def minimize(self):
         self.env.reset()
         self.warmup()
         #self.pi_net.eval()
         for self.frame in tqdm(itertools.count()):
-            pi_explore, reward = self.exploration_step()
+            pi_explore, reward = self.exploration_step(self.n_explore)
             self.results['explore_policies'].append(pi_explore)
             self.results['rewards'].append(reward)
 
@@ -327,7 +76,7 @@ class BBOAgent(object):
             self.save_checkpoint(self.checkpoint, {'n': self.frame})
 
             pi = self.pi_net.pi.detach().clone()
-            pi_eval = self.f_policy(pi)
+            pi_eval = self.step_policy(pi, to_env=False)
             self.results['best_observed'].append(self.env.best_observed)
             self.results['reward_pi_evaluate'].append(pi_eval)
             self.results['best_pi_evaluate'].append(min(self.results['reward_pi_evaluate']))
@@ -340,11 +89,11 @@ class BBOAgent(object):
                 grad_norm = torch.norm(self.derivative_net(self.pi_net.pi.detach()).detach(), 2).detach().item()
                 self.results['grad_norm'].append(grad_norm)
             if self.algorithm_method in ['value', 'anchor']:
-                value = self.value_net(self.pi_net.pi.detach()).detach().item()
-                self.results['value'].append(self.output_denorm(np.array(value)))
+                value = self.output_denorm(self.value_net(self.pi_net.pi.detach()).detach().cpu())
+                self.results['value'].append(value.item())
             if self.algorithm_method in ['spline']:
-                value = self.spline_net(self.pi_net.pi.detach()).detach().item()
-                self.results['value'].append(self.output_denorm(np.array(value)))
+                value = self.output_denorm(self.spline_net(self.pi_net.pi.detach()).detach().cpu())
+                self.results['value'].append(value.item())
 
             self.results['ts'].append(self.env.t)
             self.results['divergence'].append(self.divergence)
@@ -353,13 +102,13 @@ class BBOAgent(object):
 
             if self.results['ts'][-1]:
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
-                self.save_results()
+                self.save_results(normalize_policy=True)
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
                 break
 
             if len(self.results['best_pi_evaluate']) > self.stop_con and self.results['best_pi_evaluate'][-1] == self.results['best_pi_evaluate'][-self.stop_con]:
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
-                self.save_results()
+                self.save_results(normalize_policy=True)
                 self.update_best_pi()
                 self.epsilon *= 0.75
                 self.update_pi_optimizer_lr()
@@ -367,7 +116,7 @@ class BBOAgent(object):
                 self.warmup()
 
             if self.frame >= self.budget:
-                self.save_results()
+                self.save_results(normalize_policy=True)
                 print("FAILED")
                 break
 
@@ -625,52 +374,14 @@ class BBOAgent(object):
         self.results['derivative_loss'].append(loss)
         self.derivative_net.eval()
 
-    def get_n_grad_ahead(self, n):
-
-        optimizer_state = copy.deepcopy(self.optimizer_pi.state_dict())
-        pi_array = [self.pi_net.pi.detach().clone()]
-        for _ in range(n):
-            pi, _ = self.grad_step()
-            pi_array.append(pi)
-
-        self.optimizer_pi.load_state_dict(optimizer_state)
-        self.pi_net.pi_update(pi_array[0].to(self.device))
-
-        pi_array = torch.stack(pi_array)
-        return pi_array
-
-    def grad_step(self):
-        self.pi_net.train()
-        self.optimizer_pi.zero_grad()
-        if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
-            self.optimizer_derivative.zero_grad()
-            grad = self.derivative_net(self.pi_net.pi).detach().squeeze(0)
-            self.pi_net.grad_update(grad.clone())
-        elif self.algorithm_method == 'value':
-            self.optimizer_value.zero_grad()
-            loss_pi = self.value_net(self.pi_net.pi)
-            loss_pi.backward()
-        elif self.algorithm_method == 'spline':
-            self.optimizer_spline.zero_grad()
-            loss_pi = self.spline_net(self.pi_net.pi)
-            loss_pi.backward()
-        else:
-            raise NotImplementedError
-
-        if self.grad_clip != 0:
-            nn.utils.clip_grad_norm_(self.pi_net.pi, self.grad_clip / self.pi_lr)
-
-        self.optimizer_pi.step()
-        self.pi_net.eval()
-        pi = self.pi_net.pi.detach().clone()
-        return pi, self.step_policy(pi, to_env=False)
-
     def calc_clip_and_scaler(self, data):
-        delta = torch.kthvalue(data, 0.9, dim=0)[0] - torch.kthvalue(data, 0.1, dim=0)[0]
+        size = len(data)
 
-        self.clip_up = torch.kthvalue(data, 0.9, dim=0)[0] + delta
-        self.clip_down = torch.kthvalue(data, 0.1, dim=0)[0] - delta
-        data = torch.clamp(data, a_max=self.clip_up, a_min=self.clip_down)
+        delta = torch.kthvalue(data, int(0.9*size), dim=0)[0] - torch.kthvalue(data, int(0.1*size), dim=0)[0]
+
+        self.clip_up = torch.kthvalue(data, int(0.9*size), dim=0)[0] + delta
+        self.clip_down = torch.kthvalue(data, int(0.1*size), dim=0)[0] - delta
+        data = torch.clamp(data, max=self.clip_up, min=self.clip_down)
         self.output_norm(data)
 
     def mean_std_norm(self, data):
@@ -693,136 +404,29 @@ class BBOAgent(object):
         return self.norm(data)
 
     def norm(self, data):
-        data = np.clip(data, a_max=self.clip_up, a_min=self.clip_down)
+        data = torch.clamp(data, max=self.clip_up, min=self.clip_down)
         return (data - self.mean) / (self.std + 1e-5)
 
     def no_norm(self, data):
         return data
 
     def robust_scaler_norm(self, data):
-        self.mean = np.median(data)
-        self.std = np.quantile(data, 0.75) - np.quantile(data, 0.25)
+        size = len(data)
+        self.mean = data.mean()
+        self.std = torch.kthvalue(data, int(0.75*size), dim=0)[0] - torch.kthvalue(data, int(0.25*size), dim=0)[0]
         return self.norm(data)
 
     def output_denorm(self, data):
         return data * (self.std + 1e-5) + self.mean
 
-    def exploration_rand(self, n_explore):
-            pi = self.pi_net.pi.detach().clone().cpu()
-            pi_explore = pi + self.warmup_factor*self.epsilon * torch.rand(n_explore, self.action_space)
-            return pi_explore
-
-    def exploration_rand_test(self, n_explore):
-            pi_explore = -2 * torch.rand(n_explore, self.action_space) + 1
-            return pi_explore
-
-    def exploration_grad_rand(self, n_explore):
-        grads = self.get_grad().cpu()
-        pi = self.pi_net.pi.detach().clone().cpu()
-        explore_factor = self.delta * grads + self.epsilon * torch.randn(n_explore, self.action_space)
-        explore_factor *= 0.9 ** (2 * torch.arange(n_explore, dtype=torch.float)).reshape(n_explore, 1)
-        pi_explore = pi - explore_factor  # gradient decent
-        return pi_explore
-
-    def exploration_grad_direct(self, n_explore):
-        pi_array = self.get_n_grad_ahead(self.grad_steps).reshape(self.grad_steps+1, self.action_space).cpu()
-        n_explore = (n_explore // self.grad_steps)
-
-        epsilon_array = self.epsilon ** (3 - 2 * torch.arange(self.grad_steps+1, dtype=torch.float) / (self.grad_steps))
-        epsilon_array = epsilon_array.unsqueeze(1) # .expand_dims(epsilon_array, axis=1)
-        pi_explore = torch.cat([pi_array + epsilon_array * torch.randn(self.grad_steps+1, self.action_space) for _ in range(n_explore)], dim=0)
-        return pi_explore
-
-    def cone_explore(self, n_explore):
-        alpha = math.pi / 4
-        n = n_explore - 1
-        pi = self.pi_net.pi.detach().cpu()
-        d = self.get_grad().cpu()
-        m = len(pi)
-        pi = pi.unsqueeze(0)
-
-        x = torch.FloatTensor(n, m).normal_()
-        mag = torch.FloatTensor(n, 1).uniform_()
-
-        x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
-        d = d / (torch.norm(d) + 1e-8)
-
-        cos = (x @ d).unsqueeze(1)
-
-        dp = x - cos * d.unsqueeze(0)
-
-        dp = dp / torch.norm(dp, dim=1, keepdim=True)
-
-        acos = torch.acos(torch.clamp(torch.abs(cos), 0, 1-1e-8))
-
-        new_cos = torch.cos(acos * alpha / (math.pi / 2))
-        new_sin = torch.sin(acos * alpha / (math.pi / 2))
-
-        cone = new_sin * dp + new_cos * d
-
-        explore = pi - self.epsilon * mag * cone
-
-        return torch.cat([pi, explore])
-
-    def get_grad(self):
-
-        self.pi_net.train()
-        self.optimizer_pi.zero_grad()
-        if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
-            self.optimizer_derivative.zero_grad()
-            grad = self.derivative_net(self.pi_net.pi.detach()).detach().squeeze(0)
-            self.pi_net.grad_update(grad.clone())
-        elif self.algorithm_method == 'value':
-            self.optimizer_value.zero_grad()
-            loss_pi = self.value_net(self.pi_net.pi)
-            loss_pi.backward()
-        elif self.algorithm_method == 'spline':
-            self.spline_net.zero_grad()
-            loss_pi = self.spline_net(self.pi_net.pi)
-            loss_pi.backward()
-        else:
-            raise NotImplementedError
-
-        if self.grad_clip != 0:
-            nn.utils.clip_grad_norm_(self.pi_net.pi, self.grad_clip / self.pi_lr)
-
-        self.pi_net.eval()
-        grad = self.pi_net.pi.grad.detach().clone()
-        return grad
-
-
     def step_policy(self, policy, to_env=True):
-		policy = policy.cpu()
+        policy = policy.cpu()
         policy = self.pi_net(policy)
         policy = policy.data.cpu().numpy()
         if to_env:
             self.env.step_policy(policy)
         else:
             return self.env.f(policy)
-
-    def pi_optimize(self):
-        pi = self.pi_net.pi.detach().clone()
-        pi_list = [pi]
-        value_list = [self.step_policy(pi, to_env=False)]
-
-        for _ in range(self.grad_steps):
-            pi, value = self.grad_step()
-            pi_list.append(pi)
-            value_list.append(value)
-
-        if self.update_step == 'n_step':
-            #no need to do action
-            pass
-        elif self.update_step == 'best_step':
-            best_idx = np.array(value_list).argmin()
-            self.pi_net.pi_update(pi_list[best_idx].to(self.device))
-        elif self.update_step == 'first_vs_last':
-            if value_list[-1] > value_list[0]:
-                self.pi_net.pi_update(pi_list[0].to(self.device))
-        elif self.update_step == 'no_update':
-            self.pi_net.pi_update(pi_list[0].to(self.device))
-        else:
-            raise NotImplementedError
 
     def exploration_step(self, n_explore):
         pi_explore = self.exploration(n_explore)
@@ -832,8 +436,8 @@ class BBOAgent(object):
             best_explore = rewards.argmin()
             self.pi_net.pi_update(pi_explore[best_explore].to(self.device))
 
-        self.tensor_replay_reward = torch.stack(self.tensor_replay_reward, torch.FloatTensor(rewards))
-        self.tensor_replay_policy = torch.stack(self.tensor_replay_policy, torch.FloatTensor(pi_explore))
+        self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, torch.FloatTensor(rewards)])
+        self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, torch.FloatTensor(pi_explore)])
         return pi_explore, rewards
 
     def get_evaluation_function(self, policy, target):
@@ -865,11 +469,12 @@ class BBOAgent(object):
         grads_norm = np.hstack(grads_norm)
         pi = self.pi_net().detach().cpu().numpy()
         pi_value = net(self.pi_net.pi).detach().cpu().numpy()
-        pi_with_grad = self.pi_net(self.pi_net.pi - self.pi_lr*self.get_grad()).cpu().numpy()
-
-        return value, pi, np.array(pi_value), pi_with_grad, grads_norm, self.norm(target)
+        pi_with_grad = self.pi_net(self.pi_net.pi - self.pi_lr*self.get_grad()).detach().cpu().numpy()
+        target_tensor = torch.FloatTensor(target)
+        return value, pi, np.array(pi_value), pi_with_grad, grads_norm, self.norm(target_tensor).detach().numpy()
 
     def get_grad_norm_evaluation_function(self, policy, f):
+        tensor_f = torch.FloatTensor(f)
         self.derivative_net.eval()
         policy_tensor = torch.FloatTensor(policy).to(self.device)
         policy_diff = policy_tensor[1:]-policy_tensor[:-1]
@@ -879,4 +484,4 @@ class BBOAgent(object):
         pi_grad = self.derivative_net(self.pi_net.pi).detach()
         pi_with_grad = pi - self.pi_lr*pi_grad.cpu().numpy()
         pi_grad_norm = torch.norm(pi_grad).cpu().numpy()
-        return grad_direct, pi, pi_grad_norm, pi_with_grad, self.norm(f)
+        return grad_direct, pi, pi_grad_norm, pi_with_grad, self.norm(tensor_f).detach().numpy()

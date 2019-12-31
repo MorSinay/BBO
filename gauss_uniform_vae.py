@@ -221,7 +221,7 @@ class VaeProblem(object):
         self.index = self.problem.index
         self.id = 'vae_'+str(self.problem.id)
         self.dimension = 784
-        self.initial_solution = self.vae.model.decode(torch.tensor(self.problem.initial_solution, dtype=torch.float).to(self.device)).detach().cpu().numpy()
+        self.initial_solution = self.vae.model.decode(torch.FloatTensor(self.problem.initial_solution).to(self.device)).detach().cpu().numpy()
         self.lower_bounds = -np.ones(self.dimension)
         self.upper_bounds = np.ones(self.dimension)
         self.evaluations = 0
@@ -244,7 +244,7 @@ class VaeProblem(object):
         return policy
 
     def func(self, x):
-        x = torch.tensor(x, dtype=torch.float).to(self.device)
+        x = torch.FloatTensor(x).to(self.device)
         mu, logvar = self.vae.model.encode(x)
         z = self.vae.model.reparameterize(mu, logvar).detach().cpu().numpy()
         z = self.denormalize(z)

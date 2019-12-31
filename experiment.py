@@ -116,7 +116,7 @@ class Experiment(object):
             return TrustRegionAgent
         elif agent_type == 'robust':
             return RobustAgent
-        elif agent_type == 'BBOAgent':
+        elif agent_type == 'single':
             return BBOAgent
         else:
             raise NotImplementedError
@@ -275,7 +275,6 @@ class Experiment(object):
         plt.savefig(path_fig)
 
         plt.close()
-
 
     def compare_pi_evaluate(self):
         optimizer_res = get_baseline_cmp(self.action_space, self.iter_index)
