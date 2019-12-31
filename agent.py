@@ -3,19 +3,15 @@ import torch.utils.data
 import torch.utils.data.sampler
 import torch.optim.lr_scheduler
 import numpy as np
-from tqdm import tqdm
 import torch.nn as nn
 from collections import defaultdict
-import torch.autograd as autograd
 from torchvision.utils import save_image
-from sklearn.preprocessing import RobustScaler
-from config import consts, args, DirsAndLocksSingleton
+from config import args, DirsAndLocksSingleton
 from model_ddpg import DuelNet, DerivativeNet, PiNet, SplineNet, MultipleOptimizer
 import math
 import os
 import copy
 from visualize_2d import get_best_solution
-import itertools
 
 class Agent(object):
 
@@ -88,28 +84,36 @@ class Agent(object):
 
         self.value_iter = args.learn_iteration
         if self.algorithm_method in ['first_order', 'second_order']:
-            self.derivative_net = DerivativeNet(self.pi_net)
-            self.derivative_net.to(self.device)
-            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
-            self.optimizer_derivative = torch.optim.Adam(self.derivative_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
+            if args.spline:
+                self.derivative_net = SplineNet(self.device, self.pi_net, output=self.action_space)
+                self.derivative_net.to(self.device)
+                # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
+                opt_sparse = torch.optim.SparseAdam(self.derivative_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
+                opt_dense = torch.optim.Adam(self.derivative_net.head.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-04)
+                self.optimizer_derivative = MultipleOptimizer(opt_sparse, opt_dense)
+            else:
+                self.derivative_net = DerivativeNet(self.pi_net)
+                self.derivative_net.to(self.device)
+                # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
+                self.optimizer_derivative = torch.optim.Adam(self.derivative_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
             self.derivative_net.eval()
             self.derivative_net_zero = copy.deepcopy(self.derivative_net.state_dict())
         elif self.algorithm_method == 'value':
-            self.value_net = DuelNet(self.pi_net)
-            self.value_net.to(self.device)
-            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
-            self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
+            if args.spline:
+                self.value_net = SplineNet(self.device, self.pi_net, output=1)
+                self.value_net.to(self.device)
+                # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
+                opt_sparse = torch.optim.SparseAdam(self.value_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
+                opt_dense = torch.optim.Adam(self.value_net.head.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-04)
+                self.optimizer_value = MultipleOptimizer(opt_sparse, opt_dense)
+            else:
+                self.value_net = DuelNet(self.pi_net)
+                self.value_net.to(self.device)
+                # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
+                self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
+
             self.value_net.eval()
             self.value_net_zero = copy.deepcopy(self.value_net.state_dict())
-        elif self.algorithm_method == 'spline':
-            self.spline_net = SplineNet(self.device, self.pi_net, output=1)
-            self.spline_net.to(self.device)
-            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
-            opt_sparse = torch.optim.SparseAdam(self.spline_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
-            opt_dense = torch.optim.Adam(self.spline_net.head.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-04)
-            self.optimizer_spline = MultipleOptimizer(opt_sparse, opt_dense)
-            self.spline_net.eval()
-            self.spline_net_zero = copy.deepcopy(self.spline_net.state_dict())
         elif self.algorithm_method == 'anchor':
             self.derivative_net = DerivativeNet(self.pi_net)
             self.derivative_net.to(self.device)
@@ -193,12 +197,6 @@ class Agent(object):
                      'optimizer_value': self.optimizer_value.state_dict(),
                      'optimizer_pi': self.optimizer_pi.state_dict(),
                      'aux': aux}
-        elif self.algorithm_method == 'spline':
-            state = {'pi_net': self.pi_net.pi.detach(),
-                     'spline_net': self.spline_net.state_dict(),
-                     'optimizer_spline': self.optimizer_spline.state_dict(),
-                     'optimizer_pi': self.optimizer_pi.state_dict(),
-                     'aux': aux}
         else:
             raise NotImplementedError
 
@@ -221,9 +219,6 @@ class Agent(object):
             self.optimizer_derivative.load_state_dict(state['optimizer_derivative'])
             self.value_net.load_state_dict(state['value_net'])
             self.optimizer_value.load_state_dict(state['optimizer_value'])
-        elif self.algorithm_method == 'spline':
-            self.spline_net.load_state_dict(state['spline_net'])
-            self.optimizer_spline.load_state_dict(state['optimizer_spline'])
         else:
             raise NotImplementedError
         self.n_offset = state['aux']['n']
@@ -237,9 +232,6 @@ class Agent(object):
         if self.algorithm_method in ['value', 'anchor']:
             self.value_net.load_state_dict(self.value_net_zero)
             self.optimizer_value.state = defaultdict(dict)
-        if self.algorithm_method in ['spline']:
-            self.spline_net.load_state_dict(self.spline_net_zero)
-            self.optimizer_spline.state = defaultdict(dict)
 
     def get_n_grad_ahead(self, n):
 
@@ -265,10 +257,6 @@ class Agent(object):
         elif self.algorithm_method == 'value':
             self.optimizer_value.zero_grad()
             loss_pi = self.value_net(self.pi_net.pi)
-            loss_pi.backward()
-        elif self.algorithm_method == 'spline':
-            self.optimizer_spline.zero_grad()
-            loss_pi = self.spline_net(self.pi_net.pi)
             loss_pi.backward()
         else:
             raise NotImplementedError
@@ -349,10 +337,6 @@ class Agent(object):
         elif self.algorithm_method == 'value':
             self.optimizer_value.zero_grad()
             loss_pi = self.value_net(self.pi_net.pi)
-            loss_pi.backward()
-        elif self.algorithm_method == 'spline':
-            self.spline_net.zero_grad()
-            loss_pi = self.spline_net(self.pi_net.pi)
             loss_pi.backward()
         else:
             raise NotImplementedError

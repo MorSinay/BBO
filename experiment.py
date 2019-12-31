@@ -141,14 +141,14 @@ class Experiment(object):
                 logger.info("Problem iter index     :{}\t\t\tDim: {}\t\t\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
                 if self.algorithm in ['first_order', 'second_order']:
                     logger.info("Actions statistics: |\t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['grad_norm'][-1], avg_reward, bbo_results['derivative_loss'][-1]))
-                elif self.algorithm == ['value', 'spline']:
+                elif self.algorithm == ['value']:
                     logger.info("Actions statistics: |\t value = %.3f \t avg_reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'][-1], avg_reward, bbo_results['value_loss'][-1]))
                 elif self.algorithm == 'anchor':
                     logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
                 logger.info("Best observe      : |\t %f \t \tPi_evaluate: = %f| \t\tBest_pi_evaluate: = %f" % (best_observe, pi_evaluate, bbo_results['best_pi_evaluate'][-1]))
                 logger.info("dist_x            : |\t %f \t \tdist_f: = %f|" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1]))
 
-                if self.algorithm in ['value', 'spline', 'anchor']:
+                if self.algorithm in ['value', 'anchor']:
                     self.value_vs_f_eval(n)
 
                 if self.algorithm in ['first_order', 'second_order', 'anchor']:
@@ -185,19 +185,21 @@ class Experiment(object):
         path_res = os.path.join(consts.baseline_dir, 'f_eval', '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
-            if self.action_space == 1:
-                policy = res['norm_policy'][:, 0, np.newaxis]
-            else:
-                policy = res['norm_policy']
+            norm_policy = res['norm_policy'][1:-1]
+            policy = res['norm_policy'][1:-1]
+            f = res['f'][1:-1]
 
-            value, pi, pi_value, pi_with_grad, policy_grads, norm_f = self.agent.get_evaluation_function(policy, res['f'])
+            if self.action_space == 1:
+                norm_policy = norm_policy[:, 0, np.newaxis]
+
+            value, pi, pi_value, pi_with_grad, policy_grads, norm_f = self.agent.get_evaluation_function(norm_policy, f)
 
             pi = pi.reshape(-1, 1)
 
             plt.subplot(111)
-            plt.plot(res['policy'][:, 0], norm_f, color='g', markersize=1, label='f')
-            plt.plot(res['policy'][:, 0], value, '-o', color='b', markersize=1, label='value')
-            plt.plot(res['policy'][:, 0], policy_grads, 'H', color='m', markersize=1, label='norm_grad')
+            plt.plot(policy[:, 0], norm_f, color='g', markersize=1, label='f')
+            plt.plot(policy[:, 0], value, '-o', color='b', markersize=1, label='value')
+            plt.plot(policy[:, 0], policy_grads, 'H', color='m', markersize=1, label='norm_grad')
             plt.plot(5*pi[0], pi_value, 'X', color='r', markersize=4, label='pi')
             plt.plot(5*pi_with_grad[0], pi_value, 'v', color='c', markersize=4, label='gard')
 
@@ -218,23 +220,24 @@ class Experiment(object):
         path_res = os.path.join(consts.baseline_dir, 'f_eval', '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
+            norm_policy = res['norm_policy'][1:-1]
+            policy = res['norm_policy'][1:-1]
+            f = res['f'][1:-1]
 
             if self.action_space == 1:
-                policy = res['norm_policy'][:, 0, np.newaxis]
-            else:
-                policy = res['norm_policy']
+                norm_policy = norm_policy[:, 0, np.newaxis]
 
-            grad_direct, pi, pi_grad_norm, pi_with_grad, norm_f = self.agent.get_grad_norm_evaluation_function(policy, res['f'])
+            grad_direct, pi, pi_grad_norm, pi_with_grad, norm_f = self.agent.get_grad_norm_evaluation_function(norm_policy, f)
 
-            num_grad = (norm_f[1:] - norm_f[:-1]) / (np.linalg.norm(policy[1:] - policy[:-1], axis=1) + 1e-5)
+            num_grad = (norm_f[1:] - norm_f[:-1]) / (np.linalg.norm(norm_policy[1:] - norm_policy[:-1], axis=1) + 1e-5)
 
             pi = pi.reshape(-1, 1)
             pi_with_grad = pi_with_grad.reshape(-1, 1)
 
             fig, (ax1, ax2) = plt.subplots(1, 2)
-            ax1.plot(res['policy'][:-1, 0], norm_f[:-1], color='g', markersize=1, label='f')
-            ax2.plot(res['policy'][:-1, 0], num_grad, '-o', color='r', markersize=1, label='grad_numerical')
-            ax2.plot(res['policy'][:-1, 0], grad_direct, '-o', color='b', markersize=1, label='grad_norm')
+            ax1.plot(policy[:-1, 0], norm_f[:-1], color='g', markersize=1, label='f')
+            ax2.plot(policy[:-1, 0], num_grad, '-o', color='r', markersize=1, label='grad_numerical')
+            ax2.plot(policy[:-1, 0], grad_direct, '-o', color='b', markersize=1, label='grad_norm')
 
             ax2.plot(5*pi[0], pi_grad_norm, 'X', color='r', markersize=4, label='pi')
             ax2.plot(5*pi_with_grad[0], pi_grad_norm, 'v', color='c', markersize=4, label='pi_with_grad')

@@ -144,7 +144,7 @@ class SplineEmbedding(nn.Module):
         self.emb2 = emb2
         self.device = device
 
-        self.ind_offset = torch.arange(self.actions).to(self.device).unsqueeze(0)
+        self.ind_offset = torch.arange(self.actions, dtype=torch.int64).to(device).unsqueeze(0)
 
         self.b = nn.Embedding((2 * self.delta + 1) * self.actions, emb, sparse=True)
         self.b2 = nn.Embedding((2 * self.delta + 1) * self.actions, emb2, sparse=True)
@@ -157,10 +157,14 @@ class SplineEmbedding(nn.Module):
         xl = xl / self.delta
         xli = xli.view(-1)
 
+        assert (xli.max() <= (2 * self.delta + 1) * self.actions - 1), "xli max {}".format(xli.max())
+
         xh = (x * self.delta + 1).floor()
         xhi = self.actions * (xh.long() + self.delta) + self.ind_offset
         xh = xh / self.delta
         xhi = xhi.view(-1)
+
+        assert (xhi.max() <= (2 * self.delta + 1) * self.actions - 1), "xhi max {}".format(xhi.max())
 
         bl = self.b(xli).view(n, self.actions, self.emb)
         bh = self.b(xhi).view(n, self.actions, self.emb)

@@ -39,6 +39,8 @@ parser.add_argument('--identifier', type=str, default='debug', help='The name of
 parser.add_argument('--algorithm', type=str, default='first_order', help='[first_order | value | second_order]')
 
 boolean_feature('debug', False, 'debug flag')
+boolean_feature('spline', False, 'spline net')
+
 #boolean_feature('vae', False, 'run vae problem')
 # VAE parameters
 parser.add_argument('--latent', type=int, default=40, help='Size of latent space')

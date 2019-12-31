@@ -92,9 +92,6 @@ class TrustRegionAgent(Agent):
             if self.algorithm_method in ['value', 'anchor']:
                 value = self.r_norm.desquash(self.value_net(self.pi_net.pi.detach()).detach().cpu()).item()
                 self.results['value'].append(value)
-            if self.algorithm_method in ['spline']:
-                value = self.r_norm.desquash(self.spline_net(self.pi_net.pi.detach()).detach().cpu()).item()
-                self.results['value'].append(value)
 
             self.results['ts'].append(self.env.t)
             self.results['divergence'].append(self.divergence)
@@ -153,7 +150,7 @@ class TrustRegionAgent(Agent):
         if self.algorithm_method == 'first_order':
             self.first_order_method_optimize_single_ref(len_replay_buffer, minibatches, value_iter)
             #self.first_order_method_optimize(len_replay_buffer, minibatches, value_iter)
-        elif self.algorithm_method in ['value', 'spline']:
+        elif self.algorithm_method in ['value']:
             self.value_method_optimize(len_replay_buffer, minibatches, value_iter)
         elif self.algorithm_method == 'second_order':
             #self.second_order_method_optimize(len_replay_buffer, minibatches, value_iter)
@@ -204,17 +201,8 @@ class TrustRegionAgent(Agent):
 
 
     def value_method_optimize(self, len_replay_buffer, minibatches, value_iter):
-        if self.algorithm_method in ['spline']:
-            optimizer = self.optimizer_spline
-            net = self.spline_net
-        elif self.algorithm_method in ['value', 'anchor']:
-            optimizer = self.optimizer_value
-            net = self.value_net
-        else:
-            raise NotImplementedError
-
         loss = 0
-        net.train()
+        self.value_net.train()
         for _ in range(value_iter):
             shuffle_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch), replace=False)
             for i in range(minibatches):
@@ -222,17 +210,17 @@ class TrustRegionAgent(Agent):
                 r = self.tensor_replay_reward_norm[samples]
                 pi_explore = self.tensor_replay_policy_norm[samples]
 
-                optimizer.zero_grad()
+                self.optimizer_value.zero_grad()
                 self.optimizer_pi.zero_grad()
-                q_value = net(pi_explore).view(-1)
+                q_value = self.value_net(pi_explore).view(-1)
                 loss_q = self.q_loss(q_value, r).mean()
                 loss += loss_q.detach().item()
                 loss_q.backward()
-                optimizer.step()
+                self.optimizer_value.step()
 
         loss /= value_iter
         self.results['value_loss'].append(loss)
-        net.eval()
+        self.value_net.eval()
 
     def first_order_method_optimize(self, len_replay_buffer, minibatches, value_iter):
 
@@ -450,14 +438,8 @@ class TrustRegionAgent(Agent):
             policy[policy[:, i] < lower[i]] = lower
 
         target = torch.FloatTensor(target)
-        if self.algorithm_method in 'value':
-            net = self.value_net
-        elif self.algorithm_method in 'spline':
-            net = self.spline_net
-        else:
-            raise NotImplementedError
 
-        net.eval()
+        self.value_net.eval()
         batch = 1024
         value = []
         grads_norm = []
@@ -470,7 +452,7 @@ class TrustRegionAgent(Agent):
             policy_tensor = self.pi_trust_region.real_to_unconstrained(policy_tensor).to(self.device)
             policy_tensor = autograd.Variable(policy_tensor, requires_grad=True)
             target_tensor = torch.FloatTensor(target[from_index:to_index]).to(self.device)
-            q_value = net(policy_tensor).view(-1)
+            q_value = self.value_net(policy_tensor).view(-1)
             value.append(q_value.detach().cpu().numpy())
             loss_q = self.q_loss(q_value, target_tensor).mean()
 
@@ -481,7 +463,7 @@ class TrustRegionAgent(Agent):
         value = np.hstack(value)
         grads_norm = np.hstack(grads_norm)
         pi = self.pi_net.pi.detach().cpu()
-        pi_value = net(self.pi_net.pi).detach().cpu().numpy()
+        pi_value = self.value_net(self.pi_net.pi).detach().cpu().numpy()
         pi_with_grad = pi - self.pi_lr*self.get_grad().cpu()
 
         return value, self.pi_trust_region.unconstrained_to_real(pi).numpy(), np.array(pi_value), self.pi_trust_region.unconstrained_to_real(pi_with_grad).numpy(), grads_norm, self.r_norm(target).numpy()
