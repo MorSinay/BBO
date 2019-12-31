@@ -85,12 +85,14 @@ class TrustRegion(object):
         self.mu = pi
         self.sigma /= 2
 
-    def inverse(self, x):
+    def unconstrained_to_real(self, x):
+        x = self.pi_net(x)
         x = self.mu + x * self.sigma
-        return self.pi_net(x)
+        return x
 
-    def __call__(self, x):
-        x = (x - self.mu + self.sigma)/self.sigma - 1
+    def real_to_unconstrained(self, x):
+        x = (x - self.mu)/self.sigma
+        x = self.pi_net.inverse(x)
         return x
 
 class MultipleOptimizer:
@@ -107,12 +109,12 @@ class MultipleOptimizer:
 
     def state_dict(self):
         op_dict = defaultdict()
-        for op in self.optimizers:
-            op_dict[op.__name__] = op.state_dict()
+        for i, op in enumerate(self.optimizers):
+            op_dict[str(i)] = op.state_dict()
 
     def load_state_dict(self, op_dict):
-        for op in self.optimizers:
-            op.load_state_dict(op_dict[op.__name__])
+        for i, op in enumerate(self.optimizers):
+            op.load_state_dict(op_dict[str(i)])
 
 class SplineNet(nn.Module):
 
@@ -142,41 +144,29 @@ class SplineEmbedding(nn.Module):
         self.emb2 = emb2
         self.device = device
 
-        self.a = nn.Embedding((2 * self.delta + 1) * self.actions, emb, sparse=True)
-        self.b = nn.Embedding((2 * self.delta + 1) * self.actions, emb, sparse=True)
+        self.ind_offset = torch.arange(self.actions).to(self.device).unsqueeze(0)
 
-        self.a2 = nn.Embedding((2 * self.delta + 1) * self.actions, emb2, sparse=True)
+        self.b = nn.Embedding((2 * self.delta + 1) * self.actions, emb, sparse=True)
         self.b2 = nn.Embedding((2 * self.delta + 1) * self.actions, emb2, sparse=True)
 
-        nn.init.zeros_(self.a.weight)
-        nn.init.zeros_(self.a2.weight)
-
     def forward(self, x):
+        n = len(x)
+
         xl = (x * self.delta).floor()
-        xli = xl.long() + self.delta
+        xli = self.actions * (xl.long() + self.delta) + self.ind_offset
         xl = xl / self.delta
-
-        xh = (x * self.delta).ceil()
-        xhi = xh.long() + self.delta
-        xh = xh / self.delta
-
-        n = len(xhi)
-        xhi = xhi.view(-1)
         xli = xli.view(-1)
 
-        ind_offset = (2 * self.delta + 1) * torch.arange(self.actions).to(self.device).repeat(n)
+        xh = (x * self.delta + 1).floor()
+        xhi = self.actions * (xh.long() + self.delta) + self.ind_offset
+        xh = xh / self.delta
+        xhi = xhi.view(-1)
 
-        al = self.a(xli + ind_offset).view(n, self.actions, self.emb)
-        ah = self.a(xhi + ind_offset).view(n, self.actions, self.emb)
+        bl = self.b(xli).view(n, self.actions, self.emb)
+        bh = self.b(xhi).view(n, self.actions, self.emb)
 
-        bl = self.b(xli + ind_offset).view(n, self.actions, self.emb)
-        bh = self.b(xhi + ind_offset).view(n, self.actions, self.emb)
-
-        al2 = self.a2(xli + ind_offset).view(n, self.actions, self.emb2)
-        ah2 = self.a2(xhi + ind_offset).view(n, self.actions, self.emb2)
-
-        bl2 = self.b2(xli + ind_offset).view(n, self.actions, self.emb2)
-        bh2 = self.b2(xhi + ind_offset).view(n, self.actions, self.emb2)
+        bl2 = self.b2(xli).view(n, self.actions, self.emb2)
+        bh2 = self.b2(xhi).view(n, self.actions, self.emb2)
 
         delta = 1 / self.delta
 
@@ -184,11 +174,8 @@ class SplineEmbedding(nn.Module):
         xl = xl.unsqueeze(2)
         xh = xh.unsqueeze(2)
 
-        h = ah * (x - xl) ** 3 / (6 * delta) + al * (xh - x) ** 3 / (6 * delta) + \
-            (bh / delta - ah * delta / 6) * (x - xl) + (bl / delta - al / 6) * (xh - x)
-
-        h2 = ah2 * (x - xl) ** 3 / (6 * delta) + al2 * (xh - x) ** 3 / (6 * delta) + \
-             (bh2 / delta - ah2 * delta / 6) * (x - xl) + (bl2 / delta - al2 / 6) * (xh - x)
+        h = bh / delta * (x - xl) + bl / delta * (xh - x)
+        h2 = bh2 / delta* (x - xl) + bl2 / delta * (xh - x)
 
         return h, h2
 
@@ -224,7 +211,7 @@ class SplineHead(nn.Module):
         h = x_emb.transpose(2, 1)
         h = torch.cat([gi(h) for gi in self.global_interaction], dim=1)
 
-        #x = x.squeeze(2)
+#        x = x.squeeze(2)
 
         x = torch.cat([x, h, h2], dim=1)
 
@@ -233,6 +220,25 @@ class SplineHead(nn.Module):
             x = x.squeeze(1)
 
         return x
+
+class ResBlock(nn.Module):
+
+    def __init__(self, layer):
+
+        super(ResBlock, self).__init__()
+
+        self.fc = nn.Sequential(nn.BatchNorm1d(layer, affine=True),
+                                nn.ReLU(),
+                                spectral_norm(nn.Linear(layer, layer, bias=False)),
+                                nn.BatchNorm1d(layer, affine=True),
+                                nn.ReLU(),
+                                spectral_norm(nn.Linear(layer, layer, bias=False)),
+                               )
+
+    def forward(self, x):
+
+        h = self.fc(x)
+        return x + h
 
 class GlobalModule(nn.Module):
 
@@ -451,37 +457,4 @@ class ResNet(nn.Module):
         return x
 
 
-class ResBlock(nn.Module):
-
-    def __init__(self, din=layer, expansion=1, drop=0.1):
-
-        super(ResBlock, self).__init__()
-
-        self.expansion = expansion
-
-        self.fc = nn.Sequential(nn.Linear(din, din, bias=False),
-                                nn.BatchNorm1d(din),
-                                nn.LeakyReLU(),
-                                nn.Dropout(drop),
-                                nn.Linear(din, int(expansion*din), bias=False),
-                                nn.BatchNorm1d(int(expansion*din)),
-                                nn.LeakyReLU(),
-                                nn.Dropout(drop))
-
-    def reset(self):
-        for weight in self.parameters():
-            nn.init.xavier_uniform(weight.data)
-
-    def forward(self, x):
-        if self.expansion >= 1:
-            x0 = x.repeat(1, self.expansion)
-        else:
-            down_sample = int(1/self.expansion)
-            din = x.shape[-1]
-            x0 = x.view(-1, din // down_sample, down_sample)
-            x0 = x0.mean(dim=2)
-
-        x = self.fc(x)
-
-        return x + x0
 

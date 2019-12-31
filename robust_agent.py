@@ -99,7 +99,6 @@ class RobustAgent(object):
             print("explore:"+args.explore)
             raise NotImplementedError
 
-        self.pi_norm = RobustNormalizer()
         self.r_norm = RobustNormalizer()
 
         self.init = torch.FloatTensor(self.env.get_initial_solution()).to(self.device)
@@ -176,8 +175,8 @@ class RobustAgent(object):
                 np.save(path, tmp)
 
         best_list, observed_list, _ = self.env.get_observed_and_pi_list()
-        np.save(os.path.join(self.analysis_dir, 'best_list_with_explore.npy'), best_list)
-        np.save(os.path.join(self.analysis_dir, 'observed_list_with_explore.npy'), best_list)
+        np.save(os.path.join(self.analysis_dir, 'best_list_with_explore.npy'), np.array(best_list))
+        np.save(os.path.join(self.analysis_dir, 'observed_list_with_explore.npy'), np.array(best_list))
 
         path = os.path.join(self.analysis_dir, 'f0.npy')
         np.save(path, self.env.get_f0())
@@ -208,8 +207,11 @@ class RobustAgent(object):
                      'optimizer_pi': self.optimizer_pi.state_dict(),
                      'aux': aux}
         elif self.algorithm_method == 'spline':
-            # TODO: implement
-            return
+            state = {'pi_net': self.pi_net.pi.detach(),
+                     'spline_net': self.spline_net.state_dict(),
+                     'optimizer_spline': self.optimizer_spline.state_dict(),
+                     'optimizer_pi': self.optimizer_pi.state_dict(),
+                     'aux': aux}
         else:
             raise NotImplementedError
 
@@ -233,8 +235,8 @@ class RobustAgent(object):
             self.value_net.load_state_dict(state['value_net'])
             self.optimizer_value.load_state_dict(state['optimizer_value'])
         elif self.algorithm_method == 'spline':
-            # TODO: implement
-            return None
+            self.spline_net.load_state_dict(state['spline_net'])
+            self.optimizer_spline.load_state_dict(state['optimizer_spline'])
         else:
             raise NotImplementedError
         self.n_offset = state['aux']['n']
@@ -245,7 +247,7 @@ class RobustAgent(object):
         if (self.frame % 50) == 0:
             print("frame {} -- r_norm: mu {} sigma {}\n\n".format(self.frame, self.r_norm.mu, self.r_norm.sigma))
 
-    def warmup(self):
+    def reset_net(self):
         if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
             self.derivative_net.load_state_dict(self.derivative_net_zero)
             self.optimizer_derivative.state = defaultdict(dict)
@@ -256,24 +258,47 @@ class RobustAgent(object):
             self.spline_net.load_state_dict(self.spline_net_zero)
             self.optimizer_spline.state = defaultdict(dict)
 
-        self.pi_norm.reset()
-        self.r_norm.reset()
+    def update_replay_buffer(self):
+        if self.tensor_replay_reward is not None:
+            pi = self.pi_trust_region.mu
+            explore_policies = torch.cat(self.results['explore_policies'], dim=0)
+            rewards = np.hstack(self.results['rewards'])
 
-        explore_policies = self.exploration_rand(self.warmup_minibatch * self.batch)
-        self.step_policy(explore_policies)
-        rewards = self.env.reward
-        self.results['explore_policies'].append(explore_policies)
-        self.results['rewards'].append(rewards)
-        self.mean = rewards.mean()
-        self.std = rewards.std()
-        self.max = rewards.max()
-        self.min = rewards.min()
-        self.pi_norm(explore_policies, training=True)
-        rewards_torch = torch.FloatTensor(rewards)
-        self.r_norm(rewards_torch, training=True)
+            in_range = torch.norm(explore_policies - pi, 1, dim=1) < self.pi_trust_region.sigma
+            explore_policies_from_buf = self.pi_trust_region.real_to_unconstrained(explore_policies[in_range])
+            rewards_from_buf = rewards[in_range]
+        else:
+            explore_policies_from_buf = torch.FloatTensor([])
+            rewards_from_buf = np.array([])
+
+        explore_policies_rand = self.exploration_rand(self.warmup_minibatch * self.n_explore)
+        self.step_policy(explore_policies_rand)
+        rewards_rand = self.env.reward
+        self.results['explore_policies'].append(self.pi_trust_region.unconstrained_to_real(explore_policies_rand))
+        self.results['rewards'].append(rewards_rand)
+
+        explore_policies = torch.cat([explore_policies_from_buf, explore_policies_rand])
+        rewards = np.concatenate([rewards_from_buf, rewards_rand])
+
+        replay_size = (len(explore_policies) // self.n_explore) * self.n_explore
+
+        explore_policies = explore_policies[-replay_size:]
+        rewards = rewards[-replay_size:]
+
         self.tensor_replay_reward = torch.FloatTensor(rewards)
         self.tensor_replay_policy = torch.FloatTensor(explore_policies)
-       # self.print_robust_norm_params()
+
+    def warmup(self):
+        self.reset_net()
+        self.r_norm.reset()
+        self.update_replay_buffer()
+
+        self.r_norm(self.tensor_replay_reward, training=True)
+        self.mean = self.tensor_replay_reward.mean()
+        self.std = self.tensor_replay_reward.std()
+        self.max = self.tensor_replay_reward.max()
+        self.min = self.tensor_replay_reward.min()
+
         self.value_optimize(100)
 
 
@@ -294,8 +319,8 @@ class RobustAgent(object):
             pi = self.pi_net.pi.detach().clone()
             pi_eval = self.f_policy(pi)
             self.results['best_observed'].append(self.env.best_observed)
-            self.results['pi_evaluate'].append(pi_eval)
-            self.results['best_pi_evaluate'].append(min(self.results['pi_evaluate']))
+            self.results['reward_pi_evaluate'].append(pi_eval)
+            self.results['best_pi_evaluate'].append(min(self.results['reward_pi_evaluate']))
             self.results['grad'].append(self.get_grad().cpu().numpy().reshape(1, -1))
             self.results['dist_x'].append(torch.norm(self.env.denormalize(self.pi_net().detach().cpu().numpy()) - self.best_op_x, 2))
             self.results['dist_f'].append(pi_eval - self.best_op_f)
@@ -631,11 +656,11 @@ class RobustAgent(object):
         self.optimizer_pi.step()
         self.pi_net.eval()
         pi = self.pi_net.pi.detach().clone()
-        return pi, self.f_policy(pi)
+        return pi, self.step_policy(pi, to_env=False)
 
     def exploration_rand(self, n_explore):
             pi = self.pi_net.pi.detach().clone().cpu()
-            pi_explore = pi + self.warmup_factor*self.epsilon * torch.randn(n_explore, self.action_space)
+            pi_explore = pi + self.warmup_factor*self.epsilon * torch.rand(n_explore, self.action_space)
             return pi_explore
 
     def exploration_rand_test(self, n_explore):
@@ -688,24 +713,6 @@ class RobustAgent(object):
 
         explore = pi - self.epsilon * mag * cone
 
-        if np.isnan(explore).any():
-            debug_path = os.path.join(consts.baseline_dir, 'cone_debug')
-            if not os.path.exists(debug_path):
-                os.makedirs(debug_path)
-            np.save(os.path.join(debug_path, 'cos.npy'), cos)
-            np.save(os.path.join(debug_path, 'dp.npy'), dp)
-            np.save(os.path.join(debug_path, 'acos.npy'), acos)
-            np.save(os.path.join(debug_path, 'new_cos.npy'), new_cos)
-            np.save(os.path.join(debug_path, 'new_sin.npy'), new_sin)
-            np.save(os.path.join(debug_path, 'x.npy'), x)
-            np.save(os.path.join(debug_path, 'd.npy'), d)
-            assert not np.isnan(explore).any(), "cone {} new_cos {}  new sin  {} acos {} dp {} cos {}".format(np.isnan(cone).any(),
-                                                                                                              np.isnan(new_cos).any(),
-                                                                                                              np.isnan(new_sin).any(),
-                                                                                                              np.isnan(acos).any(),
-                                                                                                              np.isnan(dp).any(),
-                                                                                                              np.isnan(cos).any())
-
         return torch.cat([pi, explore])
 
     def get_grad(self):
@@ -714,7 +721,7 @@ class RobustAgent(object):
         self.optimizer_pi.zero_grad()
         if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
             self.optimizer_derivative.zero_grad()
-            grad = self.derivative_net(self.pi_net.pi).detach().squeeze(0)
+            grad = self.derivative_net(self.pi_net.pi.detach()).detach().squeeze(0)
             self.pi_net.grad_update(grad.clone())
         elif self.algorithm_method == 'value':
             self.optimizer_value.zero_grad()
@@ -734,20 +741,19 @@ class RobustAgent(object):
         grad = self.pi_net.pi.grad.detach().clone()
         return grad
 
-    def f_policy(self, policy):
+    def step_policy(self, policy, to_env=True):
+        policy = policy.cpu()
         policy = self.pi_net(policy)
         policy = policy.data.cpu().numpy()
-        return self.env.f(policy)
-
-    def step_policy(self, policy):
-        policy = self.pi_net(policy)
-        policy = policy.data.cpu().numpy()
-        self.env.step_policy(policy)
+        if to_env:
+            self.env.step_policy(policy)
+        else:
+            return self.env.f(policy)
 
     def pi_optimize(self):
         pi = self.pi_net.pi.detach().clone()
         pi_list = [pi]
-        value_list = [self.f_policy(pi)]
+        value_list = [self.step_policy(pi, to_env=False)]
 
         for _ in range(self.grad_steps):
             pi, value = self.grad_step()

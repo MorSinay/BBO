@@ -74,7 +74,7 @@ parser.add_argument('--replay-updates-interval', type=int, default=50, help='Num
 parser.add_argument('--replay-memory-factor', type=int, default=10, help='Replay factor')
 parser.add_argument('--warmup-minibatch', type=int, default=3, help='Warm up batches')
 parser.add_argument('--warmup-factor', type=int, default=4, help='Warm up factor')
-parser.add_argument('--learn-iteration', type=int, default=10, help='Learning iteration')
+parser.add_argument('--learn-iteration', type=int, default=20, help='Learning iteration')
 parser.add_argument('--drop', type=float, default=0, help='Drop out')
 parser.add_argument('--alpha', type=float, default=1, help='moving avg factor')
 

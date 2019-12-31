@@ -580,7 +580,7 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
     fig.legend(loc='lower left', prop={'size': 6}, ncol=3)
     ax1.grid(True, which='both')
     ax2.grid(True, which='both')
-    ax1.set_title('pi_evaluate')
+    ax1.set_title('reward_pi_evaluate')
     ax2.set_title('best_observed')
     ax1.set_xlim([10, x_max])
     ax2.set_xlim([10, x_max])
@@ -603,7 +603,7 @@ def get_best_solution(dim, index):
 if __name__ == '__main__':
     #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
 
-    optimizers = ['value_cone_beu', 'first_order_mor', 'first_order_cone_beu']
+    optimizers = ['value_cone_beu', 'value_m1024', 'first_order_m1024', 'first_order_cone_beu']
     dims = [1, 2, 3, 5, 10, 20, 40]
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)

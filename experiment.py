@@ -130,7 +130,7 @@ class Experiment(object):
         for n, bbo_results in (enumerate(player)):
             pi = bbo_results['policies'][-1].cpu().numpy()
             pi_explore = torch.mean(bbo_results['explore_policies'][-1], dim=0).cpu().numpy()
-            pi_evaluate = bbo_results['pi_evaluate'][-1]
+            pi_evaluate = bbo_results['reward_pi_evaluate'][-1]
 
             avg_reward = np.average(bbo_results['rewards'][-1])
             best_observe = bbo_results['best_observed'][-1]
@@ -158,7 +158,7 @@ class Experiment(object):
             if args.tensorboard:
                 self.writer.add_scalar('evaluation/divergence', divergence, n)
                 if self.algorithm in ['value', 'anchor']:
-                    self.writer.add_scalars('evaluation/value_reward', {'value': bbo_results['value'][-1], 'pi_evaluate': pi_evaluate, 'best': best_observe}, n)
+                    self.writer.add_scalars('evaluation/value_reward', {'value': bbo_results['value'][-1], 'reward_pi_evaluate': pi_evaluate, 'best': best_observe}, n)
                     self.writer.add_scalar('evaluation/value_loss', bbo_results['value_loss'][-1], n)
                 if self.algorithm in ['first_order', 'second_order', 'anchor']:
                     self.writer.add_scalar('evaluation/grad_norm', bbo_results['grad_norm'][-1], n)
@@ -290,7 +290,7 @@ class Experiment(object):
 
         colors = consts.color
         #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
-        plt.loglog(np.arange(len(pi_eval)), 1 + (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='pi_evaluate')
+        plt.loglog(np.arange(len(pi_eval)), 1 + (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='reward_pi_evaluate')
         plt.loglog(np.arange(len(pi_best)), 1 + (pi_best - min_val) / (f0 - min_val), color=colors[1], label='best_observed')
 
         for i, op in enumerate(optimizer_res['fmin']):
