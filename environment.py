@@ -1,5 +1,5 @@
 import numpy as np
-from config import args
+import torch
 
 class Env(object):
 
@@ -99,6 +99,7 @@ class EnvCoco(Env):
         return policy
 
     def step_policy(self, policy):
+        policy = policy.numpy()
         policy = self.denormalize(policy)
         assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
@@ -110,11 +111,12 @@ class EnvCoco(Env):
             self.reward.append(self.problem(policy))
             self.k += 1
 
-        self.reward = np.array(self.reward)
+        self.reward = torch.FloatTensor(self.reward)
         self.best_observed = self.problem.best_observed_fvalue1
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
+        policy = policy.numpy()
         policy = self.denormalize(policy)
         res = self.problem(policy)
         self.observed_list.append(res)
@@ -169,6 +171,7 @@ class EnvVae(Env):
         return policy
 
     def step_policy(self, policy):
+        policy = policy.numpy()
         assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
         if len(policy.shape) == 2:
@@ -179,11 +182,12 @@ class EnvVae(Env):
             self.reward.append(self.vae_problem.func(policy))
             self.k += 1
 
-        self.reward = np.array(self.reward)
+        self.reward = torch.FloatTensor(self.reward)
         self.best_observed = self.vae_problem.problem.best_observed_fvalue1
         self.t = self.vae_problem.problem.final_target_hit
 
     def f(self, policy):
+        policy = policy.numpy()
         res = self.vae_problem.func(policy)
         self.observed_list.append(res)
         self.best_list.append(self.problem.best_observed_fvalue1)
@@ -256,6 +260,7 @@ class EnvOneD(Env):
         return policy
 
     def step_policy(self, policy):
+        policy = policy.numpy()
         policy = self.denormalize(one_d_change_dim(policy))
         assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
@@ -267,11 +272,12 @@ class EnvOneD(Env):
             self.reward.append(self.problem(policy))
             self.k += 1
 
-        self.reward = np.array(self.reward)
+        self.reward = torch.FloatTensor(self.reward)
         self.best_observed = self.problem.best_observed_fvalue1
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
+        policy = policy.numpy()
         self.pi_list.append(policy)
         policy = self.denormalize(one_d_change_dim(policy)).flatten()
         res = self.problem(policy)

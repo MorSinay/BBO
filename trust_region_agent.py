@@ -28,14 +28,14 @@ class TrustRegionAgent(Agent):
         if self.tensor_replay_reward is not None:
             pi = self.pi_trust_region.mu
             explore_policies = torch.cat(self.results['explore_policies'], dim=0)
-            rewards = np.hstack(self.results['rewards'])
+            rewards = torch.cat(self.results['rewards'])
 
             in_range = torch.norm(explore_policies - pi, 1, dim=1) < self.pi_trust_region.sigma
             explore_policies_from_buf = self.pi_trust_region.real_to_unconstrained(explore_policies[in_range])
             rewards_from_buf = rewards[in_range]
         else:
             explore_policies_from_buf = torch.FloatTensor([])
-            rewards_from_buf = np.array([])
+            rewards_from_buf = torch.FloatTensor([])
 
         explore_policies_rand = self.exploration_rand(self.warmup_minibatch * self.n_explore)
         self.step_policy(explore_policies_rand)
@@ -44,15 +44,15 @@ class TrustRegionAgent(Agent):
         self.results['rewards'].append(rewards_rand)
 
         explore_policies = torch.cat([explore_policies_from_buf, explore_policies_rand])
-        rewards = np.concatenate([rewards_from_buf, rewards_rand])
+        rewards = torch.cat([rewards_from_buf, rewards_rand])
 
         replay_size = (len(explore_policies) // self.n_explore) * self.n_explore
 
         explore_policies = explore_policies[-replay_size:]
         rewards = rewards[-replay_size:]
 
-        self.tensor_replay_reward = torch.FloatTensor(rewards)
-        self.tensor_replay_policy = torch.FloatTensor(explore_policies)
+        self.tensor_replay_reward = rewards
+        self.tensor_replay_policy = explore_policies
 
     def warmup(self):
         self.reset_net()
@@ -91,10 +91,10 @@ class TrustRegionAgent(Agent):
                 self.results['grad_norm'].append(grad_norm)
             if self.algorithm_method in ['value', 'anchor']:
                 value = self.r_norm.desquash(self.value_net(self.pi_net.pi.detach()).detach().cpu()).item()
-                self.results['value'].append(np.array(value))
+                self.results['value'].append(value)
             if self.algorithm_method in ['spline']:
                 value = self.r_norm.desquash(self.spline_net(self.pi_net.pi.detach()).detach().cpu()).item()
-                self.results['value'].append(np.array(value))
+                self.results['value'].append(value)
 
             self.results['ts'].append(self.env.t)
             self.results['divergence'].append(self.divergence)
@@ -123,7 +123,7 @@ class TrustRegionAgent(Agent):
                 self.divergence += 1
                 self.warmup()
 
-            if self.divergence >= 20:
+            if self.divergence >= 6:
                 print("DIVERGANCE - FAILED")
                 break
 
@@ -133,7 +133,7 @@ class TrustRegionAgent(Agent):
                 break
 
     def update_best_pi(self):
-        rewards = np.array(self.results['reward_pi_evaluate'])
+        rewards = torch.FloatTensor(self.results['reward_pi_evaluate'])
         best_idx = rewards.argmin()
         pi = torch.stack(self.results['policies'])[best_idx]
 
@@ -418,7 +418,6 @@ class TrustRegionAgent(Agent):
     def step_policy(self, policy, to_env=True):
         policy = policy.cpu()
         policy = self.pi_trust_region.unconstrained_to_real(policy)
-        policy = policy.data.cpu().numpy()
         if to_env:
             self.env.step_policy(policy)
         else:
@@ -433,11 +432,10 @@ class TrustRegionAgent(Agent):
             best_explore = rewards.argmin()
             self.pi_net.pi_update(pi_explore[best_explore].to(self.device))
 
-        rewards_torch = torch.FloatTensor(rewards)
-        self.r_norm(rewards_torch, training=True)
+        self.r_norm(rewards, training=True)
 
-        self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, torch.FloatTensor(rewards)])[-self.replay_memory_size:]
-        self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, torch.FloatTensor(pi_explore)])[-self.replay_memory_size:]
+        self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, rewards])[-self.replay_memory_size:]
+        self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, pi_explore])[-self.replay_memory_size:]
 
         self.print_robust_norm_params()
         return pi_explore, rewards

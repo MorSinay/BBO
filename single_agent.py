@@ -48,8 +48,8 @@ class BBOAgent(Agent):
         self.results['explore_policies'].append(explore_policies)
         self.results['rewards'].append(rewards)
 
-        self.tensor_replay_reward = torch.FloatTensor(rewards)
-        self.tensor_replay_policy = torch.FloatTensor(explore_policies)
+        self.tensor_replay_reward = rewards
+        self.tensor_replay_policy = explore_policies
 
     def warmup(self):
         self.reset_net()
@@ -422,7 +422,6 @@ class BBOAgent(Agent):
     def step_policy(self, policy, to_env=True):
         policy = policy.cpu()
         policy = self.pi_net(policy)
-        policy = policy.data.cpu().numpy()
         if to_env:
             self.env.step_policy(policy)
         else:
@@ -436,8 +435,8 @@ class BBOAgent(Agent):
             best_explore = rewards.argmin()
             self.pi_net.pi_update(pi_explore[best_explore].to(self.device))
 
-        self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, torch.FloatTensor(rewards)])
-        self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, torch.FloatTensor(pi_explore)])
+        self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, rewards])
+        self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, pi_explore])
         return pi_explore, rewards
 
     def get_evaluation_function(self, policy, target):

@@ -152,6 +152,9 @@ class Agent(object):
                 grad = np.vstack(self.results[k])
                 assert ((len(grad.shape) == 2) and (grad.shape[1] == self.action_space)), "save_results"
                 np.save(path, grad)
+            elif k in ['rewards']:
+                rewards = torch.cat(self.results[k]).numpy()
+                np.save(path, rewards)
             else:
                 tmp = np.array(self.results[k]).flatten()
                 if tmp is None:
