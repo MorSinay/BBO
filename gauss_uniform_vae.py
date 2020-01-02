@@ -12,6 +12,7 @@ import numpy as np
 from config import args
 import pathlib
 import socket
+from tqdm import tqdm
 
 
 username = pwd.getpwuid(os.geteuid()).pw_name
@@ -22,7 +23,7 @@ if "gpu" in socket.gethostname():
 elif "root" == username:
     root_dir = os.path.join('/workspace/data', project_name)
 else:
-    root_dir = os.path.join('/data/', username, project_name)
+    root_dir = os.path.join('/data/', username, 'gan_rl', project_name)
 
 
 class VAE(nn.Module):
@@ -96,7 +97,6 @@ class VAE(nn.Module):
 class VaeModel(object):
     def __init__(self, vae_mode):
         self.vae_mode = vae_mode
-        vae_base_dir = os.path.join(root_dir, 'vae_bbo', 'vae_' + vae_mode)
         is_cuda = torch.cuda.is_available()
         torch.manual_seed(128)
         self.device = torch.device("cuda" if is_cuda else "cpu")
@@ -107,22 +107,22 @@ class VaeModel(object):
 
         self.model = VAE(vae_mode).to(self.device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
-        self.model_path = os.path.join(vae_base_dir, 'vae_model')
+        self.model_path = os.path.join(root_dir, 'vae_' + vae_mode+'_model')
         self.loss = nn.BCEWithLogitsLoss(reduction='none')
 
-        data_path = os.path.join(vae_base_dir, 'data')
-        self.results = os.path.join(vae_base_dir, 'results')
+        data_path = os.path.join(root_dir, 'data')
+        self.results = os.path.join(root_dir, 'results_' + vae_mode)
 
         pathlib.Path(data_path).mkdir(parents=True, exist_ok=True)
         pathlib.Path(self.results).mkdir(parents=True, exist_ok=True)
 
         self.train_loader = torch.utils.data.DataLoader(
-            datasets.MNIST(data_path, train=True, download=True,
+            datasets.FashionMNIST(data_path, train=True, download=True,
                            transform=transforms.ToTensor()),
             batch_size=self.batch_size, shuffle=True, **kwargs)
 
         self.test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST(data_path, train=False, transform=transforms.ToTensor()),
+            datasets.FashionMNIST(data_path, train=False, download=True, transform=transforms.ToTensor()),
             batch_size=self.batch_size, shuffle=True, **kwargs)
 
     def save_model(self):
@@ -179,7 +179,7 @@ class VaeModel(object):
         print('====> Test set loss: {:.4f}'.format(test_loss))
 
     def run_vae(self):
-        for epoch in range(1, self.epochs + 1):
+        for epoch in tqdm(range(1, self.epochs + 1)):
             self.train(epoch)
             self.test(epoch)
             with torch.no_grad():

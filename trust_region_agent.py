@@ -21,7 +21,7 @@ class TrustRegionAgent(Agent):
         self.r_norm = RobustNormalizer()
 
     def print_robust_norm_params(self):
-        if (self.frame % 50) == 0:
+        if (self.frame % self.printing_interval) == 0:
             print("\n\nframe {} -- r_norm: mu {} sigma {}".format(self.frame, self.r_norm.mu, self.r_norm.sigma))
 
     def update_replay_buffer(self):
@@ -81,7 +81,8 @@ class TrustRegionAgent(Agent):
             self.results['best_observed'].append(self.env.best_observed)
             self.results['reward_pi_evaluate'].append(pi_eval)
             self.results['best_pi_evaluate'].append(min(self.results['reward_pi_evaluate']))
-            self.results['grad'].append(self.get_grad().cpu().numpy().reshape(1, -1))
+            _, grad = self.get_grad()
+            self.results['grad'].append(grad.cpu().numpy().reshape(1, -1))
             self.results['dist_x'].append(torch.norm(self.env.denormalize(self.pi_trust_region.unconstrained_to_real(pi).numpy()) - self.best_op_x, 2))
             self.results['dist_f'].append(pi_eval - self.best_op_f)
 
@@ -115,12 +116,10 @@ class TrustRegionAgent(Agent):
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
                 self.save_results()
                 self.update_best_pi()
-                # self.epsilon *= 0.75
-                # self.update_pi_optimizer_lr()
                 self.divergence += 1
                 self.warmup()
 
-            if self.divergence >= 6:
+            if self.divergence >= 8:
                 print("DIVERGANCE - FAILED")
                 break
 
@@ -401,8 +400,6 @@ class TrustRegionAgent(Agent):
         self.results['derivative_loss'].append(loss)
         self.derivative_net.eval()
 
- 
-
     def step_policy(self, policy, to_env=True):
         policy = policy.cpu()
         policy = self.pi_trust_region.unconstrained_to_real(policy)
@@ -411,7 +408,6 @@ class TrustRegionAgent(Agent):
         else:
             return self.env.f(policy)
 
- 
     def exploration_step(self):
         pi_explore = self.exploration(self.n_explore)
         self.step_policy(pi_explore)
@@ -429,13 +425,9 @@ class TrustRegionAgent(Agent):
         return pi_explore, rewards
 
     def get_evaluation_function(self, policy, target):
-
-        upper = (self.pi_trust_region.mu + self.pi_trust_region.sigma).numpy()
-        lower = (self.pi_trust_region.mu - self.pi_trust_region.sigma).numpy()
-
-        for i in range(self.action_space):
-            policy[policy[:, i] > upper[i]] = upper
-            policy[policy[:, i] < lower[i]] = lower
+        upper = max((self.pi_trust_region.mu + self.pi_trust_region.sigma).numpy(), 1-1e-5)
+        lower = min((self.pi_trust_region.mu - self.pi_trust_region.sigma).numpy(), -1)
+        policy = np.clip(policy, a_min=lower, a_max=upper)
 
         target = torch.FloatTensor(target)
 
@@ -469,11 +461,9 @@ class TrustRegionAgent(Agent):
         return value, self.pi_trust_region.unconstrained_to_real(pi).numpy(), np.array(pi_value), self.pi_trust_region.unconstrained_to_real(pi_with_grad).numpy(), grads_norm, self.r_norm(target).numpy()
 
     def get_grad_norm_evaluation_function(self, policy, f):
-        upper = (self.pi_trust_region.mu + self.pi_trust_region.sigma).numpy()
-        lower = (self.pi_trust_region.mu - self.pi_trust_region.sigma).numpy()
-        for i in range(self.action_space):
-            policy[policy[:, i] > upper[i]] = upper
-            policy[policy[:, i] < lower[i]] = lower
+        upper = max((self.pi_trust_region.mu + self.pi_trust_region.sigma).numpy(), 1 - 1e-5)
+        lower = min((self.pi_trust_region.mu - self.pi_trust_region.sigma).numpy(), -1)
+        policy = np.clip(policy, a_min=lower, a_max=upper)
 
         f = torch.FloatTensor(f)
         self.derivative_net.eval()
@@ -487,3 +477,4 @@ class TrustRegionAgent(Agent):
         pi_with_grad = pi - self.pi_lr*pi_grad.cpu()
         pi_grad_norm = torch.norm(pi_grad).cpu()
         return grad_direct, self.pi_trust_region.unconstrained_to_real(pi).numpy(), pi_grad_norm, self.pi_trust_region.unconstrained_to_real(pi_with_grad).numpy(), self.r_norm(f).numpy()
+

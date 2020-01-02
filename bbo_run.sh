@@ -9,7 +9,7 @@ echo resume $1 algorithm $2
 
 loc=`dirname "%0"`
 
-args="--best-explore-update --algorithm=$algorithm --identifier=$identifier --game=RUN --budget=1500 --replay-memory-factor=100 --n-explore=512 --batch=1024"
+args="--best-explore-update --algorithm=$algorithm --identifier=$identifier --game=RUN --budget=2000 --replay-memory-factor=32 --warmup-minibatch=10 --n-explore=128 --batch=1024 --learn-iteration=20"
 
 CUDA_VISIBLE_DEVICES=1, python main.py --action-space=1 --resume=$resume --load-last-model $args $aux &
 

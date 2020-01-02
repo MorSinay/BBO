@@ -73,7 +73,8 @@ class RobustAgent(Agent):
             self.results['best_observed'].append(self.env.best_observed)
             self.results['reward_pi_evaluate'].append(pi_eval)
             self.results['best_pi_evaluate'].append(min(self.results['reward_pi_evaluate']))
-            self.results['grad'].append(self.get_grad().cpu().numpy().reshape(1, -1))
+            _, grad = self.get_grad()
+            self.results['grad'].append(grad.cpu().numpy().reshape(1, -1))
             self.results['dist_x'].append(torch.norm(self.env.denormalize(self.pi_net().detach().cpu().numpy()) - self.best_op_x, 2))
             self.results['dist_f'].append(pi_eval - self.best_op_f)
 
@@ -383,6 +384,7 @@ class RobustAgent(Agent):
         return pi_explore, rewards
 
     def get_evaluation_function(self, policy, target):
+        policy = np.clip(policy, a_min=-1, a_max=1-1e-5)
         target = torch.FloatTensor(target)
 
         self.value_net.eval()
@@ -411,6 +413,7 @@ class RobustAgent(Agent):
         return value, pi, np.array(pi_value), pi_with_grad, grads_norm, self.r_norm(target).numpy()
 
     def get_grad_norm_evaluation_function(self, policy, f):
+        policy = np.clip(policy, a_min=-1, a_max=1-1e-5)
         f = torch.FloatTensor(f)
         self.derivative_net.eval()
         policy_tensor = torch.FloatTensor(policy).to(self.device)

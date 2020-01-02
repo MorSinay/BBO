@@ -80,6 +80,7 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
         data['hit'].append(problem.final_target_hit)
         data['x'].append(x)
         data['id'].append(env.get_problem_id())
+        assert min(best_f) == problem.best_observed_fvalue1, "best_observed_error"
         data['best_observed'].append(problem.best_observed_fvalue1)
         data['number_of_evaluations'].append(problem.evaluations)
         data['eval'].append(problem.evaluations)
@@ -470,15 +471,65 @@ def avg_dim_best_observed(dim, save_file, prefix):
         list_sum /= i
         plt.loglog(np.arange(max_len), list_sum, color=Consts.color[j], label=key)
 
-
-    plt.legend()
-    plt.title("AVG COMPARE - DIM {}".format(dim))
+    plt.legend(loc='upper right')
+    plt.grid(True, which="both")
+    plt.title("AVG BEST OBSERVED COMPARE - DIM {}".format(dim))
     path_fig = os.path.join(Consts.baseline_dir, save_file)
     plt.savefig(path_fig)
     plt.close()
 
+def avg_dim_dist_from_best_x(dim, save_file, prefix):
 
-def merge_bbo(optimizers = [], dimension = [1, 2, 3, 5, 10, 20, 40, 784], save_file='baseline_cmp.pdf', plot_sum=False):
+    max_len = -1
+    res_dir = Consts.outdir
+    dirs = os.listdir(res_dir)
+
+    compare_dirs = defaultdict()
+
+    dim_len = int(np.log10(dim)) + 2
+    indexes = set([str(x) for x in range(360)])
+    for dir in dirs:
+        if dir.startswith(prefix) and dir.endswith(str(dim)):
+            alg = dir[len(prefix) + 1: -dim_len]
+            compare_dirs[alg] = os.path.join(res_dir, dir, 'analysis')
+            dir_index = os.listdir(compare_dirs[alg])
+            indexes = indexes.intersection(dir_index)
+        else:
+            continue
+
+    data = defaultdict(list)
+    for index in indexes:
+        for key, path in compare_dirs.items():
+            try:
+                dist_x = np.load(os.path.join(path, index, 'dist_x.npy'))
+            except:
+                continue
+
+            data[key].append(dist_x)
+            max_len = max(max_len, len(dist_x))
+
+    if not len(data):
+        return
+
+    plt.subplot(111)
+    for j, (key, l) in enumerate(data.items()):
+        i = 0
+        list_sum = np.zeros(max_len)
+        for x in l:
+            i+=1
+            lastval = x[-1]
+            list_sum += np.concatenate([x, lastval * np.ones(max_len-len(x))])
+        list_sum /= i
+        plt.loglog(np.arange(max_len), list_sum, color=Consts.color[j], label=key)
+
+    plt.legend(loc='upper right')
+    plt.grid(True, which="both")
+    plt.title("AVG DIST FROM BEST X COMPARE - DIM {}".format(dim))
+    path_fig = os.path.join(Consts.baseline_dir, save_file)
+    plt.savefig(path_fig)
+    plt.close()
+
+def merge_bbo(optimizers=[], dimension=[1, 2, 3, 5, 10, 20, 40, 784], save_file='baseline_cmp.pdf', plot_sum=False):
     compare_file = os.path.join(Consts.baseline_dir, 'compare.csv')
     assert os.path.exists(compare_file), 'no compare file'
 
@@ -598,22 +649,28 @@ def get_best_solution(dim, index):
     x = optimizer_res['x'][best_idx][best_x_idx]
     best_val = best_array[best_x_idx]
 
+    assert (min(x) < -5 or max(x) > 5), "out of range - get_best_solution dim {} problem {}".format(dim, index)
     return x, best_val
 
 if __name__ == '__main__':
     #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
 
-    optimizers = ['value_cone_beu', 'value_m1024', 'first_order_m1024', 'first_order_cone_beu']
+    optimizers = ['first_order_unconstrained', 'first_order_cone_beu']
     dims = [1, 2, 3, 5, 10, 20, 40]
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 
-    # # # bbo_evaluate_compare(dim=40, index=255, prefix='CMP')
+    # # # bbo_evaluate_compare(dim=40, index=15, prefix='CMP')
     # #
-    # for dim in dims:
-    #     prefix = 'RUN'
-    #     fig_name = '{} dim {} avg.pdf'.format(prefix,dim)
-    #     avg_dim_best_observed(dim=dim, save_file=fig_name, prefix=prefix)
+
+    dims = [40]
+
+    for dim in dims:
+        prefix = 'RUN'
+        fig_name = '{} dim {} best observed avg.pdf'.format(prefix,dim)
+        avg_dim_best_observed(dim=dim, save_file=fig_name, prefix=prefix)
+        fig_name = '{} dim {} dist avg.pdf'.format(prefix, dim)
+        avg_dim_dist_from_best_x(dim=dim, save_file=fig_name, prefix=prefix)
 
     # # for i in tqdm(range(0, 360, 1)):
     # #     visualization(i)

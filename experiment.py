@@ -36,6 +36,8 @@ class Experiment(object):
         self.problem_id = self.env.get_problem_id()
         self.algorithm = args.algorithm
         self.iter_index = env.problem_iter
+        self.printing_interval = args.printing_interval
+
         # temp_name = "%s_%s_%s_bbo_%s" % (args.game, args.algorithm, args.identifier, str(args.action_space))
         # self.exp_name = ""
         # if self.load_model:
@@ -136,7 +138,7 @@ class Experiment(object):
             best_observe = bbo_results['best_observed'][-1]
             divergence = bbo_results['divergence'][-1]
 
-            if not n % 50:
+            if not n % self.printing_interval:
                 logger.info("---------------- iteration: {} - Problem ID :{} ---------------".format(n, self.problem_id))
                 logger.info("Problem iter index     :{}\t\t\tDim: {}\t\t\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
                 if self.algorithm in ['first_order', 'second_order']:
@@ -148,10 +150,10 @@ class Experiment(object):
                 logger.info("Best observe      : |\t %f \t \tPi_evaluate: = %f| \t\tBest_pi_evaluate: = %f" % (best_observe, pi_evaluate, bbo_results['best_pi_evaluate'][-1]))
                 logger.info("dist_x            : |\t %f \t \tdist_f: = %f|" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1]))
 
-                if self.algorithm in ['value', 'anchor']:
+                if args.debug and self.algorithm in ['value', 'anchor']:
                     self.value_vs_f_eval(n)
 
-                if self.algorithm in ['first_order', 'second_order', 'anchor']:
+                if args.debug and self.algorithm in ['first_order', 'second_order', 'anchor']:
                     self.grad_norm_on_f_eval(n)
 
             # log to tensorboard
@@ -185,9 +187,9 @@ class Experiment(object):
         path_res = os.path.join(consts.baseline_dir, 'f_eval', '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
-            norm_policy = res['norm_policy'][1:-1]
-            policy = res['norm_policy'][1:-1]
-            f = res['f'][1:-1]
+            norm_policy = res['norm_policy']
+            policy = res['norm_policy']
+            f = res['f']
 
             if self.action_space == 1:
                 norm_policy = norm_policy[:, 0, np.newaxis]
@@ -220,9 +222,9 @@ class Experiment(object):
         path_res = os.path.join(consts.baseline_dir, 'f_eval', '{}D'.format(self.action_space), '{}D_index_{}.pkl'.format(self.action_space, self.iter_index))
         with open(path_res, 'rb') as handle:
             res = pickle.load(handle)
-            norm_policy = res['norm_policy'][1:-1]
-            policy = res['norm_policy'][1:-1]
-            f = res['f'][1:-1]
+            norm_policy = res['norm_policy']
+            policy = res['norm_policy']
+            f = res['f']
 
             if self.action_space == 1:
                 norm_policy = norm_policy[:, 0, np.newaxis]

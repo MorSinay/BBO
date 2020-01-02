@@ -41,9 +41,9 @@ class Agent(object):
         self.grad_clip = args.grad_clip
         self.divergence = 0
         self.importance_sampling = args.importance_sampling
-        self.update_step = args.update_step
         self.best_explore_update = args.best_explore_update
         self.analysis_dir = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
+        self.printing_interval = args.printing_interval
         if not os.path.exists(self.analysis_dir):
             try:
                 os.makedirs(self.analysis_dir)
@@ -59,6 +59,7 @@ class Agent(object):
         self.epsilon = args.epsilon
         self.delta = self.pi_lr
         self.warmup_factor = args.warmup_factor
+        self.hessian = args.hassian
 
         if args.explore == 'grad_rand':
             self.exploration = self.exploration_grad_rand
@@ -238,7 +239,7 @@ class Agent(object):
         optimizer_state = copy.deepcopy(self.optimizer_pi.state_dict())
         pi_array = [self.pi_net.pi.detach().clone()]
         for _ in range(n):
-            pi, _ = self.grad_step()
+            pi, _ = self.get_grad(grad_step=True)
             pi_array.append(pi)
 
         self.optimizer_pi.load_state_dict(optimizer_state)
@@ -247,40 +248,18 @@ class Agent(object):
         pi_array = torch.stack(pi_array)
         return pi_array
 
-    def grad_step(self):
-        self.pi_net.train()
-        self.optimizer_pi.zero_grad()
-        if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
-            self.optimizer_derivative.zero_grad()
-            grad = self.derivative_net(self.pi_net.pi).detach().squeeze(0)
-            self.pi_net.grad_update(grad.clone())
-        elif self.algorithm_method == 'value':
-            self.optimizer_value.zero_grad()
-            loss_pi = self.value_net(self.pi_net.pi)
-            loss_pi.backward()
-        else:
-            raise NotImplementedError
-
-        if self.grad_clip != 0:
-            nn.utils.clip_grad_norm_(self.pi_net.pi, self.grad_clip / self.pi_lr)
-
-        self.optimizer_pi.step()
-        self.pi_net.eval()
-        pi = self.pi_net.pi.detach().clone()
-        return pi, self.step_policy(pi, to_env=False)
-
     def exploration_rand(self, n_explore):
-            pi = self.pi_net.pi.detach().clone().cpu()
-            pi_explore = pi + self.warmup_factor*self.epsilon * torch.rand(n_explore, self.action_space)
-            return pi_explore
+        pi = self.pi_net.pi.detach().clone().cpu()
+        pi_explore = pi + self.warmup_factor*self.epsilon * torch.rand(n_explore, self.action_space)
+        return pi_explore
 
     def exploration_rand_test(self, n_explore):
-            pi_explore = -2 * torch.rand(n_explore, self.action_space) + 1
-            return pi_explore
+        pi_explore = -2 * torch.rand(n_explore, self.action_space) + 1
+        return pi_explore
 
     def exploration_grad_rand(self, n_explore):
-        grads = self.get_grad().cpu()
-        pi = self.pi_net.pi.detach().clone().cpu()
+        pi, grads = self.get_grad(grad_step=False)
+        pi, grads = pi.cpu(), grads.cpu()
         explore_factor = self.delta * grads + self.epsilon * torch.randn(n_explore, self.action_space)
         explore_factor *= 0.9 ** (2 * torch.arange(n_explore, dtype=torch.float)).reshape(n_explore, 1)
         pi_explore = pi - explore_factor  # gradient decent
@@ -298,8 +277,8 @@ class Agent(object):
     def cone_explore(self, n_explore):
         alpha = math.pi / 4
         n = n_explore - 1
-        pi = self.pi_net.pi.detach().cpu()
-        d = self.get_grad().cpu()
+        pi, grad = self.get_grad(grad_step=False)
+        pi, grad = pi.cpu(), grad.cpu()
         m = len(pi)
         pi = pi.unsqueeze(0)
 
@@ -307,11 +286,11 @@ class Agent(object):
         mag = torch.FloatTensor(n, 1).uniform_()
 
         x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
-        d = d / (torch.norm(d) + 1e-8)
+        grad = grad / (torch.norm(grad) + 1e-8)
 
-        cos = (x @ d).unsqueeze(1)
+        cos = (x @ grad).unsqueeze(1)
 
-        dp = x - cos * d.unsqueeze(0)
+        dp = x - cos * grad.unsqueeze(0)
 
         dp = dp / torch.norm(dp, dim=1, keepdim=True)
 
@@ -320,20 +299,38 @@ class Agent(object):
         new_cos = torch.cos(acos * alpha / (math.pi / 2))
         new_sin = torch.sin(acos * alpha / (math.pi / 2))
 
-        cone = new_sin * dp + new_cos * d
+        cone = new_sin * dp + new_cos * grad
 
         explore = pi - self.epsilon * mag * cone
 
         return torch.cat([pi, explore])
 
-    def get_grad(self):
-
+    def get_grad(self, grad_step=False):
         self.pi_net.train()
         self.optimizer_pi.zero_grad()
         if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
             self.optimizer_derivative.zero_grad()
-            grad = self.derivative_net(self.pi_net.pi.detach()).detach().squeeze(0)
-            self.pi_net.grad_update(grad.clone())
+            grad = self.derivative_net(self.pi_net.pi).squeeze(0).clone()
+
+            if self.hessian:
+                eps = 1e-3
+                eye = torch.eye(self.action_space, device=self.device)
+
+                hessian = []
+                p_one_hot = torch.eye(self.action_space, device=self.device)
+                for i in range(self.action_space):
+                    p = p_one_hot[i]
+                    self.optimizer_pi.zero_grad()
+                    dp = (p * grad).sum()
+                    dp.backward(retain_graph=True)
+                    hessian.append(self.pi_net.pi.grad)
+
+                hessian = torch.stack(hessian)
+                inv_hessian = torch.inverse(hessian + eps * eye)
+                natural_grad = torch.matmul(inv_hessian, grad)
+                grad = natural_grad / self.pi_lr
+
+            self.pi_net.grad_update(grad)
         elif self.algorithm_method == 'value':
             self.optimizer_value.zero_grad()
             loss_pi = self.value_net(self.pi_net.pi)
@@ -344,30 +341,14 @@ class Agent(object):
         if self.grad_clip != 0:
             nn.utils.clip_grad_norm_(self.pi_net.pi, self.grad_clip / self.pi_lr)
 
+        if grad_step:
+            self.optimizer_pi.step()
+
         self.pi_net.eval()
+        pi = self.pi_net.pi.detach().clone()
         grad = self.pi_net.pi.grad.detach().clone()
-        return grad
+        return pi, grad
 
     def pi_optimize(self):
-        pi = self.pi_net.pi.detach().clone()
-        pi_list = [pi]
-        value_list = [self.step_policy(pi, to_env=False)]
-
         for _ in range(self.grad_steps):
-            pi, value = self.grad_step()
-            pi_list.append(pi)
-            value_list.append(value)
-
-        if self.update_step == 'n_step':
-            #no need to do action
-            pass
-        elif self.update_step == 'best_step':
-            best_idx = np.array(value_list).argmin()
-            self.pi_net.pi_update(pi_list[best_idx].to(self.device))
-        elif self.update_step == 'first_vs_last':
-            if value_list[-1] > value_list[0]:
-                self.pi_net.pi_update(pi_list[0].to(self.device))
-        elif self.update_step == 'no_update':
-            self.pi_net.pi_update(pi_list[0].to(self.device))
-        else:
-            raise NotImplementedError
+            _, _ = self.get_grad(grad_step=True)

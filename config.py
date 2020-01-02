@@ -40,10 +40,11 @@ parser.add_argument('--algorithm', type=str, default='first_order', help='[first
 
 boolean_feature('debug', False, 'debug flag')
 boolean_feature('spline', False, 'spline net')
+boolean_feature('hassian', False, 'Use hassian in gradient net')
 
 #boolean_feature('vae', False, 'run vae problem')
 # VAE parameters
-parser.add_argument('--latent', type=int, default=40, help='Size of latent space')
+parser.add_argument('--latent', type=int, default=10, help='Size of latent space')
 
 # # booleans
 boolean_feature("load-last-model", False, 'Load the last saved model')
@@ -59,7 +60,6 @@ parser.add_argument('--resume', type=int, default=-1, help='Resume experiment nu
 parser.add_argument('--epsilon', type=float, default=0.1, help='exploration parameter before behavioral period')
 parser.add_argument('--norm', type=str, default='robust_scaler', help='normalization option - min_max | mean | mean_std')
 parser.add_argument('--explore', type=str, default='cone', help='exploration option - grad_rand | grad_direct | rand')
-parser.add_argument('--update-step', type=str, default='n_step', help='pi update step - n_step | best_step | first_vs_last | no_update')
 boolean_feature("best-explore-update", False, 'move to the best value of exploration')
 parser.add_argument('--grad-steps', type=int, default=1, help='Gradient step')
 parser.add_argument('--stop-con', type=int, default=100, help='Stopping Condition')
@@ -71,7 +71,7 @@ parser.add_argument('--cpu-workers', type=int, default=24, help='How many CPUs w
 parser.add_argument('--cuda-default', type=int, default=0, help='Default GPU')
 #
 # #train parameters
-parser.add_argument('--checkpoint-interval', type=int, default=1000, help='Number of training steps between evaluations')
+parser.add_argument('--printing-interval', type=int, default=20, help='Number of exploration steps between printing results')
 parser.add_argument('--replay-updates-interval', type=int, default=50, help='Number of training iterations between q-target updates')
 parser.add_argument('--replay-memory-factor', type=int, default=10, help='Replay factor')
 parser.add_argument('--warmup-minibatch', type=int, default=3, help='Warm up batches')

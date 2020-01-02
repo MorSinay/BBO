@@ -13,6 +13,8 @@ from environment import EnvCoco, EnvVae, EnvOneD
 from collections import defaultdict
 
 filter_mod = 15
+#problems_to_run = range(0,360,filter_mod)
+problems_to_run = [15, 30, 45, 135, 150, 210, 165]
 def set_seed(seed):
     if seed > 0:
         random.seed(seed)
@@ -81,7 +83,7 @@ def main():
             except:
                 pass
 
-        for i in range(0, 360, filter_mod):
+        for i in problems_to_run:
             main_run.reset(i)
             divergence = run_exp(main_run.env)
 
@@ -105,7 +107,7 @@ def main():
 
 def run_exp(env):
     with Experiment(logger.filename, env) as exp:
-        logger.info("BBO Session with VALUE net, it might take a while")
+        logger.info("BBO Session with NEURAL NET, it might take a while")
         divergence = exp.bbo()
     return divergence
 

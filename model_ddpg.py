@@ -88,6 +88,7 @@ class TrustRegion(object):
     def unconstrained_to_real(self, x):
         x = self.pi_net(x)
         x = self.mu + x * self.sigma
+        x = torch.clamp(x, min=-1, max=1)
         return x
 
     def real_to_unconstrained(self, x):
