@@ -13,8 +13,8 @@ from environment import EnvCoco, EnvVae, EnvOneD
 from collections import defaultdict
 
 filter_mod = 15
-#problems_to_run = range(0,360,filter_mod)
-problems_to_run = [15, 30, 45, 135, 150, 210, 165]
+problems_to_run = range(0,360,filter_mod)
+#problems_to_run = [15, 30, 45, 135, 150, 210, 165]
 def set_seed(seed):
     if seed > 0:
         random.seed(seed)
@@ -44,12 +44,11 @@ class MainRun(object):
 
     def set_env(self, problem_index):
         if self.action_space == 784:
-            self.env = EnvVae(self.problem, problem_index)
+            self.env = EnvVae(self.problem, problem_index, to_numpy=True)
         elif self.action_space == 1:
-            self.env = EnvOneD(self.problem, problem_index, True)
+            self.env = EnvOneD(self.problem, problem_index, need_norm=True, to_numpy=True)
         else:
-            self.env = EnvCoco(self.problem, problem_index, True)
-
+            self.env = EnvCoco(self.problem, problem_index, need_norm=True, to_numpy=True)
 
 def main():
 

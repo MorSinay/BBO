@@ -140,15 +140,15 @@ class Experiment(object):
 
             if not n % self.printing_interval:
                 logger.info("---------------- iteration: {} - Problem ID :{} ---------------".format(n, self.problem_id))
-                logger.info("Problem iter index     :{}\t\t\tDim: {}\t\t\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
+                logger.info("Problem iter index     :{}\t\tDim: {}\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
                 if self.algorithm in ['first_order', 'second_order']:
                     logger.info("Actions statistics: |\t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['grad_norm'][-1], avg_reward, bbo_results['derivative_loss'][-1]))
                 elif self.algorithm == ['value']:
                     logger.info("Actions statistics: |\t value = %.3f \t avg_reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'][-1], avg_reward, bbo_results['value_loss'][-1]))
                 elif self.algorithm == 'anchor':
                     logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
-                logger.info("Best observe      : |\t %f \t \tPi_evaluate: = %f| \t\tBest_pi_evaluate: = %f" % (best_observe, pi_evaluate, bbo_results['best_pi_evaluate'][-1]))
-                logger.info("dist_x            : |\t %f \t \tdist_f: = %f|" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1]))
+                logger.info("Best observe      : |\t %f \t Pi_evaluate: = %f| \tBest_pi_evaluate: = %f" % (best_observe, pi_evaluate, bbo_results['best_pi_evaluate'][-1]))
+                logger.info("dist_x            : |\t %f \t dist_f: = %f|" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1]))
 
                 if args.debug and self.algorithm in ['value', 'anchor']:
                     self.value_vs_f_eval(n)
@@ -283,7 +283,7 @@ class Experiment(object):
 
     def compare_pi_evaluate(self):
         optimizer_res = get_baseline_cmp(self.action_space, self.iter_index)
-        min_val = optimizer_res['min_opt'][0]
+        min_val = optimizer_res['min_opt'][0] - 0.0001
         f0 = optimizer_res['f0'][0]
 
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
@@ -294,12 +294,13 @@ class Experiment(object):
 
         colors = consts.color
         #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
-        plt.loglog(np.arange(len(pi_eval)), 1 + (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='reward_pi_evaluate')
-        plt.loglog(np.arange(len(pi_best)), 1 + (pi_best - min_val) / (f0 - min_val), color=colors[1], label='best_observed')
+        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='reward_pi_evaluate')
+        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[1], label='best_observed')
 
         for i, op in enumerate(optimizer_res['fmin']):
             res = optimizer_res[optimizer_res['fmin'] == op]
             op_eval = np.array(res['f'].values[0])
+            op_eval = np.clip(op_eval, a_max=f0, a_min=-np.inf)
             plt.loglog(np.arange(len(op_eval)), 1 + (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
 
         plt.legend()

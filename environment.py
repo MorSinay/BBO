@@ -3,12 +3,13 @@ import torch
 
 class Env(object):
 
-    def __init__(self, problem_iter, need_norm=True):
+    def __init__(self, problem_iter, need_norm=True, to_numpy=True):
         self.need_norm = need_norm
         self.problem_iter = problem_iter
         self.observed_list = []
         self.best_list = []
         self.pi_list = []
+        self.to_numpy = to_numpy
 
     def get_observed_and_pi_list(self):
         return self.best_list, self.observed_list, self.pi_list
@@ -45,8 +46,8 @@ class Env(object):
 
 class EnvCoco(Env):
 
-    def __init__(self, problem, problem_index, need_norm):
-        super(EnvCoco, self).__init__(problem_index, need_norm)
+    def __init__(self, problem, problem_index, need_norm, to_numpy):
+        super(EnvCoco, self).__init__(problem_index, need_norm, to_numpy)
         self.best_observed = None
         self.reward = None
         self.t = 0
@@ -83,6 +84,7 @@ class EnvCoco(Env):
         self.t = 0
 
     def no_normalization(self, policy):
+        policy = np.clip(policy, a_min=self.lower_bounds, a_max=self.upper_bounds)
         return policy
 
     def with_denormalize(self, policy):
@@ -99,7 +101,8 @@ class EnvCoco(Env):
         return policy
 
     def step_policy(self, policy):
-        policy = policy.numpy()
+        if self.to_numpy:
+            policy = policy.numpy()
         policy = self.denormalize(policy)
         assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
@@ -116,7 +119,8 @@ class EnvCoco(Env):
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
-        policy = policy.numpy()
+        if self.to_numpy:
+            policy = policy.numpy()
         policy = self.denormalize(policy)
         res = self.problem(policy)
         self.observed_list.append(res)
@@ -132,8 +136,8 @@ class EnvCoco(Env):
 
 class EnvVae(Env):
 
-    def __init__(self, vae_problem, problem_index):
-        super(EnvVae, self).__init__(problem_index, False)
+    def __init__(self, vae_problem, problem_index, to_numpy):
+        super(EnvVae, self).__init__(problem_index, False, to_numpy)
         self.best_observed = None
         self.reward = None
         self.t = 0
@@ -171,7 +175,8 @@ class EnvVae(Env):
         return policy
 
     def step_policy(self, policy):
-        policy = policy.numpy()
+        if self.to_numpy:
+            policy = policy.numpy()
         assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
         if len(policy.shape) == 2:
@@ -187,7 +192,8 @@ class EnvVae(Env):
         self.t = self.vae_problem.problem.final_target_hit
 
     def f(self, policy):
-        policy = policy.numpy()
+        if self.to_numpy:
+            policy = policy.numpy()
         res = self.vae_problem.func(policy)
         self.observed_list.append(res)
         self.best_list.append(self.problem.best_observed_fvalue1)
@@ -199,8 +205,8 @@ class EnvVae(Env):
 
 class EnvOneD(Env):
 
-    def __init__(self, problem, problem_index, need_norm):
-        super(EnvOneD, self).__init__(problem_index, need_norm)
+    def __init__(self, problem, problem_index, need_norm, to_numpy):
+        super(EnvOneD, self).__init__(problem_index, need_norm, to_numpy)
         self.best_observed = None
         self.reward = None
         self.t = 0
@@ -244,6 +250,7 @@ class EnvOneD(Env):
         self.t = 0
 
     def no_normalization(self, policy):
+        policy = np.clip(policy, a_min=self.lower_bounds, a_max=self.upper_bounds)
         return policy
 
     def with_denormalize(self, policy):
@@ -260,7 +267,8 @@ class EnvOneD(Env):
         return policy
 
     def step_policy(self, policy):
-        policy = policy.numpy()
+        if self.to_numpy:
+            policy = policy.numpy()
         policy = self.denormalize(one_d_change_dim(policy))
         assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
         self.reward = []
@@ -277,7 +285,8 @@ class EnvOneD(Env):
         self.t = self.problem.final_target_hit
 
     def f(self, policy):
-        policy = policy.numpy()
+        if self.to_numpy:
+            policy = policy.numpy()
         self.pi_list.append(policy)
         policy = self.denormalize(one_d_change_dim(policy)).flatten()
         res = self.problem(policy)

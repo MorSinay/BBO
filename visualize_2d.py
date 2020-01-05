@@ -24,15 +24,20 @@ import pickle
 username = pwd.getpwuid(os.geteuid()).pw_name
 from config import Consts
 
-# if username == 'morsi':
-#     base_dir = os.path.join('/Users', username, 'Desktop')
-# else:
-#     from vae import VaeProblem, VAE
-#     base_dir = os.path.join('/data/', username, 'gan_rl')
-
 epsilon = 1
-
 filter_mod = 1
+optimization_function = {'trust-ncg': scipy.optimize.minimize,
+                         'trust-constr': scipy.optimize.minimize,
+                         'trust-exact': scipy.optimize.minimize,
+                         'trust-krylov': scipy.optimize.minimize,
+                         'slsqp': scipy.optimize.fmin_slsqp,
+                         'fmin': scipy.optimize.fmin,
+                         'cobyla': scipy.optimize.fmin_cobyla,
+                         'powell': scipy.optimize.fmin_powell,
+                         'cg': scipy.optimize.fmin_cg,
+                         'bfgs': scipy.optimize.fmin_bfgs,
+                         'cma': cma.fmin2
+}
 
 def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
 
@@ -43,22 +48,19 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
         suite_filter_options = ("dimensions: "+str(max(dim, 2)))
         suite = cocoex.Suite(suite_name, "", suite_filter_options)
 
-    optimization_function = [scipy.optimize.fmin_slsqp, scipy.optimize.fmin, scipy.optimize.fmin_cobyla, scipy.optimize.fmin_powell,
-                             scipy.optimize.fmin_cg, scipy.optimize.fmin_bfgs, cma.fmin2]
-
     data = defaultdict(list)
-    for fmin in optimization_function:
+    for alg, fmin in optimization_function.items():
         if dim == 784:
             problem.reset(index)
-            env = EnvVae(problem, index)
+            env = EnvVae(problem, index, to_numpy=False)
         elif dim == 1:
             suite.reset()
             problem = suite.get_problem(index)
-            env = EnvOneD(problem,index,  False)
+            env = EnvOneD(problem,index, need_norm=False, to_numpy=False)
         else:
             suite.reset()
             problem = suite.get_problem(index)
-            env = EnvCoco(problem, index, False)
+            env = EnvCoco(problem, index, need_norm=False, to_numpy=False)
 
         func = env.f
 
@@ -67,7 +69,7 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
         eval = []
         best_f = []
         try:
-            run_problem(fmin, func, x, budget)
+            run_problem(alg, fmin, func, x, budget)
             best_f, f, x = env.get_observed_and_pi_list()
 
         except:
@@ -75,7 +77,7 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
             f.append(func(x))
             best_f.append(f[0])
 
-        data['fmin'].append(fmin.__name__)
+        data['fmin'].append(alg)
         data['index'].append(problem.index)
         data['hit'].append(problem.final_target_hit)
         data['x'].append(x)
@@ -104,35 +106,42 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
     with open(fmin_file, 'wb') as handle:
         pickle.dump(df, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-def run_problem(fmin,  problem, x0, budget):
-
-        fmin_name = fmin.__name__
-
-        if fmin_name is 'fmin_slsqp':
+def run_problem(alg, fmin,  problem, x0, budget):
+        if alg is 'slsqp':
             x, best_val, _, _, _ = fmin(problem, x0, iter=budget, full_output=True, iprint=-1)
 
-        elif fmin_name is 'fmin':
+        elif alg is 'fmin':
             x, best_val, _, eval_num, _ = fmin(problem, x0, maxfun=budget, disp=False, full_output=True)
 
-        elif fmin_name is 'fmin2':
+        elif alg is 'cma':
             x, _ = fmin(problem, x0, 2, {'maxfevals': budget, 'verbose':-9}, restarts=0)
 
-        elif fmin_name is 'fmin_cobyla':
+        elif alg is 'cobyla':
             x = fmin(problem, x0, cons=lambda x: None, maxfun=budget, disp=0, rhoend=1e-9)
 
-        elif fmin_name is 'fmin_powell':
+        elif alg is 'powell':
             x, best_val, _, _, eval_num, _ = fmin(problem, x0, maxiter=budget, full_output=1)
 
-        elif fmin_name is 'fmin_cg':
+        elif alg is 'cg':
             x, best_val, eval_num, _, _ = fmin(problem, x0, maxiter=budget, full_output=1)
 
-        elif fmin_name is 'fmin_bfgs':
+        elif alg is 'bfgs':
             x, best_val, _, _, eval_num, _, _ = fmin(problem, x0, maxiter=budget, full_output=1)
+
+        elif alg is 'trust-ncg':
+            _ = fmin(problem, x0, args=(), method='trust-ncg', options={'maxiter': budget, 'disp': False})
+
+        elif alg is 'trust-constr':
+            _ = fmin(problem, x0, args=(), method='trust-constr', options={'maxiter': budget, 'disp': False})
+
+        elif alg is 'trust-exact':
+            _ = fmin(problem, x0, args=(), method='trust-exact', options={'maxiter': budget, 'disp': False})
+
+        elif alg is 'trust-krylov':
+            _ = fmin(problem, x0, args=(), method='trust-krylov', options={'maxiter': budget, 'disp': False})
 
         else:
             raise NotImplementedError
-
-        return x
 
 
 def create_copy_file(prefix, dim, index):
@@ -595,6 +604,8 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
     min_val = optimizer_res['min_opt'][0] - 0.0001
     f0 = optimizer_res['f0'][0]
 
+    bbo_min_val = f0
+
     res_dir = Consts.outdir
     dirs = os.listdir(res_dir)
 
@@ -618,8 +629,10 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
     for i, key in enumerate(compare_dirs.keys()):
         path = compare_dirs[key]
         try:
-            pi_eval = np.load(os.path.join(path, 'pi_evaluate.npy'))
+            pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'))
             pi_best = np.load(os.path.join(path, 'best_observed.npy'))
+
+            bbo_min_val = min(bbo_min_val, pi_best.min())
 
             ax1.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[i], label=key)
             ax2.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[i])
@@ -631,6 +644,7 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
     fig.legend(loc='lower left', prop={'size': 6}, ncol=3)
     ax1.grid(True, which='both')
     ax2.grid(True, which='both')
+    fig.suptitle("min value is {}, min bbo value is {}".format(min_val, bbo_min_val))
     ax1.set_title('reward_pi_evaluate')
     ax2.set_title('best_observed')
     ax1.set_xlim([10, x_max])
@@ -649,18 +663,21 @@ def get_best_solution(dim, index):
     x = optimizer_res['x'][best_idx][best_x_idx]
     best_val = best_array[best_x_idx]
 
-    assert (min(x) < -5 or max(x) > 5), "out of range - get_best_solution dim {} problem {}".format(dim, index)
+    assert (min(x) >= -5 and max(x) <= 5), "out of range - get_best_solution dim {} problem {}".format(dim, index)
     return x, best_val
 
 if __name__ == '__main__':
-    #merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
 
-    optimizers = ['first_order_unconstrained', 'first_order_cone_beu']
+    # merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
+
+    #print(get_best_solution(dim=40, index=45))
+
+    optimizers = ['first_order_unconstrained']
     dims = [1, 2, 3, 5, 10, 20, 40]
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 
-    # # # bbo_evaluate_compare(dim=40, index=15, prefix='CMP')
+    bbo_evaluate_compare(dim=40, index=135, prefix='CMP')
     # #
 
     dims = [40]
@@ -679,7 +696,7 @@ if __name__ == '__main__':
     # #calc_f0()
     # #twoD_plot_contour(index)
     #
-    # # dim = 40
-    # # for i in tqdm(range(0, 360, filter_mod)):
-    # #     compare_problem_baseline(dim, i, budget=150000)
-    #
+    # dim = 1
+    # for i in tqdm(range(0, 360, filter_mod)):
+    #     compare_problem_baseline(dim, i, budget=150000)
+

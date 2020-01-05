@@ -27,19 +27,52 @@ class RobustAgent(Agent):
         self.r_norm = RobustNormalizer()
 
     def print_robust_norm_params(self):
-        if (self.frame % 50) == 0:
+        if (self.frame % (self.printing_interval*self.n_explore)) == 0:
             print("\n\nframe {} -- r_norm: mu {} sigma {}".format(self.frame, self.r_norm.mu, self.r_norm.sigma))
 
     def update_replay_buffer(self):
-
-        explore_policies = self.exploration_rand(self.warmup_minibatch * self.n_explore)
+        self.frame += self.warmup_explore
+        explore_policies = self.exploration_rand(self.warmup_explore)
         self.step_policy(explore_policies)
         rewards = self.env.reward
         self.results['explore_policies'].append(explore_policies)
         self.results['rewards'].append(rewards)
-
+        self.results_pi_update_with_explore(self.warmup_explore)
         self.tensor_replay_reward = rewards
         self.tensor_replay_policy = explore_policies
+
+    def results_pi_update_with_explore(self, explore):
+        pi = self.pi_net.pi.detach().cpu()
+        pi_eval = self.step_policy(pi, to_env=False)
+        best_observed = self.env.best_observed
+        if not len(self.results['best_pi_evaluate']):
+            best_pi_evaluate = pi_eval
+        else:
+            best_pi_evaluate = min(pi_eval, self.results['best_pi_evaluate'][-1])
+        _, grad = self.get_grad()
+        grad = grad.cpu().numpy().reshape(1, -1)
+        dist_x = torch.norm(self.env.denormalize(self.pi_net().detach().cpu().numpy()) - self.best_op_x, 2)
+        dist_f = pi_eval - self.best_op_f
+
+        if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
+            val = torch.norm(self.derivative_net(self.pi_net.pi.detach()).detach(), 2).detach().item()
+            key = 'grad_norm'
+
+        if self.algorithm_method in ['value', 'anchor']:
+            val = self.r_norm.desquash(self.value_net(self.pi_net.pi.detach()).detach().cpu()).item()
+            key = 'value'
+
+        for _ in range (explore):
+            self.results['best_observed'].append(best_observed)
+            self.results['reward_pi_evaluate'].append(pi_eval)
+            self.results['best_pi_evaluate'].append(best_pi_evaluate)
+            self.results['policies'].append(pi)
+            self.results['grad'].append(grad)
+            self.results['dist_x'].append(dist_x)
+            self.results['dist_f'].append(dist_f)
+            self.results['ts'].append(self.env.t)
+            self.results['divergence'].append(self.divergence)
+            self.results[key].append(val)
 
     def warmup(self):
         self.reset_net()
@@ -58,7 +91,7 @@ class RobustAgent(Agent):
         self.env.reset()
         self.warmup()
         #self.pi_net.eval()
-        for self.frame in tqdm(itertools.count()):
+        for _ in tqdm(itertools.count()):
             pi_explore, reward = self.exploration_step(self.n_explore)
             self.results['explore_policies'].append(pi_explore)
             self.results['rewards'].append(reward)
@@ -67,27 +100,27 @@ class RobustAgent(Agent):
             self.pi_optimize()
 
             self.save_checkpoint(self.checkpoint, {'n': self.frame})
-
-            pi = self.pi_net.pi.detach().clone()
-            pi_eval = self.step_policy(pi, to_env=False)
-            self.results['best_observed'].append(self.env.best_observed)
-            self.results['reward_pi_evaluate'].append(pi_eval)
-            self.results['best_pi_evaluate'].append(min(self.results['reward_pi_evaluate']))
-            _, grad = self.get_grad()
-            self.results['grad'].append(grad.cpu().numpy().reshape(1, -1))
-            self.results['dist_x'].append(torch.norm(self.env.denormalize(self.pi_net().detach().cpu().numpy()) - self.best_op_x, 2))
-            self.results['dist_f'].append(pi_eval - self.best_op_f)
-
-            self.results['policies'].append(pi)
-            if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
-                grad_norm = torch.norm(self.derivative_net(self.pi_net.pi.detach()).detach(), 2).detach().item()
-                self.results['grad_norm'].append(grad_norm)
-            if self.algorithm_method in ['value', 'anchor']:
-                value = self.r_norm.desquash(self.value_net(self.pi_net.pi.detach()).detach().cpu()).item()
-                self.results['value'].append(np.array(value))
-
-            self.results['ts'].append(self.env.t)
-            self.results['divergence'].append(self.divergence)
+            self.results_pi_update_with_explore(self.n_explore)
+            # pi = self.pi_net.pi.detach().clone()
+            # pi_eval = self.step_policy(pi, to_env=False)
+            # self.results['best_observed'].append(self.env.best_observed)
+            # self.results['reward_pi_evaluate'].append(pi_eval)
+            # self.results['best_pi_evaluate'].append(min(self.results['reward_pi_evaluate']))
+            # _, grad = self.get_grad()
+            # self.results['grad'].append(grad.cpu().numpy().reshape(1, -1))
+            # self.results['dist_x'].append(torch.norm(self.env.denormalize(self.pi_net().detach().cpu().numpy()) - self.best_op_x, 2))
+            # self.results['dist_f'].append(pi_eval - self.best_op_f)
+            #
+            # self.results['policies'].append(pi)
+            # if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
+            #     grad_norm = torch.norm(self.derivative_net(self.pi_net.pi.detach()).detach(), 2).detach().item()
+            #     self.results['grad_norm'].append(grad_norm)
+            # if self.algorithm_method in ['value', 'anchor']:
+            #     value = self.r_norm.desquash(self.value_net(self.pi_net.pi.detach()).detach().cpu()).item()
+            #     self.results['value'].append(np.array(value))
+            #
+            # self.results['ts'].append(self.env.t)
+            # self.results['divergence'].append(self.divergence)
 
             yield self.results
 
@@ -368,6 +401,7 @@ class RobustAgent(Agent):
             return self.env.f(policy)
 
     def exploration_step(self, n_explore):
+        self.frame += n_explore
         pi_explore = self.exploration(n_explore)
         self.step_policy(pi_explore)
         rewards = self.env.reward
@@ -377,8 +411,8 @@ class RobustAgent(Agent):
 
         self.r_norm(rewards, training=True)
 
-        self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, rewards])
-        self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, pi_explore])
+        self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, rewards])[-self.replay_memory_size:]
+        self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, pi_explore])[-self.replay_memory_size:]
 
         self.print_robust_norm_params()
         return pi_explore, rewards

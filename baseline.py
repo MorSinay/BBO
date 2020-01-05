@@ -285,8 +285,8 @@ def plot_2D_contour_tmp(problem_index, save_fig=False):
 
     plt.close()
 
-
 if __name__ == '__main__':
+
     #merge_baseline()
 
     #merge_baseline_one_line_compare()

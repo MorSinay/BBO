@@ -28,16 +28,14 @@ class Agent(object):
 
         self.batch = args.batch
         self.n_explore = args.n_explore
-        self.warmup_minibatch = args.warmup_minibatch
-        self.replay_memory_size = self.batch * args.replay_memory_factor
-        self.replay_memory_factor = args.replay_memory_factor
+        self.replay_memory_size = self.n_explore * args.replay_memory_factor
         self.problem_index = env.problem_iter
         self.value_lr = args.value_lr
         self.budget = args.budget
         self.checkpoint = checkpoint
         self.algorithm_method = args.algorithm
         self.grad_steps = args.grad_steps
-        self.stop_con = args.stop_con
+        self.stop_con = args.stop_con*self.n_explore
         self.grad_clip = args.grad_clip
         self.divergence = 0
         self.importance_sampling = args.importance_sampling
@@ -59,6 +57,7 @@ class Agent(object):
         self.epsilon = args.epsilon
         self.delta = self.pi_lr
         self.warmup_factor = args.warmup_factor
+        self.warmup_explore = args.warmup_minibatch * self.n_explore
         self.hessian = args.hassian
 
         if args.explore == 'grad_rand':
@@ -67,13 +66,12 @@ class Agent(object):
             self.exploration = self.exploration_grad_direct
         elif args.explore == 'rand':
             self.exploration = self.exploration_rand
-        elif args.explore == 'rand_test':
-            self.exploration = self.exploration_rand_test
         elif args.explore == 'cone':
             if self.action_space == 1:
                 self.exploration = self.exploration_grad_direct
             else:
                 self.exploration = self.cone_explore
+                self.cone_angle = args.cone_angle
         else:
             print("explore:" + args.explore)
             raise NotImplementedError
@@ -250,11 +248,8 @@ class Agent(object):
 
     def exploration_rand(self, n_explore):
         pi = self.pi_net.pi.detach().clone().cpu()
-        pi_explore = pi + self.warmup_factor*self.epsilon * torch.rand(n_explore, self.action_space)
-        return pi_explore
-
-    def exploration_rand_test(self, n_explore):
-        pi_explore = -2 * torch.rand(n_explore, self.action_space) + 1
+        rand_sign = (2*torch.randint(0,2,size=(n_explore, self.action_space))-1).reshape(n_explore, self.action_space)
+        pi_explore = pi + self.warmup_factor*self.epsilon * rand_sign * torch.rand(n_explore, self.action_space)
         return pi_explore
 
     def exploration_grad_rand(self, n_explore):
@@ -267,15 +262,16 @@ class Agent(object):
 
     def exploration_grad_direct(self, n_explore):
         pi_array = self.get_n_grad_ahead(self.grad_steps).reshape(self.grad_steps+1, self.action_space).cpu()
-        n_explore = (n_explore // self.grad_steps)
+        n_explore_grad = (n_explore // (self.grad_steps+1))
 
         epsilon_array = self.epsilon ** (3 - 2 * torch.arange(self.grad_steps+1, dtype=torch.float) / (self.grad_steps))
         epsilon_array = epsilon_array.unsqueeze(1) # .expand_dims(epsilon_array, axis=1)
-        pi_explore = torch.cat([pi_array + epsilon_array * torch.randn(self.grad_steps+1, self.action_space) for _ in range(n_explore)], dim=0)
+        pi_explore = torch.cat([pi_array + epsilon_array * torch.randn(self.grad_steps+1, self.action_space) for _ in range(n_explore_grad)], dim=0)
+        #pi_explore = pi_explore[-n_explore:]
         return pi_explore
 
     def cone_explore(self, n_explore):
-        alpha = math.pi / 4
+        alpha = math.pi / self.cone_angle
         n = n_explore - 1
         pi, grad = self.get_grad(grad_step=False)
         pi, grad = pi.cpu(), grad.cpu()
@@ -328,7 +324,7 @@ class Agent(object):
                 hessian = torch.stack(hessian)
                 inv_hessian = torch.inverse(hessian + eps * eye)
                 natural_grad = torch.matmul(inv_hessian, grad)
-                grad = natural_grad / self.pi_lr
+                grad = natural_grad #/ self.pi_lr
 
             self.pi_net.grad_update(grad)
         elif self.algorithm_method == 'value':

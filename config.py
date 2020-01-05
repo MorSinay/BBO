@@ -58,6 +58,7 @@ parser.add_argument('--resume', type=int, default=-1, help='Resume experiment nu
 
 # #exploration parameters
 parser.add_argument('--epsilon', type=float, default=0.1, help='exploration parameter before behavioral period')
+parser.add_argument('--cone-angle', type=float, default=4, help='cone angle - default pi/4')
 parser.add_argument('--norm', type=str, default='robust_scaler', help='normalization option - min_max | mean | mean_std')
 parser.add_argument('--explore', type=str, default='cone', help='exploration option - grad_rand | grad_direct | rand')
 boolean_feature("best-explore-update", False, 'move to the best value of exploration')
