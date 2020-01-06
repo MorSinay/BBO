@@ -1,19 +1,17 @@
 import torch
 from torch import nn
 from config import args
-from torch.nn.utils import spectral_norm
+#from torch.nn.utils import spectral_norm
 import math
 from collections import defaultdict
-
+import numpy as np
 
 action_space = args.action_space
-layer = 512
-drop = args.drop
-delta = 20 # quantization levels / 2
-hn = 10
-emb = 64 # embedding size
-parallel = int(layer / emb + .5)
-emb2 = int(layer / action_space + .5) # embedding2 size
+layer = 256
+delta = 10 # quantization levels / 2
+emb = 32 # embedding size
+#parallel = 2 #int(layer / emb + .5)
+#emb2 = int(layer / action_space + .5) # embedding2 size
 
 def init_weights(net, init='ortho'):
     net.param_count = 0
@@ -81,9 +79,20 @@ class TrustRegion(object):
         self.sigma = 1.
         self.pi_net = pi_net
 
+    def np_bounderies(self):
+        lower, upper = self.mu.numpy() - self.sigma, self.mu.numpy() + self.sigma
+        return np.clip(lower, -1, 1), np.clip(upper, -1, 1)
+
     def squeeze(self, pi):
-        self.mu = pi
-        self.sigma /= 2
+        upper, lower = self.np_bounderies()
+        upper, lower = upper - 0.05, lower + 0.05
+        new_pi = np.clip(pi.numpy(), a_max=upper, a_min=lower)
+        #near the edge
+        if (new_pi == pi.numpy()).min():
+            self.mu = pi
+            self.sigma = max(self.sigma/2, 0.05+1e-3)
+        else:
+            self.mu = pi
 
     def unconstrained_to_real(self, x):
         x = self.pi_net(x)
@@ -129,8 +138,11 @@ class SplineNet(nn.Module):
         x = x.view(-1, action_space)
         if normalize:
             x = self.pi_net(x)
-        x_emb, x_emb2 = self.embedding(x)
-        x = self.head(x, x_emb, x_emb2)
+        # x_emb, x_emb2 = self.embedding(x)
+        # x = self.head(x, x_emb, x_emb2)
+
+        x_emb = self.embedding(x)
+        x = self.head(x, x_emb)
 
         return x
 
@@ -142,13 +154,13 @@ class SplineEmbedding(nn.Module):
         self.delta = delta
         self.actions = action_space
         self.emb = emb
-        self.emb2 = emb2
+        #self.emb2 = emb2
         self.device = device
 
         self.ind_offset = torch.arange(self.actions, dtype=torch.int64).to(device).unsqueeze(0)
 
         self.b = nn.Embedding((2 * self.delta + 1) * self.actions, emb, sparse=True)
-        self.b2 = nn.Embedding((2 * self.delta + 1) * self.actions, emb2, sparse=True)
+        #self.b2 = nn.Embedding((2 * self.delta + 1) * self.actions, emb2, sparse=True)
 
     def forward(self, x):
         n = len(x)
@@ -158,20 +170,17 @@ class SplineEmbedding(nn.Module):
         xl = xl / self.delta
         xli = xli.view(-1)
 
-        assert (xli.max() <= (2 * self.delta + 1) * self.actions - 1), "xli max {}".format(xli.max())
 
         xh = (x * self.delta + 1).floor()
         xhi = self.actions * (xh.long() + self.delta) + self.ind_offset
         xh = xh / self.delta
         xhi = xhi.view(-1)
 
-        assert (xhi.max() <= (2 * self.delta + 1) * self.actions - 1), "xhi max {}".format(xhi.max())
-
         bl = self.b(xli).view(n, self.actions, self.emb)
         bh = self.b(xhi).view(n, self.actions, self.emb)
 
-        bl2 = self.b2(xli).view(n, self.actions, self.emb2)
-        bh2 = self.b2(xhi).view(n, self.actions, self.emb2)
+       # bl2 = self.b2(xli).view(n, self.actions, self.emb2)
+       # bh2 = self.b2(xhi).view(n, self.actions, self.emb2)
 
         delta = 1 / self.delta
 
@@ -180,9 +189,10 @@ class SplineEmbedding(nn.Module):
         xh = xh.unsqueeze(2)
 
         h = bh / delta * (x - xl) + bl / delta * (xh - x)
-        h2 = bh2 / delta* (x - xl) + bl2 / delta * (xh - x)
+       # h2 = bh2 / delta* (x - xl) + bl2 / delta * (xh - x)
 
-        return h, h2
+       # return h, h2
+        return h
 
 class SplineHead(nn.Module):
 
@@ -192,33 +202,39 @@ class SplineHead(nn.Module):
         self.emb = emb
         self.actions = action_space
         self.output = output
-        self.emb2 = emb2
-        self.global_interaction = nn.ModuleList([GlobalModule(emb) for _ in range(parallel)])
+       # self.emb2 = emb2
+        self.global_interaction = GlobalModule(emb) #nn.ModuleList([GlobalModule(emb) for _ in range(parallel)])
 
-        input_len = parallel * emb + self.actions + emb2 * self.actions
+        #input_len = parallel * emb + self.actions #+ emb2 * self.actions
+        input_len = emb + self.actions #+ emb2 * self.actions
 
-        self.fc = nn.Sequential(spectral_norm(nn.Linear(input_len, layer, bias=False)),
+        self.fc = nn.Sequential(#spectral_norm(nn.Linear(input_len, layer, bias=False)),
+                                nn.Linear(input_len, layer, bias=True),
                                 ResBlock(layer),
                                 ResBlock(layer),
                              #   ResBlock(layer),
                               #  ResBlock(layer),
                                # ResBlock(layer),
-                                ResBlock(layer),
-                                nn.BatchNorm1d(layer, affine=True),
+                               # ResBlock(layer),
+                                #nn.BatchNorm1d(layer, affine=True),
                                 nn.ReLU(),
-                                spectral_norm(nn.Linear(layer, output, bias=True)))
+                                #spectral_norm(nn.Linear(layer, output, bias=True)))
+                                nn.Linear(layer, output, bias=True))
 
         init_weights(self, init='ortho')
 
-    def forward(self, x, x_emb, x_emb2):
-        h2 = x_emb2.view(len(x_emb2), self.emb2 * self.actions)
+    #def forward(self, x, x_emb, x_emb2):
+    def forward(self, x, x_emb):
+        #h2 = x_emb2.view(len(x_emb2), self.emb2 * self.actions)
 
         h = x_emb.transpose(2, 1)
-        h = torch.cat([gi(h) for gi in self.global_interaction], dim=1)
+        #h = torch.cat([gi(h) for gi in self.global_interaction], dim=1)
+        h = self.global_interaction(h)
 
 #        x = x.squeeze(2)
 
-        x = torch.cat([x, h, h2], dim=1)
+        #x = torch.cat([x, h, h2], dim=1)
+        x = torch.cat([x, h], dim=1)
 
         x = self.fc(x)
         if self.output == 1:
@@ -232,12 +248,18 @@ class ResBlock(nn.Module):
 
         super(ResBlock, self).__init__()
 
-        self.fc = nn.Sequential(nn.BatchNorm1d(layer, affine=True),
+        # self.fc = nn.Sequential(nn.BatchNorm1d(layer, affine=True),
+        #                         nn.ReLU(),
+        #                         spectral_norm(nn.Linear(layer, layer, bias=False)),
+        #                         nn.BatchNorm1d(layer, affine=True),
+        #                         nn.ReLU(),
+        #                         spectral_norm(nn.Linear(layer, layer, bias=False)),
+        #                        )
+
+        self.fc = nn.Sequential(nn.ReLU(),
+                                nn.Linear(layer, layer, bias=True),
                                 nn.ReLU(),
-                                spectral_norm(nn.Linear(layer, layer, bias=False)),
-                                nn.BatchNorm1d(layer, affine=True),
-                                nn.ReLU(),
-                                spectral_norm(nn.Linear(layer, layer, bias=False)),
+                                nn.Linear(layer, layer, bias=True),
                                )
 
     def forward(self, x):
@@ -274,27 +296,31 @@ class GlobalBlock(nn.Module):
         self.emb = emb
 
         self.query = nn.Sequential(
-            nn.BatchNorm1d(planes, affine=True),
+            #nn.BatchNorm1d(planes, affine=True),
             nn.ReLU(),
-            spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
+            #spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
+            nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=True),
         )
 
         self.key = nn.Sequential(
-            nn.BatchNorm1d(planes, affine=True),
+            # nn.BatchNorm1d(planes, affine=True),
             nn.ReLU(),
-            spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
+            # spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
+            nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=True),
         )
 
         self.value = nn.Sequential(
-            nn.BatchNorm1d(planes, affine=True),
+            # nn.BatchNorm1d(planes, affine=True),
             nn.ReLU(),
-            spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
+            # spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
+            nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=True),
         )
 
         self.output = nn.Sequential(
-            nn.BatchNorm1d(planes, affine=True),
+            # nn.BatchNorm1d(planes, affine=True),
             nn.ReLU(),
-            spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
+            # spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
+            nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=True),
         )
 
         self.planes = planes
@@ -312,7 +338,7 @@ class GlobalBlock(nn.Module):
 
 class DuelNet(nn.Module):
 
-    def __init__(self, pi_net):
+    def __init__(self, pi_net, output):
 
         super(DuelNet, self).__init__()
         self.pi_net = pi_net
@@ -321,18 +347,12 @@ class DuelNet(nn.Module):
         self.fc = nn.Sequential(nn.Linear(action_space, layer, bias=True),
                                 nn.ReLU(),
                                 nn.Linear(layer, 2*layer, bias=True),
-                                #nn.BatchNorm1d(2*layer),
                                 nn.ReLU(),
-                                #nn.Dropout(drop),
                                 nn.Linear(2*layer, 2*layer, bias=True),
-                                #nn.BatchNorm1d(2*layer),
                                 nn.ReLU(),
-                                #nn.Dropout(drop),
                                 nn.Linear(2*layer, layer, bias=True),
-                                #nn.BatchNorm1d(layer),
                                 nn.ReLU(),
-                                #nn.Dropout(drop),
-                                nn.Linear(layer, 1))
+                                nn.Linear(layer, output))
 
     def reset(self):
         for weight in self.parameters():
@@ -370,96 +390,5 @@ class PiNet(nn.Module):
             self.pi.data = pi
 
     def grad_update(self, grads):
-    #    if self.action_space == 1:
-     #       grads = grads.squeeze(0)
         with torch.no_grad():
             self.pi.grad = grads
-
-class PiClamp(nn.Module):
-
-    def __init__(self, init, device, action_space):
-
-        super(PiClamp, self).__init__()
-        self.pi = nn.Parameter(init)
-        self.device = device
-        self.action_space = action_space
-
-    def forward(self, pi=None):
-        if pi is None:
-            with torch.no_grad():
-                self.pi.data = torch.clamp(self.pi.data, -1, 1)
-            return self.pi
-        else:
-            return torch.clamp(pi, -1, 1)
-
-    def pi_update(self, pi):
-        with torch.no_grad():
-            self.pi.data = self.forward(pi)
-
-    def grad_update(self, grads):
-        with torch.no_grad():
-            self.pi.grad = grads
-
-class DerivativeNet(nn.Module):
-
-    def __init__(self, pi_net):
-
-        super(DerivativeNet, self).__init__()
-        self.pi_net = pi_net
-        layer = args.layer
-
-        self.fc = nn.Sequential(nn.Linear(action_space, 2*layer, bias=True),
-                                #nn.BatchNorm1d(2*layer),
-                                nn.ReLU(),
-                                #nn.Dropout(drop),
-                                nn.Linear(2*layer, 2*layer, bias=True),
-                                #nn.BatchNorm1d(2*layer),
-                                nn.ReLU(),
-                                #nn.Dropout(drop),
-                                nn.Linear(2*layer, layer, bias=True),
-                                #nn.BatchNorm1d(layer),
-                                nn.ReLU(),
-                                #nn.Dropout(drop),
-                                nn.Linear(layer, action_space))
-
-    def reset(self):
-        for weight in self.parameters():
-            nn.init.xavier_uniform(weight.data)
-
-    def forward(self, pi, normalize=True):
-        pi = pi.view(-1, action_space)
-        if normalize:
-            pi = self.pi_net(pi)
-        x = self.fc(pi)
-
-        return x
-
-class ResNet(nn.Module):
-
-    def __init__(self):
-
-        super(ResNet, self).__init__()
-
-        layer = args.layer
-
-        self.fc = nn.Sequential(nn.Linear(action_space, 2*layer, bias=False),
-                                nn.BatchNorm1d(2*layer),
-                                nn.LeakyReLU(),
-                                nn.Dropout(drop),
-                                ResBlock(din=2*layer, expansion=1, drop=drop),
-                                ResBlock(din=2*layer, expansion=0.5, drop=drop),
-                                nn.Linear(layer, 1))
-
-
-    def reset(self):
-        for weight in self.parameters():
-            nn.init.xavier_uniform(weight.data)
-
-    def forward(self, pi):
-        pi = pi.view(-1, action_space)
-        x = self.fc(pi)
-
-        return x
-
-
-

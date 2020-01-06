@@ -69,6 +69,7 @@ class RobustAgent(Agent):
             self.results['policies'].append(pi)
             self.results['grad'].append(grad)
             self.results['dist_x'].append(dist_x)
+            self.results['in_trust'].append(True)
             self.results['dist_f'].append(dist_f)
             self.results['ts'].append(self.env.t)
             self.results['divergence'].append(self.divergence)

@@ -148,7 +148,7 @@ class Experiment(object):
                 elif self.algorithm == 'anchor':
                     logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
                 logger.info("Best observe      : |\t %f \t Pi_evaluate: = %f| \tBest_pi_evaluate: = %f" % (best_observe, pi_evaluate, bbo_results['best_pi_evaluate'][-1]))
-                logger.info("dist_x            : |\t %f \t dist_f: = %f|" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1]))
+                logger.info("dist_x            : |\t %f \t dist_f: = %f| \t in_trust: = %d" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1], bbo_results['in_trust'][-1]))
 
                 if args.debug and self.algorithm in ['value', 'anchor']:
                     self.value_vs_f_eval(n)
@@ -283,12 +283,14 @@ class Experiment(object):
 
     def compare_pi_evaluate(self):
         optimizer_res = get_baseline_cmp(self.action_space, self.iter_index)
-        min_val = optimizer_res['min_opt'][0] - 0.0001
+        min_val = optimizer_res['min_opt'][0]
         f0 = optimizer_res['f0'][0]
 
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
         pi_eval = np.load(os.path.join(path, 'observed_list_with_explore.npy'))
         pi_best = np.load(os.path.join(path, 'best_list_with_explore.npy'))
+
+        min_val = min(min_val, min(pi_best)) - 0.0001
 
         plt.subplot(111)
 

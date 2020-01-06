@@ -69,6 +69,10 @@ class TrustRegionAgent(Agent):
         _, grad = self.get_grad()
         grad = grad.cpu().numpy().reshape(1, -1)
         dist_x = torch.norm(self.env.denormalize(real_pi.numpy()) - self.best_op_x, 2)
+
+        lower, upper = self.pi_trust_region.np_bounderies()
+        bst = self.best_op_x.cpu().numpy()/5
+        in_trust = (bst == np.clip(bst, a_min=lower, a_max=upper)).min()
         dist_f = pi_eval - self.best_op_f
 
         if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
@@ -86,6 +90,7 @@ class TrustRegionAgent(Agent):
             self.results['policies'].append(real_pi)
             self.results['grad'].append(grad)
             self.results['dist_x'].append(dist_x)
+            self.results['in_trust'].append(in_trust)
             self.results['dist_f'].append(dist_f)
             self.results['ts'].append(self.env.t)
             self.results['divergence'].append(self.divergence)
@@ -173,6 +178,7 @@ class TrustRegionAgent(Agent):
         pi = torch.stack(self.results['policies'])[best_idx]
 
         self.pi_trust_region.squeeze(pi)
+        self.epsilon *= 0.75
         self.pi_net.pi_update(self.pi_trust_region.real_to_unconstrained(pi).to(self.device))
 
     def value_optimize(self, value_iter):

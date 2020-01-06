@@ -7,7 +7,7 @@ import torch.nn as nn
 from collections import defaultdict
 from torchvision.utils import save_image
 from config import args, DirsAndLocksSingleton
-from model_ddpg import DuelNet, DerivativeNet, PiNet, SplineNet, MultipleOptimizer
+from model_ddpg import DuelNet, PiNet, SplineNet, MultipleOptimizer
 import math
 import os
 import copy
@@ -91,7 +91,7 @@ class Agent(object):
                 opt_dense = torch.optim.Adam(self.derivative_net.head.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-04)
                 self.optimizer_derivative = MultipleOptimizer(opt_sparse, opt_dense)
             else:
-                self.derivative_net = DerivativeNet(self.pi_net)
+                self.derivative_net = DuelNet(self.pi_net, self.action_space)
                 self.derivative_net.to(self.device)
                 # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
                 self.optimizer_derivative = torch.optim.Adam(self.derivative_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
@@ -106,7 +106,7 @@ class Agent(object):
                 opt_dense = torch.optim.Adam(self.value_net.head.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-04)
                 self.optimizer_value = MultipleOptimizer(opt_sparse, opt_dense)
             else:
-                self.value_net = DuelNet(self.pi_net)
+                self.value_net = DuelNet(self.pi_net, 1)
                 self.value_net.to(self.device)
                 # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
                 self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
@@ -114,9 +114,9 @@ class Agent(object):
             self.value_net.eval()
             self.value_net_zero = copy.deepcopy(self.value_net.state_dict())
         elif self.algorithm_method == 'anchor':
-            self.derivative_net = DerivativeNet(self.pi_net)
+            self.derivative_net = DuelNet(self.pi_net, self.action_space)
             self.derivative_net.to(self.device)
-            self.value_net = DuelNet(self.pi_net)
+            self.value_net = DuelNet(self.pi_net, 1)
             self.value_net.to(self.device)
             # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
             self.optimizer_derivative = torch.optim.Adam(self.derivative_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)

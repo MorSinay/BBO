@@ -601,7 +601,8 @@ def merge_bbo(optimizers=[], dimension=[1, 2, 3, 5, 10, 20, 40, 784], save_file=
 def bbo_evaluate_compare(dim, index, prefix='CMP'):
 
     optimizer_res = get_baseline_cmp(dim, index)
-    min_val = optimizer_res['min_opt'][0] - 0.0001
+    min_val = optimizer_res['min_opt'][0]
+    optimizer_min_val = min_val
     f0 = optimizer_res['f0'][0]
 
     bbo_min_val = f0
@@ -633,18 +634,29 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
             pi_best = np.load(os.path.join(path, 'best_observed.npy'))
 
             bbo_min_val = min(bbo_min_val, pi_best.min())
+            min_val = min(min_val, bbo_min_val)
+
+            x_max = max(x_max, len(pi_eval), len(pi_best))
+        except:
+            pass
+
+    min_val = min_val - 0.0001
+    for i, key in enumerate(compare_dirs.keys()):
+        path = compare_dirs[key]
+        try:
+            pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'))
+            pi_best = np.load(os.path.join(path, 'best_observed.npy'))
 
             ax1.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[i], label=key)
             ax2.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[i])
 
-            x_max = max(x_max, len(pi_eval), len(pi_best))
         except:
             pass
 
     fig.legend(loc='lower left', prop={'size': 6}, ncol=3)
     ax1.grid(True, which='both')
     ax2.grid(True, which='both')
-    fig.suptitle("min value is {}, min bbo value is {}".format(min_val, bbo_min_val))
+    fig.suptitle("min value is {}, min bbo value is {}".format(optimizer_min_val, bbo_min_val))
     ax1.set_title('reward_pi_evaluate')
     ax2.set_title('best_observed')
     ax1.set_xlim([10, x_max])
@@ -670,14 +682,14 @@ if __name__ == '__main__':
 
     # merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
 
-    #print(get_best_solution(dim=40, index=45))
 
-    optimizers = ['first_order_unconstrained']
-    dims = [1, 2, 3, 5, 10, 20, 40]
+    optimizers = ['first_order_mor']
+    #dims = [1, 2, 3, 5, 10, 20, 40]
+    dims = [40]
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 
-    bbo_evaluate_compare(dim=40, index=135, prefix='CMP')
+    bbo_evaluate_compare(dim=40, index=30, prefix='CMP')
     # #
 
     dims = [40]
