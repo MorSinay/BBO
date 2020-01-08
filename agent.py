@@ -62,6 +62,7 @@ class Agent(object):
         self.mean_grad = None
         self.alpha = args.alpha
         self.epsilon_factor = args.epsilon_factor
+        self.spline = args.spline
 
         if args.explore == 'grad_rand':
             self.exploration = self.exploration_grad_rand
@@ -86,7 +87,7 @@ class Agent(object):
 
         self.value_iter = args.learn_iteration
         if self.algorithm_method in ['first_order', 'second_order']:
-            if args.spline:
+            if self.spline:
                 self.derivative_net = SplineNet(self.device, self.pi_net, output=self.action_space)
                 self.derivative_net.to(self.device)
                 # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
@@ -101,7 +102,7 @@ class Agent(object):
             self.derivative_net.eval()
             self.derivative_net_zero = copy.deepcopy(self.derivative_net.state_dict())
         elif self.algorithm_method == 'value':
-            if args.spline:
+            if self.spline:
                 self.value_net = SplineNet(self.device, self.pi_net, output=1)
                 self.value_net.to(self.device)
                 # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER

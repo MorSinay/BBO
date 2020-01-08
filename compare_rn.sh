@@ -7,13 +7,8 @@ aux="${@:4}"
 
 echo algorithm=$algorithm dim=$dim index=$index
 
-args="--algorithm=$algorithm --game=CMP --budget=2000 --replay-memory-factor=32 --warmup-minibatch=10 --n-explore=128 --batch=1024 --learn-iteration=20"
+args="--algorithm=$algorithm --game=CMP --budget=100000 --replay-memory-factor=512 --warmup-minibatch=20 --n-explore=64 --batch=1024 --learn-iteration=40 --printing-interval=50"
 
-CUDA_VISIBLE_DEVICES=0, python main.py --pi-lr=1e-3 --identifier=lr3 --action-space=$dim --problem-index=$index $args $aux &
-CUDA_VISIBLE_DEVICES=1, python main.py --pi-lr=1e-2 --identifier=lr2 --action-space=$dim --problem-index=$index $args $aux &
-CUDA_VISIBLE_DEVICES=2, python main.py --epsilon=0.1 --identifier=epsilon1 --action-space=$dim --problem-index=$index $args $aux &
-CUDA_VISIBLE_DEVICES=3, python main.py --epsilon=0.2 --identifier=epsilon2 --action-space=$dim --problem-index=$index $args $aux &
-CUDA_VISIBLE_DEVICES=1, python main.py --epsilon=0.3 --identifier=epsilon3 --action-space=$dim --problem-index=$index $args $aux &
-CUDA_VISIBLE_DEVICES=2, python main.py --spline --identifier=spline --action-space=$dim --problem-index=$index $args $aux &
-
+CUDA_VISIBLE_DEVICES=0, python main.py --best-explore-update --loss=mse --warmup-factor=1 --cone-angle=2 --epsilon=0.2 --epsilon-factor=0.75 --grad-clip=1e-1 --identifier=bst_ep2 --action-space=$dim --problem-index=$index $args $aux &
+CUDA_VISIBLE_DEVICES=0, python main.py --best-explore-update --loss=mse --warmup-factor=1 --cone-angle=2 --epsilon=0.2 --epsilon-factor=0.75 --grad-clip=0 --identifier=bst_clip_ep2 --action-space=$dim --problem-index=$index $args $aux &
 

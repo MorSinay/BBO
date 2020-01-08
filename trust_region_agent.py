@@ -248,7 +248,10 @@ class TrustRegionAgent(Agent):
                 self.optimizer_value.zero_grad()
                 self.optimizer_pi.zero_grad()
                 q_value = self.value_net(pi_explore).view(-1)
-                loss_q = self.q_loss(q_value, r).mean()
+                if self.spline:
+                    loss_q = self.q_loss(q_value, r).sum()
+                else:
+                    loss_q = self.q_loss(q_value, r).mean()
                 loss += loss_q.detach().item()
                 loss_q.backward()
                 self.optimizer_value.step()
@@ -286,7 +289,10 @@ class TrustRegionAgent(Agent):
 
                 self.optimizer_derivative.zero_grad()
                 self.optimizer_pi.zero_grad()
-                loss_q = (w * self.q_loss(value, target)).mean()
+                if self.spline:
+                    loss_q = (w * self.q_loss(value, target)).sum()
+                else:
+                    loss_q = (w * self.q_loss(value, target)).mean()
                 loss += loss_q.detach().item()
                 loss_q.backward()
                 self.optimizer_derivative.step()
@@ -323,7 +329,10 @@ class TrustRegionAgent(Agent):
 
                 self.optimizer_derivative.zero_grad()
                 self.optimizer_pi.zero_grad()
-                loss_q = (w * self.q_loss(value, target)).mean()
+                if self.spline:
+                    loss_q = (w * self.q_loss(value, target)).sum()
+                else:
+                    loss_q = (w * self.q_loss(value, target)).mean()
                 loss += loss_q.detach().item()
                 loss_q.backward()
                 self.optimizer_derivative.step()
@@ -378,7 +387,10 @@ class TrustRegionAgent(Agent):
 
                 self.optimizer_derivative.zero_grad()
                 self.optimizer_pi.zero_grad()
-                loss_q = (w * self.q_loss(value, target)).mean()
+                if self.spline:
+                    loss_q = (w * self.q_loss(value, target)).sum()
+                else:
+                    loss_q = (w * self.q_loss(value, target)).mean()
                 loss += loss_q.detach().item()
                 loss_q.backward()
                 self.optimizer_derivative.step()
@@ -427,7 +439,10 @@ class TrustRegionAgent(Agent):
 
             self.optimizer_derivative.zero_grad()
             self.optimizer_pi.zero_grad()
-            loss_q = (w * self.q_loss(value, target)).mean()
+            if self.spline:
+                loss_q = (w * self.q_loss(value, target)).sum()
+            else:
+                loss_q = (w * self.q_loss(value, target)).mean()
             loss += loss_q.detach().item()
             loss_q.backward()
             self.optimizer_derivative.step()
@@ -483,7 +498,11 @@ class TrustRegionAgent(Agent):
             target_tensor = torch.FloatTensor(target[from_index:to_index]).to(self.device)
             q_value = self.value_net(policy_tensor).view(-1)
             value.append(q_value.detach().cpu().numpy())
-            loss_q = self.q_loss(q_value, target_tensor).mean()
+
+            if self.spline:
+                loss_q = self.q_loss(q_value, target_tensor).sum()
+            else:
+                loss_q = self.q_loss(q_value, target_tensor).mean()
 
             grads = autograd.grad(outputs=loss_q, inputs=policy_tensor, grad_outputs=torch.cuda.FloatTensor(loss_q.size()).fill_(1.),
                                       create_graph=True, retain_graph=True, only_inputs=True)[0].detach()
