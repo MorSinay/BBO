@@ -59,6 +59,9 @@ class Agent(object):
         self.warmup_factor = args.warmup_factor
         self.warmup_explore = args.warmup_minibatch * self.n_explore
         self.hessian = args.hassian
+        self.mean_grad = None
+        self.alpha = args.alpha
+        self.epsilon_factor = args.epsilon_factor
 
         if args.explore == 'grad_rand':
             self.exploration = self.exploration_grad_rand
@@ -128,7 +131,12 @@ class Agent(object):
         else:
             raise NotImplementedError
 
-        self.q_loss = nn.SmoothL1Loss(reduction='none')
+        if args.loss == 'huber':
+            self.q_loss = nn.SmoothL1Loss(reduction='none')
+        elif args.loss == 'mse':
+            self.q_loss = nn.MSELoss(reduction='none')
+        else:
+            raise NotImplementedError
 
     def update_pi_optimizer_lr(self):
         op_dict = self.optimizer_pi.state_dict()
@@ -309,7 +317,7 @@ class Agent(object):
             grad = self.derivative_net(self.pi_net.pi).squeeze(0).clone()
 
             if self.hessian:
-                eps = 1e-3
+                eps = 1
                 eye = torch.eye(self.action_space, device=self.device)
 
                 hessian = []
@@ -346,5 +354,12 @@ class Agent(object):
         return pi, grad
 
     def pi_optimize(self):
+
+        _, grad = self.get_grad(grad_step=False)
+        if self.mean_grad is None:
+            self.mean_grad = torch.norm(grad)
+        else:
+            self.mean_grad = (1 - self.alpha) * self.mean_grad + self.alpha * torch.norm(grad)
+
         for _ in range(self.grad_steps):
             _, _ = self.get_grad(grad_step=True)

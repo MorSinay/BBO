@@ -82,14 +82,15 @@ class Experiment(object):
         self.analysis_dir = self.dirs_locks.analysis_dir
         self.checkpoint = self.dirs_locks.checkpoint
 
+        # copy code to dir
+        copy_tree(os.path.abspath("."), self.code_dir)
+
         if self.load_model:
             logger.info("Resuming existing experiment")
             with open(os.path.join(self.root, "logger"), "a") as fo:
                 fo.write("%s resume\n" % logger_file)
         else:
             logger.info("Creating new experiment")
-            # copy code to dir
-            copy_tree(os.path.abspath("."), self.code_dir)
 
             # write args to file
             filename = os.path.join(self.root, "args.txt")
@@ -140,15 +141,16 @@ class Experiment(object):
 
             if not n % self.printing_interval:
                 logger.info("---------------- iteration: {} - Problem ID :{} ---------------".format(n, self.problem_id))
-                logger.info("Problem iter index     :{}\t\tDim: {}\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
+                logger.info("Problem iter index     :{}\t\tDim: {}\t\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
                 if self.algorithm in ['first_order', 'second_order']:
-                    logger.info("Actions statistics: |\t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['grad_norm'][-1], avg_reward, bbo_results['derivative_loss'][-1]))
+                    logger.info("Statistics: |\t mean_grad = %.3f \t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['mean_grad'][-1], bbo_results['grad_norm'][-1], avg_reward, bbo_results['derivative_loss'][-1]))
                 elif self.algorithm == ['value']:
-                    logger.info("Actions statistics: |\t value = %.3f \t avg_reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'][-1], avg_reward, bbo_results['value_loss'][-1]))
+                    logger.info("Statistics: |\t value = %.3f \t avg_reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'][-1], avg_reward, bbo_results['value_loss'][-1]))
                 elif self.algorithm == 'anchor':
-                    logger.info("Actions statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
-                logger.info("Best observe      : |\t %f \t Pi_evaluate: = %f| \tBest_pi_evaluate: = %f" % (best_observe, pi_evaluate, bbo_results['best_pi_evaluate'][-1]))
-                logger.info("dist_x            : |\t %f \t dist_f: = %f| \t in_trust: = %d" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1], bbo_results['in_trust'][-1]))
+                    logger.info("Statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
+                logger.info("Best observe      : |\t %.3f \t Pi_evaluate: = %.3f| \tBest_pi_evaluate: = %.3f" % (best_observe, pi_evaluate, bbo_results['best_pi_evaluate'][-1]))
+                logger.info("dist_x            : |\t %.3f \t dist_f: = %.3f| \t in_trust: = %d" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1], bbo_results['in_trust'][-1]))
+                logger.info("r_norm            : |\t mean: =%.3f \t\t |sigma: =%.3f" % (bbo_results['r_norm_mean'][-1], bbo_results['r_norm_sigma'][-1]))
 
                 if args.debug and self.algorithm in ['value', 'anchor']:
                     self.value_vs_f_eval(n)
@@ -178,6 +180,7 @@ class Experiment(object):
 
         print("End BBO evaluation")
         self.compare_pi_evaluate()
+        self.mean_grad_and_divergence()
 
         if self.action_space == 2:
             self.plot_2D_contour()
@@ -263,12 +266,18 @@ class Experiment(object):
         res = np.load(path_res).item()
 
         x = 5*np.load(os.path.join(path, 'policies.npy'))
+        diver = np.load(os.path.join(path, 'divergence.npy'))
         x_exp = 5*np.load(os.path.join(path, 'explore_policies.npy'))
+        f0 = np.load(os.path.join(path, 'f0.npy'))
 
         fig, ax = plt.subplots()
-        cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
-        plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color='r', markersize=1)
-        plt.plot(x[:, 0], x[:, 1], '-o', color='b', markersize=1)
+        cs = ax.contour(res['x0'], res['x1'], res['z']/f0, 100)
+        colors = consts.color
+        plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color=colors[0], markersize=1)
+        for i in range(diver.max()+1):
+            index = (diver == i)
+            plt.plot(x[index, 0], x[index, 1], '-o', color=colors[i+1], markersize=1)
+
         plt.title('alg {} - 2D_Contour index {}'.format(self.algorithm, self.iter_index))
         fig.colorbar(cs)
 
@@ -287,8 +296,8 @@ class Experiment(object):
         f0 = optimizer_res['f0'][0]
 
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
-        pi_eval = np.load(os.path.join(path, 'observed_list_with_explore.npy'))
-        pi_best = np.load(os.path.join(path, 'best_list_with_explore.npy'))
+        pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'))
+        pi_best = np.load(os.path.join(path, 'best_observed.npy'))
 
         min_val = min(min_val, min(pi_best)) - 0.0001
 
@@ -296,14 +305,14 @@ class Experiment(object):
 
         colors = consts.color
         #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
-        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[0], label='reward_pi_evaluate')
-        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[1], label='best_observed')
+        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[1], label='reward_pi_evaluate')
+        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[2], label='best_observed')
 
         for i, op in enumerate(optimizer_res['fmin']):
             res = optimizer_res[optimizer_res['fmin'] == op]
             op_eval = np.array(res['f'].values[0])
             op_eval = np.clip(op_eval, a_max=f0, a_min=-np.inf)
-            plt.loglog(np.arange(len(op_eval)), 1 + (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
+            plt.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
 
         plt.legend()
         plt.title('alg {} - dim = {} index = {} ----- best vs eval'.format(self.algorithm, self.action_space, self.iter_index))
@@ -314,6 +323,39 @@ class Experiment(object):
             os.makedirs(path_dir_fig)
 
         path_fig = os.path.join(path_dir_fig, 'BestVsEval - dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
+        plt.savefig(path_fig)
+
+        plt.close()
+
+    def mean_grad_and_divergence(self):
+        path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
+        mean_grad = np.load(os.path.join(path, 'mean_grad.npy'))
+        divergence = np.load(os.path.join(path, 'divergence.npy'))
+        count = np.arange(len(mean_grad))
+
+        # divergence = divergence[1:] - divergence[:-1]
+        # mean_grad = mean_grad[1:]
+
+        plt.subplot(111)
+
+        colors = consts.color
+
+        for i in range(divergence.max()+1):
+            index = (divergence == i)
+            plt.plot(count[index], mean_grad[index], '-o', color=colors[i+1], markersize=1)
+
+        # plt.plot(np.arange(len(mean_grad)), mean_grad, color=colors[0], label='mean_grad')
+        # plt.plot(np.arange(len(divergence)), divergence, color=colors[1], label='divergence')
+
+        plt.legend()
+        plt.title('alg {} - dim = {} index = {} ----- mean_grad vs divergence'.format(self.algorithm, self.action_space, self.iter_index))
+        plt.grid(True, which='both')
+
+        path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
+        if not os.path.exists(path_dir_fig):
+            os.makedirs(path_dir_fig)
+
+        path_fig = os.path.join(path_dir_fig, 'mean_grad vs divergence - dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
         plt.savefig(path_fig)
 
         plt.close()

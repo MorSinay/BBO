@@ -683,13 +683,17 @@ if __name__ == '__main__':
     # merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
 
 
-    optimizers = ['first_order_mor']
+    #optimizers = ['first_order_clip0', 'first_order_clip1', 'first_order_clip1_cone1']
+    optimizers = ['first_order_clip1']
     #dims = [1, 2, 3, 5, 10, 20, 40]
     dims = [40]
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
-
-    bbo_evaluate_compare(dim=40, index=30, prefix='CMP')
+    bbo_evaluate_compare(dim=40, index=210, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=45, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=105, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=150, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=135, prefix='RUN')
     # #
 
     dims = [40]

@@ -71,8 +71,11 @@ class RobustAgent(Agent):
             self.results['dist_x'].append(dist_x)
             self.results['in_trust'].append(True)
             self.results['dist_f'].append(dist_f)
+            self.results['mean_grad'].append(self.mean_grad)
             self.results['ts'].append(self.env.t)
             self.results['divergence'].append(self.divergence)
+            self.results['r_norm_mean'].append(self.r_norm.mu)
+            self.results['r_norm_sigma'].append(self.r_norm.sigma)
             self.results[key].append(val)
 
     def warmup(self):
@@ -415,7 +418,7 @@ class RobustAgent(Agent):
         self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, rewards])[-self.replay_memory_size:]
         self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, pi_explore])[-self.replay_memory_size:]
 
-        self.print_robust_norm_params()
+        #self.print_robust_norm_params()
         return pi_explore, rewards
 
     def get_evaluation_function(self, policy, target):

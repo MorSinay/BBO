@@ -88,7 +88,7 @@ class EnvCoco(Env):
         return policy
 
     def with_denormalize(self, policy):
-        assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
+        assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized {}".format(policy)
         if len(policy.shape) == 2:
             assert (policy.shape[1] == self.output_size), "action error"
             upper = np.repeat(self.upper_bounds.reshape(1, -1), policy.shape[0], axis=0)

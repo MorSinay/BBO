@@ -24,7 +24,6 @@ class BBOAgent(Agent):
         self.min = None
         self.clip_up = np.inf
         self.clip_down = -np.inf
-        self.alpha = args.alpha
 
         if args.norm == 'mean':
             self.output_norm = self.mean_norm
@@ -81,8 +80,11 @@ class BBOAgent(Agent):
             self.results['dist_x'].append(dist_x)
             self.results['in_trust'].append(True)
             self.results['dist_f'].append(dist_f)
+            self.results['mean_grad'].append(self.mean_grad)
             self.results['ts'].append(self.env.t)
             self.results['divergence'].append(self.divergence)
+            self.results['r_norm_mean'].append(self.mean)
+            self.results['r_norm_sigma'].append(self.std)
             self.results[key].append(val)
 
     def warmup(self):

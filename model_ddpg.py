@@ -78,21 +78,32 @@ class TrustRegion(object):
         self.mu = torch.zeros_like(pi_net.pi).cpu()
         self.sigma = 1.
         self.pi_net = pi_net
+        self.min_sigma = 0.1
+#        self.a = -1*torch.ones_like(pi_net.pi).cpu()
+#        self.b = torch.ones_like(pi_net.pi).cpu()
 
     def np_bounderies(self):
-        lower, upper = self.mu.numpy() - self.sigma, self.mu.numpy() + self.sigma
+        lower, upper = (self.mu - self.sigma).numpy(), (self.mu + self.sigma).numpy()
+        # assert lower.min() >= -1, "lower min {}".format(lower.min())
+        # assert upper.max() <= 1, "upper max {}".format(upper.max())
         return np.clip(lower, -1, 1), np.clip(upper, -1, 1)
+        #return lower, upper
 
     def squeeze(self, pi):
-        upper, lower = self.np_bounderies()
-        upper, lower = upper - 0.05, lower + 0.05
+        lower, upper = self.np_bounderies()
+        lower, upper = lower + self.min_sigma/2, upper - self.min_sigma/2
         new_pi = np.clip(pi.numpy(), a_max=upper, a_min=lower)
         #near the edge
-        if (new_pi == pi.numpy()).min():
-            self.mu = pi
-            self.sigma = max(self.sigma/2, 0.05+1e-3)
+        if (new_pi == pi.numpy()).min(): # or pi.min() == -1 or pi.max == 1:
+            self.sigma = max(3*self.sigma/4, self.min_sigma)
         else:
-            self.mu = pi
+            print("not in range - squeeze")
+
+        self.mu = pi
+        #self.a = torch.max(self.mu - self.sigma, -1 * torch.ones_like(self.mu))
+        #self.b = torch.min(self.mu + self.sigma, torch.ones_like(self.mu))
+        #self.mu = torch.FloatTensor((self.a + self.b) / 2)
+        #self.sigma = torch.FloatTensor((self.b - self.a) / 2)
 
     def unconstrained_to_real(self, x):
         x = self.pi_net(x)

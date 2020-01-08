@@ -77,8 +77,10 @@ parser.add_argument('--replay-updates-interval', type=int, default=50, help='Num
 parser.add_argument('--replay-memory-factor', type=int, default=10, help='Replay factor')
 parser.add_argument('--warmup-minibatch', type=int, default=3, help='Warm up batches')
 parser.add_argument('--warmup-factor', type=int, default=4, help='Warm up factor')
+parser.add_argument('--epsilon-factor', type=float, default=1, help='Epsilon factor')
 parser.add_argument('--learn-iteration', type=int, default=20, help='Learning iteration')
 parser.add_argument('--alpha', type=float, default=1, help='moving avg factor')
+parser.add_argument('--loss', type=str, default='huber', help='derivative loss huber|mse')
 
 
 #
@@ -122,7 +124,7 @@ class Consts(object):
         except:
             pass
 
-    color = ['b', 'g', 'r', 'y', 'c', 'm', 'k', 'lime', 'gold', 'slategray', 'indigo', 'maroon', 'plum', 'pink', 'tan', 'khaki', 'silver',
+    color = ['r', 'b', 'g', 'y', 'c', 'm', 'k', 'lime', 'gold', 'slategray', 'indigo', 'maroon', 'plum', 'pink', 'tan', 'khaki', 'silver',
              'navy', 'skyblue', 'teal', 'darkkhaki', 'indianred', 'orchid', 'lightgrey', 'dimgrey']
 
 consts = Consts()
