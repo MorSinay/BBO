@@ -27,6 +27,7 @@ class Agent(object):
         self.best_op_x = torch.FloatTensor(self.best_op_x).to(self.device)
 
         self.batch = args.batch
+        self.max_batch = args.batch
         self.n_explore = args.n_explore
         self.replay_memory_size = self.n_explore * args.replay_memory_factor
         self.problem_index = env.problem_iter
@@ -357,6 +358,7 @@ class Agent(object):
     def pi_optimize(self):
 
         _, grad = self.get_grad(grad_step=False)
+
         if self.mean_grad is None:
             self.mean_grad = torch.norm(grad)
         else:

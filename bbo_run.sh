@@ -9,7 +9,7 @@ echo resume $1 algorithm $2
 
 loc=`dirname "%0"`
 
-args="--agent=trust --loss=mse --cone-angle=2 --explore=cone --algorithm=$algorithm --identifier=$identifier --game=RUN --budget=150000 --warmup-factor=1 --replay-memory-factor=512 --warmup-minibatch=20 --n-explore=64 --batch=1024 --learn-iteration=40 --printing-interval=100"
+args="--best-explore-update --epsilon=0.2 --algorithm=$algorithm --identifier=$identifier --game=RUN --budget=150000 --warmup-minibatch=5 --printing-interval=100"
 
 CUDA_VISIBLE_DEVICES=3, python main.py --action-space=1 --resume=$resume --load-last-model $args $aux &
 

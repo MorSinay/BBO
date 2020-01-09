@@ -426,7 +426,7 @@ def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40]):
 
     merge_baseline_one_line_compare(dims)
 
-def avg_dim_best_observed(dim, save_file, prefix):
+def avg_dim_best_observed(dim, save_file, prefix, with_op=False):
 
     max_len = -1
     res_dir = Consts.outdir
@@ -452,16 +452,18 @@ def avg_dim_best_observed(dim, save_file, prefix):
         f0 = optimizer_res['f0'][0]
 
 
-        for i, op in enumerate(optimizer_res['fmin']):
-            res = optimizer_res[optimizer_res['fmin'] == op]
-            arr = np.array(res['best_list'][i])
-            arr = (arr - min_val) / f0
-            data[op].append(arr)
-            max_len = max(max_len, len(data[op][-1]))
+        if with_op:
+            for i, op in enumerate(optimizer_res['fmin']):
+                res = optimizer_res[optimizer_res['fmin'] == op]
+                arr = np.array(res['best_list'][i])
+                arr = (arr - min_val) / f0
+                data[op].append(arr)
+                max_len = max(max_len, len(data[op][-1]))
 
         for key, path in compare_dirs.items():
             try:
                 pi_best = np.load(os.path.join(path, index, 'best_list_with_explore.npy'))
+                #pi_best = np.load(os.path.join(path, index, 'best_observed.npy'))
                 pi_best = (pi_best - min_val) / f0
             except:
                 pi_best = np.ones(1)
@@ -684,15 +686,25 @@ if __name__ == '__main__':
 
 
     #optimizers = ['first_order_clip0', 'first_order_clip1', 'first_order_clip1_cone1']
-    optimizers = ['first_order_clip1']
-    #dims = [1, 2, 3, 5, 10, 20, 40]
-    dims = [40]
+    optimizers = ['first_order_8_1']
+    dims = [1, 2, 3, 5, 10, 20, 40]
+    #dims = [40]
     #merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     #merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
-    bbo_evaluate_compare(dim=40, index=135, prefix='CMP')
+
+    bbo_evaluate_compare(dim=2, index=0, prefix='RUN')
+    bbo_evaluate_compare(dim=2, index=15, prefix='RUN')
+    bbo_evaluate_compare(dim=2, index=30, prefix='RUN')
+    bbo_evaluate_compare(dim=2, index=45, prefix='RUN')
+    bbo_evaluate_compare(dim=2, index=60, prefix='RUN')
+    bbo_evaluate_compare(dim=2, index=75, prefix='RUN')
+    bbo_evaluate_compare(dim=2, index=90, prefix='RUN')
+    bbo_evaluate_compare(dim=2, index=105, prefix='RUN')
+    bbo_evaluate_compare(dim=2, index=120, prefix='RUN')
+    bbo_evaluate_compare(dim=2, index=135, prefix='RUN')
     # #
 
-    dims = [40]
+    dims = [2]
 
     for dim in dims:
         prefix = 'RUN'

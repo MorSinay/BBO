@@ -108,10 +108,16 @@ class EnvCoco(Env):
         self.reward = []
         if len(policy.shape) == 2:
             for i in range(policy.shape[0]):
-                self.reward.append(self.problem(policy[i]))
+                res = self.problem(policy[i])
+                self.observed_list.append(res)
+                self.best_list.append(self.problem.best_observed_fvalue1)
+                self.reward.append(res)
                 self.k += 1
         else:
-            self.reward.append(self.problem(policy))
+            res = self.problem(policy)
+            self.observed_list.append(res)
+            self.best_list.append(self.problem.best_observed_fvalue1)
+            self.reward.append(res)
             self.k += 1
 
         self.reward = torch.FloatTensor(self.reward)
@@ -181,10 +187,16 @@ class EnvVae(Env):
         self.reward = []
         if len(policy.shape) == 2:
             for i in range(policy.shape[0]):
-                self.reward.append(self.vae_problem.func(policy[i]))
+                res = self.vae_problem.func(policy[i])
+                self.observed_list.append(res)
+                self.best_list.append(self.problem.best_observed_fvalue1)
+                self.reward.append(res)
                 self.k += 1
         else:
-            self.reward.append(self.vae_problem.func(policy))
+            res = self.vae_problem.func(policy)
+            self.observed_list.append(res)
+            self.best_list.append(self.problem.best_observed_fvalue1)
+            self.reward.append(res)
             self.k += 1
 
         self.reward = torch.FloatTensor(self.reward)
@@ -274,10 +286,16 @@ class EnvOneD(Env):
         self.reward = []
         if len(policy.shape) == 2:
             for i in range(policy.shape[0]):
-                self.reward.append(self.problem(policy[i]))
+                res = self.problem(policy[i])
+                self.observed_list.append(res)
+                self.best_list.append(self.problem.best_observed_fvalue1)
+                self.reward.append(res)
                 self.k += 1
         else:
-            self.reward.append(self.problem(policy))
+            res = self.problem(policy)
+            self.observed_list.append(res)
+            self.best_list.append(self.problem.best_observed_fvalue1)
+            self.reward.append(res)
             self.k += 1
 
         self.reward = torch.FloatTensor(self.reward)

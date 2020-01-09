@@ -79,6 +79,7 @@ class TrustRegion(object):
         self.sigma = 1.
         self.pi_net = pi_net
         self.min_sigma = 0.1
+        self.trust_factor = args.trust_factor
 #        self.a = -1*torch.ones_like(pi_net.pi).cpu()
 #        self.b = torch.ones_like(pi_net.pi).cpu()
 
@@ -91,13 +92,13 @@ class TrustRegion(object):
 
     def squeeze(self, pi):
         lower, upper = self.np_bounderies()
-        lower, upper = lower + self.min_sigma/2, upper - self.min_sigma/2
+        lower, upper = lower + self.min_sigma, upper - self.min_sigma
         new_pi = np.clip(pi.numpy(), a_max=upper, a_min=lower)
         #near the edge
-        if (new_pi == pi.numpy()).min(): # or pi.min() == -1 or pi.max == 1:
-            self.sigma = max(3*self.sigma/4, self.min_sigma)
+        if (new_pi == pi.numpy()).min() or (pi.min().item() < -1 + self.min_sigma) or (pi.max().item() > 1 - self.min_sigma):
+            self.sigma = max(self.trust_factor*self.sigma, self.min_sigma)
         else:
-            print("not in range - squeeze")
+            print("not in range - squeeze - sigma = {}".format(self.sigma))
 
         self.mu = pi
         #self.a = torch.max(self.mu - self.sigma, -1 * torch.ones_like(self.mu))
