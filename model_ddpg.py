@@ -76,9 +76,9 @@ class TrustRegion(object):
 
     def __init__(self, pi_net):
         self.mu = torch.zeros_like(pi_net.pi).cpu()
-        self.sigma = 1.
+        self.sigma = torch.ones_like(pi_net.pi).cpu()
         self.pi_net = pi_net
-        self.min_sigma = 0.1
+        self.min_sigma = 0.1*torch.ones_like(pi_net.pi).cpu()
         self.trust_factor = args.trust_factor
 #        self.a = -1*torch.ones_like(pi_net.pi).cpu()
 #        self.b = torch.ones_like(pi_net.pi).cpu()
@@ -91,20 +91,34 @@ class TrustRegion(object):
         #return lower, upper
 
     def squeeze(self, pi):
-        lower, upper = self.np_bounderies()
-        lower, upper = lower + self.min_sigma, upper - self.min_sigma
-        new_pi = np.clip(pi.numpy(), a_max=upper, a_min=lower)
-        #near the edge
-        if (new_pi == pi.numpy()).min() or (pi.min().item() < -1 + self.min_sigma) or (pi.max().item() > 1 - self.min_sigma):
-            self.sigma = max(self.trust_factor*self.sigma, self.min_sigma)
-        else:
-            print("not in range - squeeze - sigma = {}".format(self.sigma))
 
-        self.mu = pi
-        #self.a = torch.max(self.mu - self.sigma, -1 * torch.ones_like(self.mu))
-        #self.b = torch.min(self.mu + self.sigma, torch.ones_like(self.mu))
-        #self.mu = torch.FloatTensor((self.a + self.b) / 2)
-        #self.sigma = torch.FloatTensor((self.b - self.a) / 2)
+        if (self.mu == pi).all():
+            self.sigma = torch.min(2*self.sigma, torch.ones_like(self.mu))
+        else:
+            lower, upper = self.np_bounderies()
+            lower, upper = lower + self.min_sigma.numpy(), upper - self.min_sigma.numpy()
+            new_pi = np.clip(pi.numpy(), a_max=upper, a_min=lower)
+            #near the edge
+            if (new_pi == pi.numpy()).all():
+                self.sigma = torch.max(self.trust_factor*self.sigma, self.min_sigma)
+            elif (pi < -1 + self.min_sigma).any().item() or (pi > 1 - self.min_sigma).any().item():
+                if (pi < -1 + self.min_sigma).any().item():
+                    index = (pi < -1 + self.min_sigma)
+                    self.sigma[index] = torch.max(self.trust_factor * self.sigma[index], self.min_sigma[index])
+                    self.min_sigma[index] = self.min_sigma[index]/2
+                if (pi > 1 - self.min_sigma).any().item():
+                    index = (pi > 1 - self.min_sigma)
+                    self.sigma[index] = torch.max(self.trust_factor * self.sigma[index], self.min_sigma[index])
+                    self.min_sigma[index] = self.min_sigma[index] / 2
+            else:
+                print("not in range - squeeze - sigma = {}".format(self.sigma))
+
+            self.mu = pi
+
+        a = torch.max(self.mu - self.sigma, -1 * torch.ones_like(self.mu))
+        b = torch.min(self.mu + self.sigma, torch.ones_like(self.mu))
+        self.mu = (a + b) / 2
+        self.sigma = (b - a) / 2
 
     def unconstrained_to_real(self, x):
         x = self.pi_net(x)
@@ -113,8 +127,11 @@ class TrustRegion(object):
         return x
 
     def real_to_unconstrained(self, x):
-        x = (x - self.mu)/self.sigma
+        s = x.shape
+        x = (x - self.mu)/self.sigma.view(1, -1)
+        #x = torch.clamp(x, min=-1+1e-3, max=1-1e-3)
         x = self.pi_net.inverse(x)
+        x = x.view(s)
         return x
 
 class MultipleOptimizer:
@@ -389,6 +406,7 @@ class PiNet(nn.Module):
         self.action_space = action_space
 
     def inverse(self,  policy):
+        policy = torch.clamp(policy, min=-1 + 1e-3, max=1 - 1e-3)
         return 0.5 * (torch.log(1 + policy) - torch.log(1 - policy))
 
     def forward(self, pi=None):

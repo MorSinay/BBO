@@ -686,25 +686,28 @@ if __name__ == '__main__':
 
 
     #optimizers = ['first_order_clip0', 'first_order_clip1', 'first_order_clip1_cone1']
-    optimizers = ['first_order_8_1']
+    optimizers = ['first_order_mor']
     dims = [1, 2, 3, 5, 10, 20, 40]
     #dims = [40]
-    #merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
+    merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     #merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 
-    bbo_evaluate_compare(dim=2, index=0, prefix='RUN')
-    bbo_evaluate_compare(dim=2, index=15, prefix='RUN')
-    bbo_evaluate_compare(dim=2, index=30, prefix='RUN')
-    bbo_evaluate_compare(dim=2, index=45, prefix='RUN')
-    bbo_evaluate_compare(dim=2, index=60, prefix='RUN')
-    bbo_evaluate_compare(dim=2, index=75, prefix='RUN')
-    bbo_evaluate_compare(dim=2, index=90, prefix='RUN')
-    bbo_evaluate_compare(dim=2, index=105, prefix='RUN')
-    bbo_evaluate_compare(dim=2, index=120, prefix='RUN')
-    bbo_evaluate_compare(dim=2, index=135, prefix='RUN')
-    # #
+    bbo_evaluate_compare(dim=40, index=15, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=30, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=45, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=90, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=105, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=120, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=135, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=150, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=175, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=180, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=210, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=240, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=345, prefix='RUN')
+    #
 
-    dims = [2]
+    dims = [40]
 
     for dim in dims:
         prefix = 'RUN'

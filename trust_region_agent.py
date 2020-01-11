@@ -34,9 +34,13 @@ class TrustRegionAgent(Agent):
             explore_policies = torch.cat(self.results['explore_policies'], dim=0)
             rewards = torch.cat(self.results['rewards'])
 
-            in_range = torch.norm(explore_policies - pi, 1, dim=1) < self.pi_trust_region.sigma
-            explore_policies_from_buf = self.pi_trust_region.real_to_unconstrained(explore_policies[in_range])
-            rewards_from_buf = rewards[in_range]
+            in_range = torch.norm(explore_policies - pi, 1, dim=1) < self.pi_trust_region.sigma.min()
+            if in_range.sum():
+                explore_policies_from_buf = self.pi_trust_region.real_to_unconstrained(explore_policies[in_range])
+                rewards_from_buf = rewards[in_range]
+            else:
+                explore_policies_from_buf = torch.FloatTensor([])
+                rewards_from_buf = torch.FloatTensor([])
         else:
             explore_policies_from_buf = torch.FloatTensor([])
             rewards_from_buf = torch.FloatTensor([])
@@ -145,10 +149,6 @@ class TrustRegionAgent(Agent):
                 self.update_best_pi()
                 self.divergence += 1
                 self.warmup()
-
-            if self.divergence >= 20:
-                print("DIVERGANCE - FAILED")
-                break
 
             if self.frame >= self.budget:
                 self.save_results()
