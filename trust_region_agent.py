@@ -8,7 +8,8 @@ import torch.autograd as autograd
 from model_ddpg import RobustNormalizer, TrustRegion
 import itertools
 from agent import Agent
-
+import os
+from config import args
 
 class TrustRegionAgent(Agent):
 
@@ -19,6 +20,10 @@ class TrustRegionAgent(Agent):
 
         self.pi_trust_region = TrustRegion(self.pi_net)
         self.r_norm = RobustNormalizer()
+        self.best_pi_evaluate = self.step_policy(self.pi_net.pi.detach().cpu(), to_env=False)
+        self.f0 = self.best_pi_evaluate
+        self.stop_con = args.stop_con
+        self.no_change = 0
 
     def print_robust_norm_params(self):
         if (self.frame % (self.printing_interval*self.n_explore)) == 0:
@@ -52,8 +57,6 @@ class TrustRegionAgent(Agent):
         self.results['explore_policies'].append(self.pi_trust_region.unconstrained_to_real(explore_policies_rand))
         self.results['rewards'].append(rewards_rand)
 
-        self.results_pi_update_with_explore(self.warmup_explore)
-
         explore_policies = torch.cat([explore_policies_from_buf, explore_policies_rand])
         rewards = torch.cat([rewards_from_buf, rewards_rand])
 
@@ -65,64 +68,108 @@ class TrustRegionAgent(Agent):
         self.tensor_replay_reward = rewards
         self.tensor_replay_policy = explore_policies
 
-    def results_pi_update_with_explore(self, explore):
+    def results_pi_update_with_explore(self):
 
-        pi = self.pi_net.pi.detach().cpu()
-        pi_eval = self.step_policy(pi, to_env=False)
-        self.results['reward_pi_evaluate'].extend([pi_eval] * explore)
-        self.results['best_observed'].extend([self.env.best_observed] * explore)
-
-        if not len(self.results['best_pi_evaluate']):
-            best_pi_evaluate = pi_eval
-        else:
-            best_pi_evaluate = min(pi_eval, self.results['best_pi_evaluate'][-1])
-        self.results['best_pi_evaluate'].extend([best_pi_evaluate]*explore)
-
+        self.results['frame'] = self.frame
+        self.results['best_observed'] = self.env.best_observed
+        self.results['best_pi_evaluate'] = self.best_pi_evaluate
         _, grad = self.get_grad()
         grad = grad.cpu().numpy().reshape(1, -1)
-        self.results['grad'].extend([grad]*explore)
+        self.results['grad'] = grad
 
+        pi = self.results['policies'][-1]
         real_pi = self.pi_trust_region.unconstrained_to_real(pi)
-        self.results['policies'].extend([real_pi] * explore)
-
         dist_x = torch.norm(self.env.denormalize(real_pi.numpy()) - self.best_op_x, 2)
-        self.results['dist_x'].extend([dist_x] * explore)
+        self.results['dist_x'] = dist_x.detach().item()
 
-        lower, upper = self.pi_trust_region.np_bounderies()
-        bst = self.best_op_x.cpu().numpy()/5
-        in_trust = (bst == np.clip(bst, a_min=lower, a_max=upper)).min()
-        self.results['in_trust'].extend([in_trust] * explore)
+        lower, upper = self.pi_trust_region.bounderies()
+        bst = self.best_op_x.cpu()/5
+        in_trust = (bst == torch.min(torch.max(bst, lower), upper)).min().item()
+        self.results['in_trust'] = in_trust
 
-        dist_f = pi_eval - self.best_op_f
-        self.results['dist_f'].extend([dist_f] * explore)
+        dist_f = self.results['reward_pi_evaluate'][-1] - self.best_op_f
+        self.results['dist_f'] = dist_f
 
         if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
             val = torch.norm(self.derivative_net(self.pi_net.pi.detach()).detach(), 2).detach().item()
-            self.results['grad_norm'].extend([val] * explore)
+            self.results['grad_norm'] = val
         if self.algorithm_method in ['value', 'anchor']:
             val = self.r_norm.desquash(self.value_net(self.pi_net.pi.detach()).detach().cpu()).item()
-            self.results['value'].extend([val] * explore)
+            self.results['value'] = val
 
-        self.results['mean_grad'].extend([self.mean_grad]*explore)
-        self.results['ts'].extend([self.env.t]*explore)
-        self.results['divergence'].extend([self.divergence]*explore)
-        self.results['r_norm_mean'].extend([self.r_norm.mu]*explore)
-        self.results['r_norm_sigma'].extend([self.r_norm.sigma]*explore)
+        self.results['mean_grad'] = self.mean_grad.cpu().numpy()
+        self.results['divergence'] = self.divergence
+        self.results['r_norm_mean'] = self.r_norm.mu.detach().item()
+        self.results['r_norm_sigma'] = self.r_norm.sigma.detach().item()
+        self.results['min_trust_sigma'] = self.pi_trust_region.sigma.min().item()
+        self.results['no_change'] = self.no_change
 
+        self.save_results()
+
+    def save_results(self):
+        for k in self.results.keys():
+            path = os.path.join(self.analysis_dir, k + '.npy')
+            data_np = np.array([])
+            if os.path.exists(path):
+                data_np = np.load(path)
+
+            if k in ['explore_policies']:
+                policy = (torch.cat(self.results[k], dim=0)).cpu().numpy()
+                if len(data_np):
+                    policy = np.concatenate([data_np, policy])
+                np.save(path, policy)
+            elif k in ['policies']:
+                policy = (torch.stack(self.results[k])).cpu().numpy()
+                if len(data_np):
+                    policy = np.concatenate([data_np, policy])
+                np.save(path, policy)
+            elif k in ['reward_pi_evaluate', 'frame_pi_evaluate']:
+                rewards = self.results[k]
+                if len(data_np):
+                    rewards = np.concatenate([data_np, rewards])
+                np.save(path, rewards)
+            elif k in ['rewards']:
+                rewards = torch.cat(self.results[k]).numpy()
+                if len(data_np):
+                    rewards = np.hstack([data_np, rewards])
+                np.save(path, rewards)
+            elif k in ['grad']:
+                grad = self.results[k]
+                if len(data_np):
+                    grad = np.concatenate([data_np, grad])
+                np.save(path, grad)
+            else:
+                data = np.array([self.results[k]])
+                if len(data_np):
+                    data = np.hstack([data_np, data])
+                np.save(path, data)
+
+        best_list, observed_list, _ = self.env.get_observed_and_pi_list()
+        np.save(os.path.join(self.analysis_dir, 'best_list_with_explore.npy'), np.array(best_list))
+        np.save(os.path.join(self.analysis_dir, 'observed_list_with_explore.npy'), np.array(best_list))
+
+        path = os.path.join(self.analysis_dir, 'f0.npy')
+        np.save(path, self.f0)
 
     def warmup(self):
+        self.mean_grad = None
         self.reset_net()
         self.r_norm.reset()
         self.update_replay_buffer()
         self.r_norm(self.tensor_replay_reward, training=True)
         self.value_optimize(self.value_iter)
 
+    def save_and_print_results(self):
+        self.save_checkpoint(self.checkpoint, {'n': self.frame})
+        self.results_pi_update_with_explore()
+
+
     def minimize(self):
-        counter = 0
+        counter = -1
         self.env.reset()
         self.warmup()
         for _ in tqdm(itertools.count()):
-            counter += self.n_explore
+            counter += 1
             pi_explore, reward = self.exploration_step()
             self.results['explore_policies'].append(self.pi_trust_region.unconstrained_to_real(pi_explore))
             self.results['rewards'].append(reward)
@@ -130,46 +177,59 @@ class TrustRegionAgent(Agent):
             self.value_optimize(self.value_iter)
             self.pi_optimize()
 
-            self.save_checkpoint(self.checkpoint, {'n': self.frame})
+            pi = self.pi_net.pi.detach().cpu()
+            pi_eval = self.step_policy(pi, to_env=False)
+            self.results['reward_pi_evaluate'].append(pi_eval)
+            self.results['frame_pi_evaluate'].append(self.frame)
+            if pi_eval < self.best_pi_evaluate:
+                self.no_change = 0
+                self.best_pi_evaluate = pi_eval
+            else:
+                self.no_change += 1
+            real_pi = self.pi_trust_region.unconstrained_to_real(pi)
+            self.results['policies'].append(real_pi)
 
-            self.results_pi_update_with_explore(self.n_explore)
-
-            yield self.results
-
-            if self.results['ts'][-1] or (self.results['dist_f'][-1] < -1):
-                self.save_checkpoint(self.checkpoint, {'n': self.frame})
-                self.save_results()
+            if self.env.t or (self.best_pi_evaluate - self.best_op_f) < -1:
+                self.save_and_print_results()
+                yield self.results
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
                 break
 
-            if counter > self.stop_con and self.results['best_pi_evaluate'][-1] == self.results['best_pi_evaluate'][-self.stop_con]:
+            if counter > self.stop_con and self.no_change > self.stop_con:
                 counter = 0
-                self.save_checkpoint(self.checkpoint, {'n': self.frame})
-                self.save_results()
-                self.update_best_pi()
                 self.divergence += 1
+                self.save_checkpoint(self.checkpoint, {'n': self.frame})
+                self.save_and_print_results()
+                self.update_best_pi()
                 self.warmup()
 
             if self.frame >= self.budget:
-                self.save_results()
+                self.save_and_print_results()
+                yield self.results
                 print("FAILED frame = {}".format(self.frame))
                 break
 
+            if (self.frame % (self.printing_interval * self.n_explore)) == 0:
+                self.save_and_print_results()
+                yield self.results
+                self.reset_result()
+
     def update_best_pi(self):
-        reward_pi_evaluate = torch.FloatTensor(self.results['reward_pi_evaluate'])
+
+        reward_pi_evaluate = np.load(os.path.join(self.analysis_dir, 'reward_pi_evaluate.npy'))
         best_idx = reward_pi_evaluate.argmin()
-        pi_evaluate = torch.stack(self.results['policies'])[best_idx]
+        pi_evaluate = np.load(os.path.join(self.analysis_dir, 'policies.npy'))[best_idx]
         best_reward_pi_evaluate = reward_pi_evaluate[best_idx]
 
-        reward_pi_explore = torch.cat(self.results['rewards'])
+        reward_pi_explore = np.load(os.path.join(self.analysis_dir, 'rewards.npy'))
         best_idx = reward_pi_explore.argmin()
-        pi_explore = torch.cat(self.results['explore_policies'], dim=0)[best_idx]
+        pi_explore = np.load(os.path.join(self.analysis_dir, 'explore_policies.npy'))[best_idx]
         best_reward_pi_explore = reward_pi_explore[best_idx]
 
         if best_reward_pi_evaluate < best_reward_pi_explore:
-            pi = pi_explore
+            pi = torch.FloatTensor(pi_explore)
         else:
-            pi = pi_evaluate
+            pi = torch.FloatTensor(pi_evaluate)
 
         self.pi_trust_region.squeeze(pi)
         self.epsilon *= self.epsilon_factor
@@ -235,7 +295,7 @@ class TrustRegionAgent(Agent):
     #             break
     #
     #     loss /= value_iter
-    #     self.results['derivative_loss'].append(loss)
+    #     self.results['derivative_loss'] = loss
     #     self.derivative_net.eval()
 
 
@@ -302,7 +362,7 @@ class TrustRegionAgent(Agent):
                 self.optimizer_derivative.step()
 
         loss /= value_iter
-        self.results['derivative_loss'].append(loss)
+        self.results['derivative_loss'] = loss
         self.derivative_net.eval()
 
     def first_order_method_optimize_single_ref(self, len_replay_buffer, minibatches, value_iter):
@@ -342,7 +402,7 @@ class TrustRegionAgent(Agent):
                 self.optimizer_derivative.step()
 
         loss /= value_iter
-        self.results['derivative_loss'].append(loss)
+        self.results['derivative_loss'] = loss
         self.derivative_net.eval()
 
     def second_order_method_optimize_single_ref(self, len_replay_buffer, minibatches, value_iter):
@@ -400,7 +460,7 @@ class TrustRegionAgent(Agent):
                 self.optimizer_derivative.step()
 
         loss /= value_iter
-        self.results['derivative_loss'].append(loss)
+        self.results['derivative_loss'] = loss
         self.derivative_net.eval()
 
     def second_order_method_optimize(self, len_replay_buffer, minibatches, value_iter):
@@ -452,7 +512,7 @@ class TrustRegionAgent(Agent):
             self.optimizer_derivative.step()
 
         loss /= value_iter
-        self.results['derivative_loss'].append(loss)
+        self.results['derivative_loss'] = loss
         self.derivative_net.eval()
 
     def step_policy(self, policy, to_env=True):
@@ -494,8 +554,6 @@ class TrustRegionAgent(Agent):
         for i in range(0, policy.shape[0], batch):
             from_index = i
             to_index = min(i + batch, policy.shape[0])
-            if to_index == policy.shape[0]:
-                print("last_index")
             policy_tensor = torch.FloatTensor(policy[from_index:to_index])
             policy_tensor = self.pi_trust_region.real_to_unconstrained(policy_tensor).to(self.device)
             policy_tensor = autograd.Variable(policy_tensor, requires_grad=True)

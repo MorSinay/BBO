@@ -87,6 +87,7 @@ parser.add_argument('--loss', type=str, default='mse', help='derivative loss hub
 #
 # #actors parameters
 parser.add_argument('--problem-index', type=int, default=-1, help='Problem Index or -1 for all')
+parser.add_argument('--robust-scaler-lr', type=float, default=1e-1, help='robust learning rate')
 parser.add_argument('--pi-lr', type=float, default=1e-2, help='pi learning rate')
 parser.add_argument('--value-lr', type=float, default=1e-3, help='value learning rate')
 parser.add_argument('--action-space', type=int, default=10, help='Problem dimension')

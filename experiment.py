@@ -130,53 +130,49 @@ class Experiment(object):
         player = self.agent.minimize()
         divergence = 0
 
-        for n, bbo_results in (enumerate(player)):
-            pi = bbo_results['policies'][-1].cpu().numpy()
-            pi_explore = torch.mean(bbo_results['explore_policies'][-1], dim=0).cpu().numpy()
-            pi_evaluate = bbo_results['reward_pi_evaluate'][-1]
+        for _, bbo_results in (enumerate(player)):
+            avg_reward = torch.mean(bbo_results['rewards'][-1]).item()
+            logger.info("---------------- frame: {} - Problem ID :{} ---------------".format(bbo_results['frame'], self.problem_id))
+            logger.info("Problem iter index     :{}\t\tDim: {}\t\tDivergence: {} \t\tno_change: = {}".format(self.iter_index, self.action_space, bbo_results['divergence'], bbo_results['no_change']))
+            if self.algorithm in ['first_order', 'second_order']:
+                logger.info("Statistics: |\t mean_grad = %.3f \t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['mean_grad'], bbo_results['grad_norm'], avg_reward, bbo_results['derivative_loss']))
+            elif self.algorithm == ['value']:
+                logger.info("Statistics: |\t value = %.3f \t reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'], avg_reward, bbo_results['value_loss']))
+            elif self.algorithm == 'anchor':
+                logger.info("Statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'], bbo_results['value'], avg_reward, bbo_results['derivative_loss'], bbo_results['value_loss']))
+            logger.info("Best observe      : |\t %.3f \t Pi_evaluate: = %.3f| \tBest_pi_evaluate: = %.3f" % (bbo_results['best_observed'], bbo_results['reward_pi_evaluate'][-1], bbo_results['best_pi_evaluate']))
+            logger.info("dist_x            : |\t %.3f \t\t dist_f: = %.3f|" % (bbo_results['dist_x'], bbo_results['dist_f']))
+            logger.info("trust_region      : |\t in_trust: = %d \t\t min_sigma: = %.3f" % (bbo_results['in_trust'], bbo_results['min_trust_sigma']))
+            logger.info("r_norm            : |\t mean: =%.3f \t\t |sigma: =%.3f" % (bbo_results['r_norm_mean'], bbo_results['r_norm_sigma']))
 
-            avg_reward = np.average(bbo_results['rewards'][-1])
-            best_observe = bbo_results['best_observed'][-1]
-            divergence = bbo_results['divergence'][-1]
+            if args.debug and self.algorithm in ['value', 'anchor']:
+                self.value_vs_f_eval(bbo_results['frame'])
 
-            if not n % self.printing_interval:
-                logger.info("---------------- iteration: {} - Problem ID :{} ---------------".format(n, self.problem_id))
-                logger.info("Problem iter index     :{}\t\tDim: {}\t\tDivergence: {}".format(self.iter_index, self.action_space, divergence))
-                if self.algorithm in ['first_order', 'second_order']:
-                    logger.info("Statistics: |\t mean_grad = %.3f \t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['mean_grad'][-1], bbo_results['grad_norm'][-1], avg_reward, bbo_results['derivative_loss'][-1]))
-                elif self.algorithm == ['value']:
-                    logger.info("Statistics: |\t value = %.3f \t avg_reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'][-1], avg_reward, bbo_results['value_loss'][-1]))
-                elif self.algorithm == 'anchor':
-                    logger.info("Statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'][-1], bbo_results['value'][-1], avg_reward, bbo_results['derivative_loss'][-1], bbo_results['value_loss'][-1]))
-                logger.info("Best observe      : |\t %.3f \t Pi_evaluate: = %.3f| \tBest_pi_evaluate: = %.3f" % (best_observe, pi_evaluate, bbo_results['best_pi_evaluate'][-1]))
-                logger.info("dist_x            : |\t %.3f \t dist_f: = %.3f| \t in_trust: = %d" % (bbo_results['dist_x'][-1], bbo_results['dist_f'][-1], bbo_results['in_trust'][-1]))
-                logger.info("r_norm            : |\t mean: =%.3f \t\t |sigma: =%.3f" % (bbo_results['r_norm_mean'][-1], bbo_results['r_norm_sigma'][-1]))
-
-                if args.debug and self.algorithm in ['value', 'anchor']:
-                    self.value_vs_f_eval(n)
-
-                if args.debug and self.algorithm in ['first_order', 'second_order', 'anchor']:
-                    self.grad_norm_on_f_eval(n)
+            if args.debug and self.algorithm in ['first_order', 'second_order', 'anchor']:
+                self.grad_norm_on_f_eval(bbo_results['frame'])
 
             # log to tensorboard
             if args.tensorboard:
-                self.writer.add_scalar('evaluation/divergence', divergence, n)
+                pi = bbo_results['policies'][-1].cpu().numpy()
+                pi_explore = torch.mean(bbo_results['explore_policies'][-1], dim=0).cpu().numpy()
+
+                self.writer.add_scalar('evaluation/divergence', bbo_results['divergence'], bbo_results['frame'])
                 if self.algorithm in ['value', 'anchor']:
-                    self.writer.add_scalars('evaluation/value_reward', {'value': bbo_results['value'][-1], 'reward_pi_evaluate': pi_evaluate, 'best': best_observe}, n)
-                    self.writer.add_scalar('evaluation/value_loss', bbo_results['value_loss'][-1], n)
+                    self.writer.add_scalars('evaluation/value_reward', {'value': bbo_results['value'], 'reward_pi_evaluate': bbo_results['reward_pi_evaluate'][-1], 'best': bbo_results['best_observed']}, bbo_results['frame'])
+                    self.writer.add_scalar('evaluation/value_loss', bbo_results['value_loss'], bbo_results['frame'])
                 if self.algorithm in ['first_order', 'second_order', 'anchor']:
-                    self.writer.add_scalar('evaluation/grad_norm', bbo_results['grad_norm'][-1], n)
-                    self.writer.add_scalar('evaluation/derivative_loss', bbo_results['derivative_loss'][-1], n)
-                self.writer.add_scalars('evaluation/pi_evaluate_observe', {'evaluate': pi_evaluate, 'best': best_observe}, n)
+                    self.writer.add_scalar('evaluation/grad_norm', bbo_results['grad_norm'], bbo_results['frame'])
+                    self.writer.add_scalar('evaluation/derivative_loss', bbo_results['derivative_loss'], bbo_results['frame'])
+                self.writer.add_scalars('evaluation/pi_evaluate_observe', {'evaluate': bbo_results['reward_pi_evaluate'][-1], 'best': bbo_results['best_observed']}, bbo_results['frame'])
 
                 for i in range(len(pi)):
-                    self.writer.add_scalars('evaluation/pi_' + str(i), {'pi': pi[i], 'explore': pi_explore[i]}, n)
+                    self.writer.add_scalars('evaluation/pi_' + str(i), {'pi': pi[i], 'explore': pi_explore[i]}, bbo_results['frame'])
 
                 if hasattr(self.agent, "pi_net"):
-                    self.writer.add_histogram("evaluation/pi_net", self.agent.pi_net.pi.clone().cpu().data.numpy(), n, 'fd')
+                    self.writer.add_histogram("evaluation/pi_net", self.agent.pi_net.pi.clone().cpu().data.numpy(), bbo_results['frame'], 'fd')
                 if hasattr(self.agent, "value_net"):
                     for name, param in self.agent.value_net.named_parameters():
-                        self.writer.add_histogram("evaluation/value_net/%s" % name, param.clone().cpu().data.numpy(), n, 'fd')
+                        self.writer.add_histogram("evaluation/value_net/%s" % name, param.clone().cpu().data.numpy(), bbo_results['frame'], 'fd')
 
         print("End BBO evaluation")
         self.compare_pi_evaluate()
@@ -267,6 +263,7 @@ class Experiment(object):
 
         x = 5*np.load(os.path.join(path, 'policies.npy'))
         diver = np.load(os.path.join(path, 'divergence.npy'))
+        frame = np.load(os.path.join(path, 'frame.npy'))
         x_exp = 5*np.load(os.path.join(path, 'explore_policies.npy'))
         f0 = np.load(os.path.join(path, 'f0.npy'))
 
@@ -275,8 +272,9 @@ class Experiment(object):
         colors = consts.color
         plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color=colors[0], markersize=1)
         for i in range(diver.max()+1):
-            index = (diver == i)
-            plt.plot(x[index, 0], x[index, 1], '-o', color=colors[i+1], markersize=1)
+            min_frame = frame[diver == i].min()
+            max_frame = frame[diver == i].max()
+            plt.plot(x[min_frame:max_frame, 0], x[min_frame:max_frame, 1], '-o', color=colors[i+1], markersize=1)
 
         plt.title('alg {} - 2D_Contour index {}'.format(self.algorithm, self.iter_index))
         fig.colorbar(cs)
@@ -297,7 +295,9 @@ class Experiment(object):
 
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
         pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'))
+        frame_eval = np.load(os.path.join(path, 'frame_pi_evaluate.npy'))
         pi_best = np.load(os.path.join(path, 'best_observed.npy'))
+        frame = np.load(os.path.join(path, 'frame.npy'))
 
         min_val = min(min_val, min(pi_best)) - 0.0001
 
@@ -305,8 +305,8 @@ class Experiment(object):
 
         colors = consts.color
         #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
-        plt.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[1], label='reward_pi_evaluate')
-        plt.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[2], label='best_observed')
+        plt.loglog(frame_eval, (pi_eval - min_val)/(f0 - min_val), color=colors[1], label='reward_pi_evaluate')
+        plt.loglog(frame, (pi_best - min_val) / (f0 - min_val), color=colors[2], label='best_observed')
 
         for i, op in enumerate(optimizer_res['fmin']):
             res = optimizer_res[optimizer_res['fmin'] == op]
@@ -331,7 +331,7 @@ class Experiment(object):
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
         mean_grad = np.load(os.path.join(path, 'mean_grad.npy'))
         divergence = np.load(os.path.join(path, 'divergence.npy'))
-        count = np.arange(len(mean_grad))
+        frame = np.load(os.path.join(path, 'frame.npy'))
 
         # divergence = divergence[1:] - divergence[:-1]
         # mean_grad = mean_grad[1:]
@@ -342,12 +342,11 @@ class Experiment(object):
 
         for i in range(divergence.max()+1):
             index = (divergence == i)
-            plt.plot(count[index], mean_grad[index], '-o', color=colors[i+1], markersize=1)
+            plt.plot(frame[index], mean_grad[index], '-o', color=colors[i+1], markersize=1)
 
-        # plt.plot(np.arange(len(mean_grad)), mean_grad, color=colors[0], label='mean_grad')
-        # plt.plot(np.arange(len(divergence)), divergence, color=colors[1], label='divergence')
+        # plt.plot(frame), mean_grad, color=colors[0], label='mean_grad')
+        # plt.plot(frame), divergence, color=colors[1], label='divergence')
 
-        plt.legend()
         plt.title('alg {} - dim = {} index = {} ----- mean_grad vs divergence'.format(self.algorithm, self.action_space, self.iter_index))
         plt.grid(True, which='both')
 

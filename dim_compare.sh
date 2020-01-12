@@ -11,7 +11,7 @@ loc=`dirname "%0"`
 
 args="--best-explore-update --algorithm=$algorithm --action-space=$dim --game=RUN --budget=150000 --warmup-minibatch=5 --printing-interval=100"
 
-CUDA_VISIBLE_DEVICES=0, python main.py --stop-con=100 --trust-factor=0.75 --epsilon=0.2 --epsilon-factor=1 --identifier=mor_2 --resume=$resume --load-last-model $args $aux &
+CUDA_VISIBLE_DEVICES=3, python main.py --stop-con=100 --trust-factor=0.75 --epsilon=0.2 --epsilon-factor=1 --identifier=mor_2 --resume=$resume --load-last-model $args $aux &
 #CUDA_VISIBLE_DEVICES=1, python main.py --trust-factor=0.5 --epsilon=0.2 --epsilon-factor=1 --identifier=e2_f1_tr5 --resume=$resume --load-last-model $args $aux &
 #CUDA_VISIBLE_DEVICES=2, python main.py --trust-factor=0.5 --epsilon=0.3 --epsilon-factor=0.75 --identifier=e3_f75_tr5 --resume=$resume --load-last-model $args $aux &
 

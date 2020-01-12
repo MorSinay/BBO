@@ -686,9 +686,9 @@ if __name__ == '__main__':
 
 
     #optimizers = ['first_order_clip0', 'first_order_clip1', 'first_order_clip1_cone1']
-    optimizers = ['first_order_mor']
-    dims = [1, 2, 3, 5, 10, 20, 40]
-    #dims = [40]
+    optimizers = ['first_order_mor_2']
+    #dims = [1, 2, 3, 5, 10, 20, 40]
+    dims = [40]
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     #merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 

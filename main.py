@@ -14,7 +14,7 @@ from collections import defaultdict
 
 filter_mod = 15
 #problems_to_run = range(0,360,filter_mod)
-problems_to_run = [15, 30, 45, 90, 105, 120, 135, 150, 175, 180, 210, 240, 345]
+problems_to_run = [15, 30, 45, 105, 120, 135, 150, 180, 210]
 def set_seed(seed):
     if seed > 0:
         random.seed(seed)

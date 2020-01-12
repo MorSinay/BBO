@@ -1,10 +1,8 @@
 import torch
 from torch import nn
 from config import args
-#from torch.nn.utils import spectral_norm
 import math
 from collections import defaultdict
-import numpy as np
 
 action_space = args.action_space
 layer = 256
@@ -80,26 +78,22 @@ class TrustRegion(object):
         self.pi_net = pi_net
         self.min_sigma = 0.1*torch.ones_like(pi_net.pi).cpu()
         self.trust_factor = args.trust_factor
-#        self.a = -1*torch.ones_like(pi_net.pi).cpu()
-#        self.b = torch.ones_like(pi_net.pi).cpu()
 
-    def np_bounderies(self):
-        lower, upper = (self.mu - self.sigma).numpy(), (self.mu + self.sigma).numpy()
-        # assert lower.min() >= -1, "lower min {}".format(lower.min())
-        # assert upper.max() <= 1, "upper max {}".format(upper.max())
-        return np.clip(lower, -1, 1), np.clip(upper, -1, 1)
-        #return lower, upper
+    def bounderies(self):
+        lower, upper = (self.mu - self.sigma), (self.mu + self.sigma)
+        assert lower.min().item() >= -1, "lower min {}".format(lower.min())
+        assert upper.max().item() <= 1, "upper max {}".format(upper.max())
+        return lower, upper
 
     def squeeze(self, pi):
 
-        if (self.mu == pi).all():
+        if not ((self.min_sigma - self.sigma).sum() + (self.mu - pi).sum()).item():
             self.sigma = torch.min(2*self.sigma, torch.ones_like(self.mu))
         else:
-            lower, upper = self.np_bounderies()
-            lower, upper = lower + self.min_sigma.numpy(), upper - self.min_sigma.numpy()
-            new_pi = np.clip(pi.numpy(), a_max=upper, a_min=lower)
+            lower, upper = self.bounderies()
+            new_pi = torch.min(torch.max(pi, lower + self.min_sigma), upper - self.min_sigma)
             #near the edge
-            if (new_pi == pi.numpy()).all():
+            if (new_pi == pi).all().item():
                 self.sigma = torch.max(self.trust_factor*self.sigma, self.min_sigma)
             elif (pi < -1 + self.min_sigma).any().item() or (pi > 1 - self.min_sigma).any().item():
                 if (pi < -1 + self.min_sigma).any().item():
@@ -129,7 +123,6 @@ class TrustRegion(object):
     def real_to_unconstrained(self, x):
         s = x.shape
         x = (x - self.mu)/self.sigma.view(1, -1)
-        #x = torch.clamp(x, min=-1+1e-3, max=1-1e-3)
         x = self.pi_net.inverse(x)
         x = x.view(s)
         return x

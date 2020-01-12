@@ -12,6 +12,7 @@ import math
 import os
 import copy
 from visualize_2d import get_best_solution
+import shutil
 
 class Agent(object):
 
@@ -41,13 +42,13 @@ class Agent(object):
         self.divergence = 0
         self.importance_sampling = args.importance_sampling
         self.best_explore_update = args.best_explore_update
-        self.analysis_dir = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
         self.printing_interval = args.printing_interval
-        if not os.path.exists(self.analysis_dir):
-            try:
-                os.makedirs(self.analysis_dir)
-            except:
-                pass
+        self.analysis_dir = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
+        if os.path.exists(self.analysis_dir):
+            shutil.rmtree(self.analysis_dir, ignore_errors=True)
+            os.makedirs(self.analysis_dir)
+        else:
+            os.makedirs(self.analysis_dir)
 
         self.frame = 0
         self.n_offset = 0
@@ -139,6 +140,9 @@ class Agent(object):
             self.q_loss = nn.MSELoss(reduction='none')
         else:
             raise NotImplementedError
+
+    def reset_result(self):
+        self.results = defaultdict(list)
 
     def update_pi_optimizer_lr(self):
         op_dict = self.optimizer_pi.state_dict()
