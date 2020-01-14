@@ -32,8 +32,8 @@ class TrustRegionAgent(Agent):
 
         if self.tensor_replay_reward is not None:
             pi = self.pi_trust_region.mu
-            explore_policies = torch.cat(self.results['explore_policies'], dim=0)
-            rewards = torch.cat(self.results['rewards'])
+            explore_policies = self.tensor_replay_policy
+            rewards = self.tensor_replay_reward
 
             in_range = torch.norm(explore_policies - pi, 1, dim=1) < self.pi_trust_region.sigma.min()
             if in_range.sum():
@@ -189,13 +189,13 @@ class TrustRegionAgent(Agent):
             real_pi = self.pi_trust_region.unconstrained_to_real(pi)
             self.results['policies'].append(real_pi)
 
-            if self.env.t or (self.best_pi_evaluate - self.best_op_f) < -1:
+            if self.env.t or (self.env.best_observed - self.best_op_f) < -1:
                 self.save_and_print_results()
                 yield self.results
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
                 break
 
-            elif counter > self.stop_con and self.no_change > self.stop_con:
+            elif counter > self.stop_con and self.no_change > (self.stop_con/4):
                 counter = 0
                 self.divergence += 1
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
@@ -227,9 +227,9 @@ class TrustRegionAgent(Agent):
         best_reward_pi_explore = reward_pi_explore[best_idx]
 
         if best_reward_pi_evaluate < best_reward_pi_explore:
-            pi = torch.cuda.FloatTensor(pi_explore)
-        else:
             pi = torch.cuda.FloatTensor(pi_evaluate)
+        else:
+            pi = torch.cuda.FloatTensor(pi_explore)
 
         self.pi_trust_region.squeeze(pi)
         self.epsilon *= self.epsilon_factor

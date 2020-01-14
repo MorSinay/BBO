@@ -31,7 +31,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 
 parser.add_argument('--batch', type=int, default=1024, help='Mini-Batch Size')
-parser.add_argument('--n-explore', type=int, default=128, help='exploration')
+parser.add_argument('--n-explore', type=int, default=64, help='exploration')
 
 # strings
 parser.add_argument('--game', type=str, default='bbo', help='bbo | net')
@@ -58,12 +58,12 @@ parser.add_argument('--resume', type=int, default=-1, help='Resume experiment nu
 
 # #exploration parameters
 parser.add_argument('--epsilon', type=float, default=0.2, help='exploration parameter before behavioral period')
-parser.add_argument('--cone-angle', type=float, default=3, help='cone angle - default pi/4')
+parser.add_argument('--cone-angle', type=float, default=3, help='cone angle - default pi/3')
 parser.add_argument('--norm', type=str, default='robust_scaler', help='normalization option - min_max | mean | mean_std')
 parser.add_argument('--explore', type=str, default='cone', help='exploration option - cone | rand')
 boolean_feature("best-explore-update", False, 'move to the best value of exploration')
 parser.add_argument('--grad-steps', type=int, default=1, help='Gradient step')
-parser.add_argument('--stop-con', type=int, default=50, help='Stopping Condition')
+parser.add_argument('--stop-con', type=int, default=40, help='Stopping Condition')
 parser.add_argument('--agent', type=str, default='trust', help='Agent type - trust|robust|single')
 
 #
@@ -94,7 +94,7 @@ parser.add_argument('--pi-lr', type=float, default=1e-2, help='pi learning rate'
 parser.add_argument('--value-lr', type=float, default=1e-3, help='value learning rate')
 parser.add_argument('--action-space', type=int, default=10, help='Problem dimension')
 parser.add_argument('--layer', type=int, default=256, help='Value hidden layer size')
-parser.add_argument('--seed', type=int, default=150, help='Set seed')
+parser.add_argument('--seed', type=int, default=0, help='Set seed')
 parser.add_argument('--exploration', type=str, default='GRAD', help='GRAD|UNIFORM')
 
 # distributional learner
