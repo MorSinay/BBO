@@ -106,6 +106,7 @@ def main():
     logger.info("End of simulation divergence = {}".format(divergence))
 
 def run_exp(env):
+    divergence = 0
     with Experiment(logger.filename, env) as exp:
         logger.info("BBO Session with NEURAL NET, it might take a while")
         try:
