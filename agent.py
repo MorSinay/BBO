@@ -284,37 +284,6 @@ class Agent(object):
         #pi_explore = pi_explore[-n_explore:]
         return pi_explore
 
-    def cone_explore(self, n_explore):
-        alpha = math.pi / self.cone_angle
-        n = n_explore - 1
-        pi, grad = self.get_grad(grad_step=False)
-        pi, grad = pi.cpu(), grad.cpu()
-        m = len(pi)
-        pi = pi.unsqueeze(0)
-
-        x = torch.FloatTensor(n, m).normal_()
-        mag = torch.FloatTensor(n, 1).uniform_()
-
-        x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
-        grad = grad / (torch.norm(grad) + 1e-8)
-
-        cos = (x @ grad).unsqueeze(1)
-
-        dp = x - cos * grad.unsqueeze(0)
-
-        dp = dp / torch.norm(dp, dim=1, keepdim=True)
-
-        acos = torch.acos(torch.clamp(torch.abs(cos), 0, 1-1e-8))
-
-        new_cos = torch.cos(acos * alpha / (math.pi / 2))
-        new_sin = torch.sin(acos * alpha / (math.pi / 2))
-
-        cone = new_sin * dp + new_cos * grad
-
-        explore = pi - self.epsilon * mag * cone
-
-        return torch.cat([pi, explore])
-
     def cone_explore(self, n_explore, angle, pi, grad):
         alpha = math.pi/angle
         pi = pi.unsqueeze(0)
