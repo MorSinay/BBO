@@ -66,15 +66,11 @@ class Agent(object):
         self.epsilon_factor = args.epsilon_factor
         self.spline = args.spline
 
-        if args.explore == 'grad_rand':
-            self.exploration = self.exploration_grad_rand
-        elif args.explore == 'grad_direct':
-            self.exploration = self.exploration_grad_direct
-        elif args.explore == 'rand':
+        if args.explore == 'rand':
             self.exploration = self.exploration_rand
         elif args.explore == 'cone':
             if self.action_space == 1:
-                self.exploration = self.exploration_grad_direct
+                self.exploration = self.exploration_rand
             else:
                 self.exploration = self.cone_explore_with_rand
                 self.cone_angle = args.cone_angle
@@ -170,7 +166,7 @@ class Agent(object):
                 assert ((len(grad.shape) == 2) and (grad.shape[1] == self.action_space)), "save_results"
                 np.save(path, grad)
             elif k in ['rewards']:
-                rewards = torch.cat(self.results[k]).numpy()
+                rewards = torch.cat(self.results[k]).cpu().numpy()
                 np.save(path, rewards)
             else:
                 tmp = np.array(self.results[k]).flatten()
@@ -261,35 +257,18 @@ class Agent(object):
         return pi_array
 
     def exploration_rand(self, n_explore):
-        pi = self.pi_net.pi.detach().clone().cpu()
-        rand_sign = (2*torch.randint(0,2,size=(n_explore, self.action_space))-1).reshape(n_explore, self.action_space)
-        pi_explore = pi + self.warmup_factor*self.epsilon * rand_sign * torch.rand(n_explore, self.action_space)
+        pi = self.pi_net.pi.detach().clone()
+        rand_sign = (2*torch.randint(0, 2 ,size=(n_explore, self.action_space), device=self.device)-1).reshape(n_explore, self.action_space)
+        pi_explore = pi + self.warmup_factor*self.epsilon * rand_sign * torch.cuda.FloatTensor(n_explore, self.action_space).uniform_()
         return pi_explore
 
-    def exploration_grad_rand(self, n_explore):
-        pi, grads = self.get_grad(grad_step=False)
-        pi, grads = pi.cpu(), grads.cpu()
-        explore_factor = self.delta * grads + self.epsilon * torch.randn(n_explore, self.action_space)
-        explore_factor *= 0.9 ** (2 * torch.arange(n_explore, dtype=torch.float)).reshape(n_explore, 1)
-        pi_explore = pi - explore_factor  # gradient decent
-        return pi_explore
-
-    def exploration_grad_direct(self, n_explore):
-        pi_array = self.get_n_grad_ahead(self.grad_steps).reshape(self.grad_steps+1, self.action_space).cpu()
-        n_explore_grad = (n_explore // (self.grad_steps+1))
-
-        epsilon_array = self.epsilon ** (3 - 2 * torch.arange(self.grad_steps+1, dtype=torch.float) / (self.grad_steps))
-        epsilon_array = epsilon_array.unsqueeze(1) # .expand_dims(epsilon_array, axis=1)
-        pi_explore = torch.cat([pi_array + epsilon_array * torch.randn(self.grad_steps+1, self.action_space) for _ in range(n_explore_grad)], dim=0)
-        #pi_explore = pi_explore[-n_explore:]
-        return pi_explore
 
     def cone_explore(self, n_explore, angle, pi, grad):
         alpha = math.pi/angle
         pi = pi.unsqueeze(0)
 
-        x = torch.FloatTensor(n_explore, self.action_space).normal_()
-        mag = torch.FloatTensor(n_explore, 1).uniform_()
+        x = torch.cuda.FloatTensor(n_explore, self.action_space).normal_()
+        mag = torch.cuda.FloatTensor(n_explore, 1).uniform_()
 
         x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
         grad = grad / (torch.norm(grad) + 1e-8)
@@ -313,7 +292,6 @@ class Agent(object):
 
     def cone_explore_with_rand(self, n_explore):
         pi, grad = self.get_grad(grad_step=False)
-        pi, grad = pi.cpu(), grad.cpu()
 
         explore_rand = self.cone_explore(n_explore//2, 1, pi, grad)
         explore_cone = self.cone_explore(n_explore - n_explore // 2 - 1, self.cone_angle, pi, grad)

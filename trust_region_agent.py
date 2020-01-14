@@ -20,7 +20,7 @@ class TrustRegionAgent(Agent):
 
         self.pi_trust_region = TrustRegion(self.pi_net)
         self.r_norm = RobustNormalizer()
-        self.best_pi_evaluate = self.step_policy(self.pi_net.pi.detach().cpu(), to_env=False)
+        self.best_pi_evaluate = self.step_policy(self.pi_net.pi.detach(), to_env=False)
         self.f0 = self.best_pi_evaluate
         self.stop_con = args.stop_con
         self.no_change = 0
@@ -40,11 +40,11 @@ class TrustRegionAgent(Agent):
                 explore_policies_from_buf = self.pi_trust_region.real_to_unconstrained(explore_policies[in_range])
                 rewards_from_buf = rewards[in_range]
             else:
-                explore_policies_from_buf = torch.FloatTensor([])
-                rewards_from_buf = torch.FloatTensor([])
+                explore_policies_from_buf = torch.cuda.FloatTensor([])
+                rewards_from_buf = torch.cuda.FloatTensor([])
         else:
-            explore_policies_from_buf = torch.FloatTensor([])
-            rewards_from_buf = torch.FloatTensor([])
+            explore_policies_from_buf = torch.cuda.FloatTensor([])
+            rewards_from_buf = torch.cuda.FloatTensor([])
 
         self.frame += self.warmup_explore
         explore_policies_rand = self.exploration_rand(self.warmup_explore)
@@ -75,14 +75,14 @@ class TrustRegionAgent(Agent):
 
         pi = self.results['policies'][-1]
         real_pi = self.pi_trust_region.unconstrained_to_real(pi)
-        dist_x = torch.norm(self.env.denormalize(real_pi.numpy()) - self.best_op_x, 2)
+        dist_x = torch.norm(self.env.denormalize(real_pi.cpu().numpy()) - self.best_op_x, 2)
         self.results['dist_x'] = dist_x.detach().item()
 
         lower, upper = self.pi_trust_region.bounderies()
-        bst = self.best_op_x.cpu()/5
+        bst = self.best_op_x/5
         in_trust = (bst == torch.min(torch.max(bst, lower), upper)).min().item()
-        for i in range(self.action_space):
-            print("index {}: lower bound={}\tupper bound={}\tx={}\tx*={}\tin_bound {}".format(i, lower[i], upper[i], real_pi[i], bst[i], bst[i]<=upper[i] and bst[i]>=lower[i]))
+        # for i in range(self.action_space):
+        #     print("index {}: lower bound={}\tupper bound={}\tx={}\tx*={}\tin_bound {}".format(i, lower[i], upper[i], real_pi[i], bst[i], bst[i]<=upper[i] and bst[i]>=lower[i]))
 
         self.results['in_trust'] = in_trust
 
@@ -129,7 +129,7 @@ class TrustRegionAgent(Agent):
                     rewards = np.concatenate([data_np, rewards])
                 np.save(path, rewards)
             elif k in ['rewards']:
-                rewards = torch.cat(self.results[k]).numpy()
+                rewards = torch.cat(self.results[k]).cpu().numpy()
                 if len(data_np):
                     rewards = np.hstack([data_np, rewards])
                 np.save(path, rewards)
@@ -177,7 +177,7 @@ class TrustRegionAgent(Agent):
             self.value_optimize(self.value_iter)
             self.pi_optimize()
 
-            pi = self.pi_net.pi.detach().cpu()
+            pi = self.pi_net.pi.detach()
             pi_eval = self.step_policy(pi, to_env=False)
             self.results['reward_pi_evaluate'].append(pi_eval)
             self.results['frame_pi_evaluate'].append(self.frame)
@@ -227,18 +227,18 @@ class TrustRegionAgent(Agent):
         best_reward_pi_explore = reward_pi_explore[best_idx]
 
         if best_reward_pi_evaluate < best_reward_pi_explore:
-            pi = torch.FloatTensor(pi_explore)
+            pi = torch.cuda.FloatTensor(pi_explore)
         else:
-            pi = torch.FloatTensor(pi_evaluate)
+            pi = torch.cuda.FloatTensor(pi_evaluate)
 
         self.pi_trust_region.squeeze(pi)
         self.epsilon *= self.epsilon_factor
-        self.pi_net.pi_update(self.pi_trust_region.real_to_unconstrained(pi).to(self.device))
+        self.pi_net.pi_update(self.pi_trust_region.real_to_unconstrained(pi))
 
     def value_optimize(self, value_iter):
 
-        self.tensor_replay_reward_norm = self.r_norm(self.tensor_replay_reward).to(self.device)
-        self.tensor_replay_policy_norm = self.tensor_replay_policy.to(self.device)
+        self.tensor_replay_reward_norm = self.r_norm(self.tensor_replay_reward)
+        self.tensor_replay_policy_norm = self.tensor_replay_policy
 
         len_replay_buffer = len(self.tensor_replay_reward_norm)
         self.batch = min(self.max_batch, len_replay_buffer)
@@ -251,11 +251,6 @@ class TrustRegionAgent(Agent):
             #self.first_order_method_optimize(len_replay_buffer, minibatches, value_iter)
         elif self.algorithm_method in ['value']:
             self.value_method_optimize(len_replay_buffer, minibatches, value_iter)
-        elif self.algorithm_method == 'second_order':
-            #self.second_order_method_optimize(len_replay_buffer, minibatches, value_iter)
-            self.second_order_method_optimize_single_ref(len_replay_buffer, minibatches, value_iter)
-        elif self.algorithm_method == 'anchor':
-            self.anchor_method_optimize(len_replay_buffer, minibatches, value_iter)
         else:
             raise NotImplementedError
 
@@ -516,7 +511,6 @@ class TrustRegionAgent(Agent):
         self.derivative_net.eval()
 
     def step_policy(self, policy, to_env=True):
-        policy = policy.cpu()
         policy = self.pi_trust_region.unconstrained_to_real(policy)
         if to_env:
             self.env.step_policy(policy)
@@ -530,7 +524,7 @@ class TrustRegionAgent(Agent):
         rewards = self.env.reward
         if self.best_explore_update:
             best_explore = rewards.argmin()
-            self.pi_net.pi_update(pi_explore[best_explore].to(self.device))
+            self.pi_net.pi_update(pi_explore[best_explore])
 
         self.r_norm(rewards, training=True)
 
@@ -541,8 +535,8 @@ class TrustRegionAgent(Agent):
         return pi_explore, rewards
 
     def get_evaluation_function(self, policy, target):
-        upper = max((self.pi_trust_region.mu + self.pi_trust_region.sigma).numpy(), 1-1e-5)
-        lower = min((self.pi_trust_region.mu - self.pi_trust_region.sigma).numpy(), -1)
+        upper = max((self.pi_trust_region.mu + self.pi_trust_region.sigma).cpu().numpy(), 1-1e-5)
+        lower = min((self.pi_trust_region.mu - self.pi_trust_region.sigma).cpu().numpy(), -1)
         policy = np.clip(policy, a_min=lower, a_max=upper)
 
         target = torch.FloatTensor(target)
@@ -554,10 +548,10 @@ class TrustRegionAgent(Agent):
         for i in range(0, policy.shape[0], batch):
             from_index = i
             to_index = min(i + batch, policy.shape[0])
-            policy_tensor = torch.FloatTensor(policy[from_index:to_index])
-            policy_tensor = self.pi_trust_region.real_to_unconstrained(policy_tensor).to(self.device)
+            policy_tensor = torch.cuda.FloatTensor(policy[from_index:to_index])
+            policy_tensor = self.pi_trust_region.real_to_unconstrained(policy_tensor)
             policy_tensor = autograd.Variable(policy_tensor, requires_grad=True)
-            target_tensor = torch.FloatTensor(target[from_index:to_index]).to(self.device)
+            target_tensor = torch.cuda.FloatTensor(target[from_index:to_index])
             q_value = self.value_net(policy_tensor).view(-1)
             value.append(q_value.detach().cpu().numpy())
 
@@ -576,17 +570,17 @@ class TrustRegionAgent(Agent):
         pi_value = self.value_net(self.pi_net.pi).detach().cpu().numpy()
         pi_with_grad = pi - self.pi_lr*self.get_grad().cpu()
 
-        return value, self.pi_trust_region.unconstrained_to_real(pi).numpy(), np.array(pi_value), self.pi_trust_region.unconstrained_to_real(pi_with_grad).numpy(), grads_norm, self.r_norm(target).numpy()
+        return value, self.pi_trust_region.unconstrained_to_real(pi).cpu().numpy(), np.array(pi_value), self.pi_trust_region.unconstrained_to_real(pi_with_grad).cpu().numpy(), grads_norm, self.r_norm(target).cpu().numpy()
 
     def get_grad_norm_evaluation_function(self, policy, f):
-        upper = max((self.pi_trust_region.mu + self.pi_trust_region.sigma).numpy(), 1 - 1e-5)
-        lower = min((self.pi_trust_region.mu - self.pi_trust_region.sigma).numpy(), -1)
+        upper = max((self.pi_trust_region.mu + self.pi_trust_region.sigma).cpu().numpy(), 1 - 1e-5)
+        lower = min((self.pi_trust_region.mu - self.pi_trust_region.sigma).cpu().numpy(), -1)
         policy = np.clip(policy, a_min=lower, a_max=upper)
 
         f = torch.FloatTensor(f)
         self.derivative_net.eval()
-        policy_tensor = torch.FloatTensor(policy)
-        policy_tensor = self.pi_trust_region.real_to_unconstrained(policy_tensor).to(self.device)
+        policy_tensor = torch.cuda.FloatTensor(policy)
+        policy_tensor = self.pi_trust_region.real_to_unconstrained(policy_tensor)
         policy_diff = policy_tensor[1:]-policy_tensor[:-1]
         policy_diff_norm = policy_diff / (torch.norm(policy_diff, p=2, dim=1, keepdim=True) + 1e-5)
         grad_direct = (policy_diff_norm * self.derivative_net(policy_tensor[:-1]).detach()).sum(dim=1).cpu().numpy()
@@ -594,5 +588,5 @@ class TrustRegionAgent(Agent):
         pi_grad = self.derivative_net(self.pi_net.pi).detach()
         pi_with_grad = pi - self.pi_lr*pi_grad.cpu()
         pi_grad_norm = torch.norm(pi_grad).cpu()
-        return grad_direct, self.pi_trust_region.unconstrained_to_real(pi).numpy(), pi_grad_norm, self.pi_trust_region.unconstrained_to_real(pi_with_grad).numpy(), self.r_norm(f).numpy()
+        return grad_direct, self.pi_trust_region.unconstrained_to_real(pi).cpu().numpy(), pi_grad_norm, self.pi_trust_region.unconstrained_to_real(pi_with_grad).cpu().numpy(), self.r_norm(f).cpu().numpy()
 

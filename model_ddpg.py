@@ -91,6 +91,7 @@ class RobustNormalizer(object):
         self.squash_eps = 1e-9
         self.mu = None
         self.sigma = None
+        self.alpha = 0.1
 
         if args.trust_alg == 'relu':
             self.squash = self.squash_relu
@@ -117,11 +118,11 @@ class RobustNormalizer(object):
 
     def squash_relu(self, x):
         x = (x - self.mu) / (self.sigma + self.eps)
-        x = 0.1 * x * (x >= 0).float() + x * (x < 0).float()
+        x = (self.alpha * x + 1 - self.alpha) * (x >= 1).float() + x * (x < 1).float()
         return x
 
     def desquash_relu(self, x):
-        x = 10 * x * (x >= 0).float() + x * (x < 0).float()
+        x = ((x - 1 + self.alpha)/self.alpha) * (x >= 1).float() + x * (x < 1).float()
         x = x * (self.sigma + self.eps) + self.mu
         return x
 
@@ -129,11 +130,13 @@ class RobustNormalizer(object):
         if training:
             n = len(x)
             outlayer = int(n * self.outlayer + .5)
-            up = torch.kthvalue(x, n - outlayer, dim=0)[0]
-            down = torch.kthvalue(x, outlayer + 1, dim=0)[0]
+
+            x_cpu = x.cpu()
+            up = torch.kthvalue(x_cpu, n - outlayer, dim=0)[1]
+            down = torch.kthvalue(x_cpu, outlayer + 1, dim=0)[1]
 
             mu = torch.median(x, dim=0)[0]
-            sigma = (up - down) * self.delta
+            sigma = (x[up] - x[down]) * self.delta
 
             if self.mu is None or self.sigma is None:
                 self.mu = mu
@@ -149,10 +152,10 @@ class RobustNormalizer(object):
 class TrustRegion(object):
 
     def __init__(self, pi_net):
-        self.mu = torch.zeros_like(pi_net.pi).cpu()
-        self.sigma = torch.ones_like(pi_net.pi).cpu()
+        self.mu = torch.zeros_like(pi_net.pi)
+        self.sigma = torch.ones_like(pi_net.pi)
         self.pi_net = pi_net
-        self.min_sigma = 0.1*torch.ones_like(pi_net.pi).cpu()
+        self.min_sigma = 0.1*torch.ones_like(pi_net.pi)
         self.trust_factor = args.trust_factor
 
     def bounderies(self):

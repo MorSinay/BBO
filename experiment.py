@@ -169,10 +169,7 @@ class Experiment(object):
                         self.writer.add_histogram("evaluation/value_net/%s" % name, param.clone().cpu().data.numpy(), bbo_results['frame'], 'fd')
 
         print("End BBO evaluation")
-        try:
-            self.compare_pi_evaluate()
-        except:
-            pass
+        self.compare_pi_evaluate()
         try:
             self.mean_grad_and_divergence()
         except:
@@ -296,24 +293,27 @@ class Experiment(object):
         pi_best = np.load(os.path.join(path, 'best_observed.npy'))
         frame = np.load(os.path.join(path, 'frame.npy'))
 
-        min_val = min(min_val, min(pi_best)) - 0.0001
+        min_val = min(min_val, min(pi_best))
 
-        plt.subplot(111)
+        _, ax = plt.subplots()
 
         colors = consts.color
         #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
-        plt.loglog(frame_eval, (pi_eval - min_val)/(f0 - min_val), color=colors[1], label='reward_pi_evaluate')
-        plt.loglog(frame, (pi_best - min_val) / (f0 - min_val), color=colors[2], label='best_observed')
 
         for i, op in enumerate(optimizer_res['fmin']):
             res = optimizer_res[optimizer_res['fmin'] == op]
             op_eval = np.array(res['f'].values[0])
             op_eval = np.clip(op_eval, a_max=f0, a_min=-np.inf)
-            plt.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
+            ax.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
 
-        plt.legend()
-        plt.title('alg {} - dim = {} index = {} ----- best vs eval'.format(self.algorithm, self.action_space, self.iter_index))
-        plt.grid(True, which='both')
+        ax.loglog(frame_eval, (pi_eval - min_val)/(f0 - min_val), color=colors[1], label='reward_pi_evaluate')
+        ax.loglog(frame, (pi_best - min_val) / (f0 - min_val), color=colors[2], label='best_observed')
+
+        ax.legend()
+        ax.set_title('alg {} - dim = {} index = {} ----- best vs eval'.format(self.algorithm, self.action_space, self.iter_index))
+        ax.grid(True, which='both')
+
+        ax.set_ylim(bottom=1e-3)
 
         path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
         if not os.path.exists(path_dir_fig):
