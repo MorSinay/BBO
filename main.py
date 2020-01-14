@@ -11,6 +11,8 @@ import numpy as np
 from vae import VaeProblem, VAE
 from environment import EnvCoco, EnvVae, EnvOneD
 from collections import defaultdict
+import sys
+import traceback
 
 filter_mod = 15
 problems_to_run = range(0, 360, filter_mod)
@@ -112,7 +114,7 @@ def run_exp(env):
         try:
             divergence = exp.bbo()
         except Exception as e:
-            logger.info(e)
+            logger.info(traceback.format_exc())
     return divergence
 
 if __name__ == '__main__':

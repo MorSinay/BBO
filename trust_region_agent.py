@@ -75,7 +75,7 @@ class TrustRegionAgent(Agent):
 
         pi = self.results['policies'][-1]
         real_pi = self.pi_trust_region.unconstrained_to_real(pi)
-        dist_x = torch.norm(self.env.denormalize(real_pi.cpu().numpy()) - self.best_op_x, 2)
+        dist_x = torch.norm(torch.cuda.FloatTensor(self.env.denormalize(real_pi.cpu().numpy())) - self.best_op_x, 2)
         self.results['dist_x'] = dist_x.detach().item()
 
         lower, upper = self.pi_trust_region.bounderies()
