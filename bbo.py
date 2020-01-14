@@ -16,7 +16,7 @@ import os
 import copy
 
 import itertools
-
+import math
 
 class BBO(Algorithm):
 
@@ -26,14 +26,11 @@ class BBO(Algorithm):
         self.env = Env(self.problem_index)
         self.pi_0 = self.env.get_initial_policy()
 
-        if args.explore == 'grad_rand':
-            self.explore_func = self.explore_grad_rand
-        elif args.explore == 'grad_guided':
-            self.explore_func = self.explore_grad_guided
-        elif args.explore == 'grad_prop':
-            self.explore_func = self.explore_grad_prop
+        if args.explore == 'cone':
+            self.exploration = self.explore_cone
+
         elif args.explore == 'rand':
-            self.explore_func = self.explore_rand
+            self.exploration = self.explore_rand
         else:
             logger.info(f"explore: {args.explore}")
             raise NotImplementedError
@@ -242,11 +239,11 @@ class BBO(Algorithm):
 
     def explore_rand(self, n_explore):
 
-            pi = self.pi_net.detach().unsqueeze(0)
-            pi_explore = (1 - self.epsilon) * pi + self.epsilon * torch.cuda.FloatTensor(n_explore, self.action_space).normal_()
-            # pi_explore = torch.cuda.FloatTensor(n_explore, self.action_space).normal_()
+        pi = self.pi_net.pi.detach().clone().cpu()
+        rand_sign = (2 * torch.randint(0, 2, size=(n_explore, self.action_space)) - 1).reshape(n_explore, self.action_space)
+        pi_explore = pi + self.warmup_factor * self.epsilon * rand_sign * torch.rand(n_explore, self.action_space)
 
-            return pi_explore
+        return pi_explore
 
     def explore_grad_rand(self, n_explore):
 
@@ -260,30 +257,36 @@ class BBO(Algorithm):
 
         return pi_explore
 
-    def explore_grad_guided(self, n_explore):
+    def explore_cone(self, n_explore):
+        alpha = math.pi / self.cone_angle
+        n = n_explore - 1
+        pi, grad = self.get_grad(grad_step=False)
+        pi, grad = pi.cpu(), grad.cpu()
+        m = len(pi)
+        pi = pi.unsqueeze(0)
 
-        pi_array = self.get_n_grad_ahead(self.grad_steps)
-        n_explore = n_explore // self.grad_steps
+        x = torch.FloatTensor(n, m).normal_()
+        mag = torch.FloatTensor(n, 1).uniform_()
 
-        epsilon_array = 0.1 ** (3 - 2 * torch.arange(self.grad_steps, device=self.device, dtype=torch.float32)/(self.grad_steps - 1))
-        epsilon_array = epsilon_array.unsqueeze(1)
-        pi_explore = torch.cat([pi_array + epsilon_array * torch.cuda.FloatTensor(self.grad_steps, self.action_space).normal_()
-                                for _ in range(n_explore)])
+        x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
+        grad = grad / (torch.norm(grad) + 1e-8)
 
-        return pi_explore
+        cos = (x @ grad).unsqueeze(1)
 
-    def explore_grad_prop(self, n_explore):
-        pi_array = self.get_n_grad_ahead(self.grad_steps + 1)
-        n_explore = n_explore // self.grad_steps
+        dp = x - cos * grad.unsqueeze(0)
 
-        diff_pi = torch.norm(pi_array[1:] - pi_array[:-1], dim=1)
+        dp = dp / torch.norm(dp, dim=1, keepdim=True)
 
-        epsilon_array = diff_pi * 10 ** (torch.arange(self.grad_steps, device=self.device, dtype=torch.float32) / (self.grad_steps - 1))
-        epsilon_array = epsilon_array.unsqueeze(1)
-        pi_explore = torch.cat([pi_array[:-1] + epsilon_array * torch.cuda.FloatTensor(n_explore, self.action_space).normal_()
-                                for _ in range(n_explore)])
+        acos = torch.acos(torch.clamp(torch.abs(cos), 0, 1-1e-8))
 
-        return pi_explore
+        new_cos = torch.cos(acos * alpha / (math.pi / 2))
+        new_sin = torch.sin(acos * alpha / (math.pi / 2))
+
+        cone = new_sin * dp + new_cos * grad
+
+        explore = pi - self.epsilon * mag * cone
+
+        return torch.cat([pi, explore])
 
     def get_grad(self):
         if self.grad:

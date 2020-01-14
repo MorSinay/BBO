@@ -54,6 +54,56 @@ class GradNet(nn.Module):
         return x
 
 
+class RobustNormalizer(object):
+
+    def __init__(self, outlayer=0.1, delta=2, lr=0.1):
+        self.outlayer = outlayer
+        self.delta = delta
+        self.lr = lr
+        self.eps = 1e-5
+        self.squash_eps = 1e-9
+        self.m = None
+        self.n = None
+
+    def reset(self):
+        self.m = None
+        self.n = None
+
+    def desquash(self, x):
+
+        x_clamp = torch.clamp(x, min=-1 + self.squash_eps, max=1 - self.squash_eps)
+
+        atahn = 0.5 * (torch.log(1 + x_clamp) - torch.log(1 - x_clamp))
+
+        return atahn * (x >= 0).float() + x * (x < 0).float()
+
+    def squash(self, x):
+
+        x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
+        return x
+
+    def __call__(self, x, training=False):
+        if training:
+            n = len(x)
+            outlayer = int(n * self.outlayer + .5)
+
+            up = torch.kthvalue(x, n - outlayer, dim=0)[0]
+            mu = torch.median(x, dim=0)[0]
+
+            m = self.delta / (up - mu)
+            n = - m * mu
+
+            if self.m is None or self.n is None:
+                self.m = m
+                self.n = n
+            else:
+                self.m = (1 - self.lr) * self.m + self.lr * m
+                self.n = (1 - self.lr) * self.n + self.lr * n
+
+        else:
+            x = self.squash(x * self.m + self.n)
+            return x
+
 
 
 # ADD these classes in order to load pretrained model

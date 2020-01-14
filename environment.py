@@ -87,7 +87,7 @@ class Env(object):
                 self.landmark_target = landmark_target
                 self.image_target = torch.clamp(0.5 * image + 0.5, 0, 1)
 
-                self.attributes_target = (self.attributes(image) > 0.5).float()
+                self.attributes_target = (self.attributes(image) > 0.).float()
                 break
             ind += 1
 
@@ -108,7 +108,7 @@ class Env(object):
         # if y_hat.shape[0] == 1:
         #     y_hat = y_hat.squeeze(0)
 
-        return torch.sigmoid(y_hat)
+        return y_hat
 
     def landmarks(self, image):
 
@@ -145,7 +145,7 @@ class Env(object):
         r_disc = self.disc_loss(disc, torch.cuda.FloatTensor(len(disc)).fill_(1.)).detach()
         r_att = self.att_loss(attributes, self.attributes_target.repeat(len(attributes), 1)).detach().mean(1)
 
-        return -(r_landmark + r_disc + r_att)
+        return -(r_landmark * 100 + r_disc + r_att)
 
     def landmark_loss(self, landmarks):
 

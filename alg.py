@@ -38,6 +38,8 @@ class Algorithm(object):
         self.weight_decay = args.weight_decay
         self.warm_up = args.warm_up
         self.grad = args.grad
+        self.cone_angle = args.cone_angle
+        self.warmup_factor = args.warmup_factor
 
     def postprocess(self, sample):
 
