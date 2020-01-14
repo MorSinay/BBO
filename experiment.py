@@ -4,8 +4,6 @@ import sys
 import numpy as np
 import torch
 from tensorboardX import SummaryWriter
-from single_agent import BBOAgent
-from robust_agent import RobustAgent
 from trust_region_agent import TrustRegionAgent
 #from np_agent_temp import NPAgent
 from config import consts, args, DirsAndLocksSingleton
@@ -117,10 +115,6 @@ class Experiment(object):
         agent_type = args.agent
         if agent_type == 'trust':
             return TrustRegionAgent
-        elif agent_type == 'robust':
-            return RobustAgent
-        elif agent_type == 'single':
-            return BBOAgent
         else:
             raise NotImplementedError
 
@@ -141,9 +135,9 @@ class Experiment(object):
             elif self.algorithm == 'anchor':
                 logger.info("Statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'], bbo_results['value'], avg_reward, bbo_results['derivative_loss'], bbo_results['value_loss']))
             logger.info("Best observe      : |\t %.3f \t Pi_evaluate: = %.3f| \tBest_pi_evaluate: = %.3f" % (bbo_results['best_observed'], bbo_results['reward_pi_evaluate'][-1], bbo_results['best_pi_evaluate']))
-            logger.info("dist_x            : |\t %.3f \t\t dist_f: = %.3f|" % (bbo_results['dist_x'], bbo_results['dist_f']))
-            logger.info("trust_region      : |\t in_trust: = %d \t\t min_sigma: = %.3f" % (bbo_results['in_trust'], bbo_results['min_trust_sigma']))
-            logger.info("r_norm            : |\t mean: =%.3f \t\t |sigma: =%.3f" % (bbo_results['r_norm_mean'], bbo_results['r_norm_sigma']))
+            logger.info("dist_x            : |\t %.3f           \t\t |dist_f: = %.3f|" % (bbo_results['dist_x'], bbo_results['dist_f']))
+            logger.info("trust_region      : |\t in_trust: = %d \t\t |min_sigma: = %.3f \t\t |epsilon: = %.3f" % (bbo_results['in_trust'], bbo_results['min_trust_sigma'], bbo_results['epsilon']))
+            logger.info("r_norm            : |\t mean: =%.3f    \t\t |sigma: =%.3f" % (bbo_results['r_norm_mean'], bbo_results['r_norm_sigma']))
 
             if args.debug and self.algorithm in ['value', 'anchor']:
                 self.value_vs_f_eval(bbo_results['frame'])
@@ -175,11 +169,20 @@ class Experiment(object):
                         self.writer.add_histogram("evaluation/value_net/%s" % name, param.clone().cpu().data.numpy(), bbo_results['frame'], 'fd')
 
         print("End BBO evaluation")
-        self.compare_pi_evaluate()
-        self.mean_grad_and_divergence()
+        try:
+            self.compare_pi_evaluate()
+        except:
+            pass
+        try:
+            self.mean_grad_and_divergence()
+        except:
+            pass
 
-        if self.action_space == 2:
-            self.plot_2D_contour()
+        try:
+            if self.action_space == 2:
+                self.plot_2D_contour()
+        except:
+            pass
         return divergence
 
     def value_vs_f_eval(self, n):
@@ -262,19 +265,13 @@ class Experiment(object):
         res = np.load(path_res).item()
 
         x = 5*np.load(os.path.join(path, 'policies.npy'))
-        diver = np.load(os.path.join(path, 'divergence.npy'))
-        frame = np.load(os.path.join(path, 'frame.npy'))
         x_exp = 5*np.load(os.path.join(path, 'explore_policies.npy'))
-        f0 = np.load(os.path.join(path, 'f0.npy'))
 
         fig, ax = plt.subplots()
-        cs = ax.contour(res['x0'], res['x1'], res['z']/f0, 100)
+        cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
         colors = consts.color
         plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color=colors[0], markersize=1)
-        for i in range(diver.max()+1):
-            min_frame = frame[diver == i].min()
-            max_frame = frame[diver == i].max()
-            plt.plot(x[min_frame:max_frame, 0], x[min_frame:max_frame, 1], '-o', color=colors[i+1], markersize=1)
+        plt.plot(x[:, 0], x[:, 1], '-o', color=colors[1], markersize=1)
 
         plt.title('alg {} - 2D_Contour index {}'.format(self.algorithm, self.iter_index))
         fig.colorbar(cs)
@@ -342,13 +339,13 @@ class Experiment(object):
 
         for i in range(divergence.max()+1):
             index = (divergence == i)
-            plt.plot(frame[index], mean_grad[index], '-o', color=colors[i+1], markersize=1)
+            plt.plot(frame[index], mean_grad[index], '-o', color=colors[(i+1) % len(colors)], markersize=1)
 
         # plt.plot(frame), mean_grad, color=colors[0], label='mean_grad')
         # plt.plot(frame), divergence, color=colors[1], label='divergence')
 
         plt.title('alg {} - dim = {} index = {} ----- mean_grad vs divergence'.format(self.algorithm, self.action_space, self.iter_index))
-        plt.grid(True, which='both')
+        #plt.grid(True, which='both')
 
         path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
         if not os.path.exists(path_dir_fig):

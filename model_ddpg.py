@@ -5,9 +5,9 @@ import math
 from collections import defaultdict
 
 action_space = args.action_space
-layer = 256
+layer = 64
 delta = 10 # quantization levels / 2
-emb = 32 # embedding size
+emb = 8 # embedding size
 #parallel = 2 #int(layer / emb + .5)
 #emb2 = int(layer / action_space + .5) # embedding2 size
 
@@ -28,26 +28,102 @@ def init_weights(net, init='ortho'):
         net.param_count += sum([p.data.nelement() for p in module.parameters()])
 
 
+class RobustNormalizer2(object):
+
+    def __init__(self, outlayer=0.1, delta=2, lr=0.1):
+        self.outlayer = outlayer
+        self.delta = delta
+        self.lr = lr
+        self.eps = 1e-5
+        self.squash_eps = 1e-9
+        self.m = None
+        self.n = None
+        self.up = None
+        self.mu = None
+
+    def reset(self):
+        self.m = None
+        self.n = None
+
+    def desquash(self, x):
+        x_clamp = torch.clamp(x, min=-1 + self.squash_eps, max=1 - self.squash_eps)
+        atahn = 0.5 * (torch.log(1 + x_clamp) - torch.log(1 - x_clamp))
+        return atahn * (x >= 0).float() + x * (x < 0).float()
+
+    def squash(self, x):
+        x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
+        return x
+
+    def __call__(self, x, training=False):
+        if training:
+            n = len(x)
+            outlayer = int(n * self.outlayer + .5)
+
+            curr_up = torch.kthvalue(x, n - outlayer, dim=0)[0]
+            #curr_mu = torch.kthvalue(x, outlayer, dim=0)[0]
+            curr_mu = torch.median(x, dim=0)[0]
+
+            m = self.delta / (curr_up - curr_mu)
+            n = - m * curr_mu
+
+            if self.m is None or self.n is None:
+                self.m = m
+                self.n = n
+            else:
+                self.m = (1 - self.lr) * self.m + self.lr * m
+                self.n = (1 - self.lr) * self.n + self.lr * n
+
+            self.mu = -n / m
+            self.up = self.mu + self.delta / m
+
+        else:
+            x = self.squash(x * self.m + self.n)
+            return x
+
 class RobustNormalizer(object):
 
     def __init__(self, outlayer=0.1, delta=1, lr=0.1):
         self.outlayer = outlayer
         self.delta = delta
         self.lr = lr
-        self.squash = nn.Tanh()
+        self.temp_squash = nn.Tanh()
         self.eps = 1e-5
         self.squash_eps = 1e-9
         self.mu = None
         self.sigma = None
 
+        if args.trust_alg == 'relu':
+            self.squash = self.squash_relu
+            self.desquash = self.desquash_relu
+        elif args.trust_alg == 'tanh':
+            self.squash = self.squash_tanh
+            self.desquash = self.desquash_tanh
+
     def reset(self):
         self.mu = None
         self.sigma = None
 
-    def desquash(self, x):
+    def squash_tanh(self, x):
+        x = (x - self.mu) / (self.sigma + self.eps)
+        x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
+        return x
 
-        x = torch.clamp(x, -1 + self.squash_eps, 1 + self.squash_eps)
-        return 0.5 * (torch.log(1 + x) - torch.log(1 - x))
+    def desquash_tanh(self, x):
+        x_clamp = torch.clamp(x, -1 + self.squash_eps, 1 + self.squash_eps)
+        arc_tanh = 0.5 * (torch.log(1 + x_clamp) - torch.log(1 - x_clamp))
+        x = arc_tanh * (x >= 0).float() + x * (x < 0).float()
+        x = x * (self.sigma + self.eps) + self.mu
+        return x
+
+    def squash_relu(self, x):
+        x = (x - self.mu) / (self.sigma + self.eps)
+        x = 0.1 * x * (x >= 0).float() + x * (x < 0).float()
+        return x
+
+    def desquash_relu(self, x):
+        x = 10 * x * (x >= 0).float() + x * (x < 0).float()
+        x = x * (self.sigma + self.eps) + self.mu
+        return x
 
     def __call__(self, x, training=False):
         if training:
@@ -67,7 +143,7 @@ class RobustNormalizer(object):
                 self.sigma = (1 - self.lr) * self.sigma + self.lr * sigma
 
         else:
-            x = self.squash((x - self.mu) / (self.sigma + self.eps))
+            x = self.squash(x)
             return x
 
 class TrustRegion(object):
@@ -87,27 +163,20 @@ class TrustRegion(object):
 
     def squeeze(self, pi):
 
-        if not ((self.min_sigma - self.sigma).sum() + (self.mu - pi).sum()).item():
-            self.sigma = torch.min(2*self.sigma, torch.ones_like(self.mu))
-        else:
-            lower, upper = self.bounderies()
-            new_pi = torch.min(torch.max(pi, lower + self.min_sigma), upper - self.min_sigma)
-            #near the edge
-            if (new_pi == pi).all().item():
-                self.sigma = torch.max(self.trust_factor*self.sigma, self.min_sigma)
-            elif (pi < -1 + self.min_sigma).any().item() or (pi > 1 - self.min_sigma).any().item():
-                if (pi < -1 + self.min_sigma).any().item():
-                    index = (pi < -1 + self.min_sigma)
-                    self.sigma[index] = torch.max(self.trust_factor * self.sigma[index], self.min_sigma[index])
-                    self.min_sigma[index] = self.min_sigma[index]/2
-                if (pi > 1 - self.min_sigma).any().item():
-                    index = (pi > 1 - self.min_sigma)
-                    self.sigma[index] = torch.max(self.trust_factor * self.sigma[index], self.min_sigma[index])
-                    self.min_sigma[index] = self.min_sigma[index] / 2
+        for i in range(len(pi)):
+            if pi[i] < self.mu[i] + (1 - self.min_sigma[i]) * self.sigma[i] or pi[i] > self.mu[i] - (1 - self.min_sigma[i]) * self.sigma[i]:
+                self.sigma[i] = self.trust_factor * self.sigma[i]
+                #print("index {}: In trust region".format(i))
             else:
-                print("not in range - squeeze - sigma = {}".format(self.sigma))
+                assert (self.mu[i] - self.sigma[i] >= -1), "mu - sigma < -1"
+                assert (self.mu[i] + self.sigma[i] <= 1), "mu + sigma > 1"
+                if self.mu[i] - self.sigma[i] == -1 or self.mu[i] + self.sigma[i] == 1:
+                    self.sigma[i] = self.trust_factor * self.sigma[i]
+                    print("index {}: On global boundary".format(i))
+                else:
+                    print("index {}: On local boundary".format(i))
 
-            self.mu = pi
+        self.mu = pi
 
         a = torch.max(self.mu - self.sigma, -1 * torch.ones_like(self.mu))
         b = torch.min(self.mu + self.sigma, torch.ones_like(self.mu))

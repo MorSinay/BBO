@@ -315,6 +315,36 @@ class Agent(object):
 
         return torch.cat([pi, explore])
 
+    def cone_explore_with_rand(self, n_explore, angle):
+        alpha = math.pi
+        pi, grad = self.get_grad(grad_step=False)
+        pi, grad = pi.cpu(), grad.cpu()
+        m = len(pi)
+        pi = pi.unsqueeze(0)
+
+        x = torch.FloatTensor(n_explore, m).normal_()
+        mag = torch.FloatTensor(n_explore, 1).uniform_()
+
+        x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
+        grad = grad / (torch.norm(grad) + 1e-8)
+
+        cos = (x @ grad).unsqueeze(1)
+
+        dp = x - cos * grad.unsqueeze(0)
+
+        dp = dp / torch.norm(dp, dim=1, keepdim=True)
+
+        acos = torch.acos(torch.clamp(torch.abs(cos), 0, 1-1e-8))
+
+        new_cos = torch.cos(acos * alpha / (math.pi / 2))
+        new_sin = torch.sin(acos * alpha / (math.pi / 2))
+
+        cone = new_sin * dp + new_cos * grad
+
+        explore = pi - self.epsilon * mag * cone
+
+        return torch.cat([pi, explore])
+
     def get_grad(self, grad_step=False):
         self.pi_net.train()
         self.optimizer_pi.zero_grad()
@@ -361,12 +391,15 @@ class Agent(object):
 
     def pi_optimize(self):
 
-        _, grad = self.get_grad(grad_step=False)
+        grad_list = []
+        for _ in range(self.grad_steps):
+            _, grad = self.get_grad(grad_step=True)
+            grad_list.append(grad)
+
+        grads = torch.stack(grad_list)
+        grad = torch.norm(grads, dim=1).mean()
 
         if self.mean_grad is None:
-            self.mean_grad = torch.norm(grad)
+            self.mean_grad =grad
         else:
-            self.mean_grad = (1 - self.alpha) * self.mean_grad + self.alpha * torch.norm(grad)
-
-        for _ in range(self.grad_steps):
-            _, _ = self.get_grad(grad_step=True)
+            self.mean_grad = (1 - self.alpha) * self.mean_grad + self.alpha * grad

@@ -25,10 +25,6 @@ class TrustRegionAgent(Agent):
         self.stop_con = args.stop_con
         self.no_change = 0
 
-    def print_robust_norm_params(self):
-        if (self.frame % (self.printing_interval*self.n_explore)) == 0:
-            print("\n\nframe {} -- r_norm: mu {} sigma {}".format(self.frame, self.r_norm.mu, self.r_norm.sigma))
-
     def update_replay_buffer(self):
 
         #self.tensor_replay_reward = None
@@ -85,6 +81,9 @@ class TrustRegionAgent(Agent):
         lower, upper = self.pi_trust_region.bounderies()
         bst = self.best_op_x.cpu()/5
         in_trust = (bst == torch.min(torch.max(bst, lower), upper)).min().item()
+        for i in range(self.action_space):
+            print("index {}: lower bound={}\tupper bound={}\tx={}\tx*={}\tin_bound {}".format(i, lower[i], upper[i], real_pi[i], bst[i], bst[i]<=upper[i] and bst[i]>=lower[i]))
+
         self.results['in_trust'] = in_trust
 
         dist_f = self.results['reward_pi_evaluate'][-1] - self.best_op_f
@@ -103,6 +102,7 @@ class TrustRegionAgent(Agent):
         self.results['r_norm_sigma'] = self.r_norm.sigma.detach().item()
         self.results['min_trust_sigma'] = self.pi_trust_region.sigma.min().item()
         self.results['no_change'] = self.no_change
+        self.results['epsilon'] = self.epsilon
 
         self.save_results()
 
@@ -195,7 +195,7 @@ class TrustRegionAgent(Agent):
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
                 break
 
-            if counter > self.stop_con and self.no_change > self.stop_con:
+            elif counter > self.stop_con and self.no_change > self.stop_con:
                 counter = 0
                 self.divergence += 1
                 self.save_checkpoint(self.checkpoint, {'n': self.frame})
@@ -203,13 +203,13 @@ class TrustRegionAgent(Agent):
                 self.update_best_pi()
                 self.warmup()
 
-            if self.frame >= self.budget:
+            elif self.frame >= self.budget:
                 self.save_and_print_results()
                 yield self.results
                 print("FAILED frame = {}".format(self.frame))
                 break
 
-            if (self.frame % (self.printing_interval * self.n_explore)) == 0:
+            elif (self.frame % (self.printing_interval * self.n_explore)) == 0:
                 self.save_and_print_results()
                 yield self.results
                 self.reset_result()

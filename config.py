@@ -31,7 +31,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 
 parser.add_argument('--batch', type=int, default=1024, help='Mini-Batch Size')
-parser.add_argument('--n-explore', type=int, default=64, help='exploration')
+parser.add_argument('--n-explore', type=int, default=128, help='exploration')
 
 # strings
 parser.add_argument('--game', type=str, default='bbo', help='bbo | net')
@@ -52,18 +52,18 @@ boolean_feature("tensorboard", False, "Log results to tensorboard")
 boolean_feature('importance-sampling', False, "Derivative eval")
 parser.add_argument('--grad-clip', type=float, default=0, help='grad clipping')
 parser.add_argument('--vae', type=str, default='uniform', help='gaussian | uniform')
-parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
+parser.add_argument('--budget', type=int, default=150000, help='Number of steps')
 # parameters
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment')
 
 # #exploration parameters
-parser.add_argument('--epsilon', type=float, default=0.1, help='exploration parameter before behavioral period')
-parser.add_argument('--cone-angle', type=float, default=2, help='cone angle - default pi/4')
+parser.add_argument('--epsilon', type=float, default=0.2, help='exploration parameter before behavioral period')
+parser.add_argument('--cone-angle', type=float, default=1, help='cone angle - default pi/4')
 parser.add_argument('--norm', type=str, default='robust_scaler', help='normalization option - min_max | mean | mean_std')
 parser.add_argument('--explore', type=str, default='cone', help='exploration option - grad_rand | grad_direct | rand')
 boolean_feature("best-explore-update", False, 'move to the best value of exploration')
 parser.add_argument('--grad-steps', type=int, default=1, help='Gradient step')
-parser.add_argument('--stop-con', type=int, default=100, help='Stopping Condition')
+parser.add_argument('--stop-con', type=int, default=80, help='Stopping Condition')
 parser.add_argument('--agent', type=str, default='trust', help='Agent type - trust|robust|single')
 
 #
@@ -72,16 +72,18 @@ parser.add_argument('--cpu-workers', type=int, default=24, help='How many CPUs w
 parser.add_argument('--cuda-default', type=int, default=0, help='Default GPU')
 #
 # #train parameters
-parser.add_argument('--printing-interval', type=int, default=20, help='Number of exploration steps between printing results')
+parser.add_argument('--printing-interval', type=int, default=50, help='Number of exploration steps between printing results')
 parser.add_argument('--replay-updates-interval', type=int, default=50, help='Number of training iterations between q-target updates')
 parser.add_argument('--replay-memory-factor', type=int, default=512, help='Replay factor')
 parser.add_argument('--warmup-minibatch', type=int, default=5, help='Warm up batches')
-parser.add_argument('--warmup-factor', type=int, default=2, help='Warm up factor')
-parser.add_argument('--trust-factor', type=float, default=0.75, help='Warm up factor')
-parser.add_argument('--epsilon-factor', type=float, default=1, help='Epsilon factor')
-parser.add_argument('--learn-iteration', type=int, default=40, help='Learning iteration')
+parser.add_argument('--warmup-factor', type=int, default=1, help='Warm up factor')
+parser.add_argument('--trust-factor', type=float, default=0.9, help='Warm up factor')
+parser.add_argument('--trust-alg', type=str, default='relu', help='relu | tanh')
+parser.add_argument('--epsilon-factor', type=float, default=0.9, help='Epsilon factor')
+parser.add_argument('--learn-iteration', type=int, default=60, help='Learning iteration')
 parser.add_argument('--alpha', type=float, default=0.1, help='moving avg factor')
 parser.add_argument('--loss', type=str, default='mse', help='derivative loss huber|mse')
+parser.add_argument('--start', type=int, default=0, help='')
 
 
 #
