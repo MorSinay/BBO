@@ -109,12 +109,12 @@ def main():
 
 def run_exp(env):
     divergence = 0
-    with Experiment(logger.filename, env) as exp:
-        logger.info("BBO Session with NEURAL NET, it might take a while")
-        try:
-            divergence = exp.bbo()
-        except Exception as e:
-            logger.info(traceback.format_exc())
+    exp = Experiment(logger.filename, env)
+    logger.info("BBO Session with NEURAL NET, it might take a while")
+    try:
+        divergence = exp.bbo()
+    except Exception as e:
+        logger.info(traceback.format_exc())
     return divergence
 
 if __name__ == '__main__':

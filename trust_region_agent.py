@@ -61,6 +61,8 @@ class TrustRegionAgent(Agent):
 
         self.results['explore_policies'].append(self.pi_trust_region.unconstrained_to_real(explore_policies_rand))
         self.results['rewards'].append(rewards_rand)
+        self.r_norm(rewards_rand, training=True)
+        self.results['norm_rewards'].append(self.r_norm(rewards_rand, training=False))
 
         explore_policies = torch.cat([explore_policies_from_buf, explore_policies_rand])
         rewards = torch.cat([rewards_from_buf, rewards_rand])
@@ -78,24 +80,24 @@ class TrustRegionAgent(Agent):
         self.results['frame'] = self.frame
         self.results['best_observed'] = self.env.best_observed
         self.results['best_pi_evaluate'] = self.best_pi_evaluate
+        self.results['best_reward'] = self.best_reward
         _, grad = self.get_grad()
         grad = grad.cpu().numpy().reshape(1, -1)
         self.results['grad'] = grad
 
         pi = self.results['policies'][-1]
         real_pi = self.pi_trust_region.unconstrained_to_real(pi)
-        dist_x = torch.norm(torch.cuda.FloatTensor(self.env.denormalize(real_pi.cpu().numpy())) - self.best_op_x, 2)
+        dist_x = torch.norm(real_pi - self.best_op_x, 2)
         self.results['dist_x'] = dist_x.detach().item()
 
         lower, upper = self.pi_trust_region.bounderies()
-        bst = self.best_op_x/5
-        in_trust = (bst == torch.min(torch.max(bst, lower), upper)).min().item()
+        in_trust = (self.best_op_x == torch.min(torch.max(self.best_op_x, lower), upper)).all().item()
         # for i in range(self.action_space):
         #     print("index {}: lower bound={}\tupper bound={}\tx={}\tx*={}\tin_bound {}".format(i, lower[i], upper[i], real_pi[i], bst[i], bst[i]<=upper[i] and bst[i]>=lower[i]))
 
         self.results['in_trust'] = in_trust
 
-        dist_f = self.results['reward_pi_evaluate'][-1] - self.best_op_f
+        dist_f = self.best_reward - self.best_op_f
         self.results['dist_f'] = dist_f
 
         if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
@@ -120,7 +122,7 @@ class TrustRegionAgent(Agent):
             path = os.path.join(self.analysis_dir, k + '.npy')
             data_np = np.array([])
             if os.path.exists(path):
-                data_np = np.load(path)
+                data_np = np.load(path, allow_pickle=True)
 
             if k in ['explore_policies']:
                 policy = (torch.cat(self.results[k], dim=0)).cpu().numpy()
@@ -137,7 +139,7 @@ class TrustRegionAgent(Agent):
                 if len(data_np):
                     rewards = np.concatenate([data_np, rewards])
                 np.save(path, rewards)
-            elif k in ['rewards']:
+            elif k in ['rewards', 'norm_rewards']:
                 rewards = torch.cat(self.results[k]).cpu().numpy()
                 if len(data_np):
                     rewards = np.hstack([data_np, rewards])
@@ -165,13 +167,11 @@ class TrustRegionAgent(Agent):
         self.reset_net()
         self.r_norm.reset()
         self.update_replay_buffer()
-        self.r_norm(self.tensor_replay_reward, training=True)
         self.value_optimize(self.value_iter)
 
     def save_and_print_results(self):
         self.save_checkpoint(self.checkpoint, {'n': self.frame})
         self.results_pi_update_with_explore()
-
 
     def minimize(self):
         counter = -1
@@ -182,14 +182,17 @@ class TrustRegionAgent(Agent):
             pi_explore, reward = self.exploration_step()
             self.results['explore_policies'].append(self.pi_trust_region.unconstrained_to_real(pi_explore))
             self.results['rewards'].append(reward)
-
-            self.value_optimize(self.value_iter)
-            self.pi_optimize()
+            self.results['norm_rewards'].append(self.r_norm(reward, training=False))
 
             pi = self.pi_net.pi.detach()
             pi_eval = self.step_policy(pi, to_env=False)
             self.results['reward_pi_evaluate'].append(pi_eval)
             self.results['frame_pi_evaluate'].append(self.frame)
+            real_pi = self.pi_trust_region.unconstrained_to_real(pi)
+            self.results['policies'].append(real_pi)
+
+            self.value_optimize(self.value_iter)
+            self.pi_optimize()
 
             if pi_eval < self.best_pi_evaluate:
                 self.no_change = 0
@@ -199,15 +202,7 @@ class TrustRegionAgent(Agent):
 
             if pi_eval < self.best_reward:
                 self.best_reward = pi_eval
-                self.best_pi = self.pi_trust_region.unconstrained_to_real(self.pi_net.pi.detach().clone())
-
-            real_pi = self.pi_trust_region.unconstrained_to_real(pi)
-            self.results['policies'].append(real_pi)
-
-            if (i+1) % self.printing_interval == 0:
-                self.save_and_print_results()
-                yield self.results
-                self.reset_result()
+                self.best_pi = real_pi
 
             if self.env.t or (self.env.best_observed - self.best_op_f) < -1:
                 self.save_and_print_results()
@@ -225,13 +220,35 @@ class TrustRegionAgent(Agent):
                 counter = 0
                 self.divergence += 1
                 self.update_best_pi()
+                self.save_and_print_results()
+                yield self.results
+                self.reset_result()
                 self.warmup()
+
+            elif (i+1) % self.printing_interval == 0:
+                self.save_and_print_results()
+                yield self.results
+                self.reset_result()
 
     def update_best_pi(self):
         pi = self.best_pi.detach().clone()
         self.pi_trust_region.squeeze(pi)
         self.epsilon *= self.epsilon_factor
         self.pi_net.pi_update(self.pi_trust_region.real_to_unconstrained(pi))
+
+    def pi_optimize(self):
+
+        _, grad = self.get_grad(grad_step=True)
+
+        pi_eval = torch.cuda.FloatTensor([self.results['reward_pi_evaluate'][-1]])
+        real_pi = self.results['policies'][-1]
+        norm_factor = self.r_norm.squash_derivative(pi_eval)*self.pi_trust_region.derivative_unconstrained(self.pi_trust_region.real_to_unconstrained(real_pi))
+
+        grad_norm = torch.norm(grad / norm_factor)
+        if self.mean_grad is None:
+            self.mean_grad = grad_norm
+        else:
+            self.mean_grad = (1 - self.alpha) * self.mean_grad + self.alpha * grad_norm
 
     def value_optimize(self, value_iter):
 
@@ -304,7 +321,7 @@ class TrustRegionAgent(Agent):
 
                 self.optimizer_value.zero_grad()
                 self.optimizer_pi.zero_grad()
-                q_value = self.value_net(pi_explore).view(-1)
+                q_value = self.value_net(pi_explore).flatten()
                 if self.spline:
                     loss_q = self.q_loss(q_value, r).sum()
                 else:

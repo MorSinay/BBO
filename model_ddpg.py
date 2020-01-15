@@ -27,59 +27,6 @@ def init_weights(net, init='ortho'):
 
         net.param_count += sum([p.data.nelement() for p in module.parameters()])
 
-
-class RobustNormalizer2(object):
-
-    def __init__(self, outlayer=0.1, delta=2, lr=0.1):
-        self.outlayer = outlayer
-        self.delta = delta
-        self.lr = lr
-        self.eps = 1e-5
-        self.squash_eps = 1e-9
-        self.m = None
-        self.n = None
-        self.up = None
-        self.mu = None
-
-    def reset(self):
-        self.m = None
-        self.n = None
-
-    def desquash(self, x):
-        x_clamp = torch.clamp(x, min=-1 + self.squash_eps, max=1 - self.squash_eps)
-        atahn = 0.5 * (torch.log(1 + x_clamp) - torch.log(1 - x_clamp))
-        return atahn * (x >= 0).float() + x * (x < 0).float()
-
-    def squash(self, x):
-        x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
-        return x
-
-    def __call__(self, x, training=False):
-        if training:
-            n = len(x)
-            outlayer = int(n * self.outlayer + .5)
-
-            curr_up = torch.kthvalue(x, n - outlayer, dim=0)[0]
-            #curr_mu = torch.kthvalue(x, outlayer, dim=0)[0]
-            curr_mu = torch.median(x, dim=0)[0]
-
-            m = self.delta / (curr_up - curr_mu)
-            n = - m * curr_mu
-
-            if self.m is None or self.n is None:
-                self.m = m
-                self.n = n
-            else:
-                self.m = (1 - self.lr) * self.m + self.lr * m
-                self.n = (1 - self.lr) * self.n + self.lr * n
-
-            self.mu = -n / m
-            self.up = self.mu + self.delta / m
-
-        else:
-            x = self.squash(x * self.m + self.n)
-            return x
-
 class RobustNormalizer(object):
 
     def __init__(self, outlayer=0.1, delta=1, lr=0.1):
@@ -96,9 +43,11 @@ class RobustNormalizer(object):
         if args.trust_alg == 'relu':
             self.squash = self.squash_relu
             self.desquash = self.desquash_relu
+            self.squash_derivative = self.squash_derivative_relu
         elif args.trust_alg == 'tanh':
             self.squash = self.squash_tanh
             self.desquash = self.desquash_tanh
+            self.squash_derivative = self.squash_derivative_tanh
 
     def reset(self):
         self.mu = None
@@ -107,6 +56,10 @@ class RobustNormalizer(object):
     def squash_tanh(self, x):
         x = (x - self.mu) / (self.sigma + self.eps)
         x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
+        return x
+
+    def squash_derivative_tanh(self, x):
+        x = (1 - torch.tanh(x)**2) * (x >= 0).float() + 1 * (x < 0).float()
         return x
 
     def desquash_tanh(self, x):
@@ -119,6 +72,10 @@ class RobustNormalizer(object):
     def squash_relu(self, x):
         x = (x - self.mu) / (self.sigma + self.eps)
         x = (self.alpha * x + 1 - self.alpha) * (x >= 1).float() + x * (x < 1).float()
+        return x
+
+    def squash_derivative_relu(self, x):
+        x = self.alpha * (x >= 0).float() + 1 * (x < 0).float()
         return x
 
     def desquash_relu(self, x):
@@ -199,6 +156,12 @@ class TrustRegion(object):
         x = x.view(s)
         return x
 
+    def derivative_unconstrained(self, x):
+        s = x.shape
+        x = self.sigma*(1 - self.pi_net(x)**2)
+        x = x.view(s)
+        return x
+
 class MultipleOptimizer:
     def __init__(self, *op):
         self.optimizers = op
@@ -230,9 +193,11 @@ class SplineNet(nn.Module):
         self.output = output
 
     def forward(self, x, normalize=True):
-        x = x.view(-1, self.output)
+        x = x.view(-1, action_space)
         if normalize:
             x = self.pi_net(x)
+
+        x = torch.clamp(x, max=1-1e-3)
         # x_emb, x_emb2 = self.embedding(x)
         # x = self.head(x, x_emb, x_emb2)
 
@@ -474,6 +439,9 @@ class PiNet(nn.Module):
     def inverse(self,  policy):
         policy = torch.clamp(policy, min=-1 + 1e-3, max=1 - 1e-3)
         return 0.5 * (torch.log(1 + policy) - torch.log(1 - policy))
+
+    def inverse_derivative(self,  policy):
+        return 0.5 / (1 + policy) - 1 / (1 - policy)
 
     def forward(self, pi=None):
         if pi is None:

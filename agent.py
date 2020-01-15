@@ -25,7 +25,7 @@ class Agent(object):
         self.dirs_locks = DirsAndLocksSingleton(exp_name)
 
         self.best_op_x, self.best_op_f = get_best_solution(self.action_space, self.env.problem_iter)
-        self.best_op_x = torch.FloatTensor(self.best_op_x).to(self.device)
+        self.best_op_x = torch.FloatTensor(self.best_op_x/5).to(self.device)
 
         self.batch = args.batch
         self.max_batch = args.batch
@@ -36,7 +36,6 @@ class Agent(object):
         self.budget = args.budget
         self.checkpoint = checkpoint
         self.algorithm_method = args.algorithm
-        self.grad_steps = args.grad_steps
         self.stop_con = args.stop_con*self.n_explore
         self.grad_clip = args.grad_clip
         self.divergence = 0
@@ -342,18 +341,3 @@ class Agent(object):
         pi = self.pi_net.pi.detach().clone()
         grad = self.pi_net.pi.grad.detach().clone()
         return pi, grad
-
-    def pi_optimize(self):
-
-        grad_list = []
-        for _ in range(self.grad_steps):
-            _, grad = self.get_grad(grad_step=True)
-            grad_list.append(grad)
-
-        grads = torch.stack(grad_list)
-        grad = torch.norm(grads, dim=1).mean()
-
-        if self.mean_grad is None:
-            self.mean_grad =grad
-        else:
-            self.mean_grad = (1 - self.alpha) * self.mean_grad + self.alpha * grad

@@ -462,7 +462,7 @@ def avg_dim_best_observed(dim, save_file, prefix, with_op=False):
 
         for key, path in compare_dirs.items():
             try:
-                pi_best = np.load(os.path.join(path, index, 'best_list_with_explore.npy'))
+                pi_best = np.load(os.path.join(path, index, 'best_list_with_explore.npy'),  allow_pickle=True)
                 #pi_best = np.load(os.path.join(path, index, 'best_observed.npy'))
                 pi_best = (pi_best - min_val) / f0
             except:
@@ -512,7 +512,7 @@ def avg_dim_dist_from_best_x(dim, save_file, prefix):
     for index in indexes:
         for key, path in compare_dirs.items():
             try:
-                dist_x = np.load(os.path.join(path, index, 'dist_x.npy'))
+                dist_x = np.load(os.path.join(path, index, 'dist_x.npy'), allow_pickle=True)
             except:
                 continue
 
@@ -632,8 +632,8 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
     for i, key in enumerate(compare_dirs.keys()):
         path = compare_dirs[key]
         try:
-            pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'))
-            pi_best = np.load(os.path.join(path, 'best_observed.npy'))
+            pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'), allow_pickle=True)
+            pi_best = np.load(os.path.join(path, 'best_observed.npy'), allow_pickle=True)
 
             bbo_min_val = min(bbo_min_val, pi_best.min())
             min_val = min(min_val, bbo_min_val)
@@ -646,8 +646,8 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
     for i, key in enumerate(compare_dirs.keys()):
         path = compare_dirs[key]
         try:
-            pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'))
-            pi_best = np.load(os.path.join(path, 'best_observed.npy'))
+            pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'), allow_pickle=True)
+            pi_best = np.load(os.path.join(path, 'best_observed.npy'), allow_pickle=True)
 
             ax1.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[i], label=key)
             ax2.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[i])
@@ -686,25 +686,15 @@ if __name__ == '__main__':
 
 
     #optimizers = ['first_order_clip0', 'first_order_clip1', 'first_order_clip1_cone1']
-    optimizers = ['first_order_mor_2']
-    #dims = [1, 2, 3, 5, 10, 20, 40]
-    dims = [40]
+    optimizers = ['first_order_13_1']
+    dims = [1, 2, 3, 5, 10, 20, 40]
+    #dims = [40]
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     #merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 
     bbo_evaluate_compare(dim=40, index=15, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=30, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=45, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=90, prefix='RUN')
     bbo_evaluate_compare(dim=40, index=105, prefix='RUN')
     bbo_evaluate_compare(dim=40, index=120, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=135, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=150, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=175, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=180, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=210, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=240, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=345, prefix='RUN')
     #
 
     dims = [40]
@@ -726,4 +716,3 @@ if __name__ == '__main__':
     # dim = 1
     # for i in tqdm(range(0, 360, filter_mod)):
     #     compare_problem_baseline(dim, i, budget=150000)
-

@@ -191,10 +191,10 @@ def plot_2D(problem_index, path, save_fig=False):
 
     path_dir = os.path.join(base_dir, 'f_eval', '2D')
     path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(problem_index))
-    res = np.load(path_res)
+    res = np.load(path_res, allow_pickle=True)
 
-    x = np.load(os.path.join(path, str(problem_index), 'policies.npy'))
-    x_exp = np.load(os.path.join(path, str(problem_index), 'explore_policies.npy')).reshape(-1, 2)
+    x = np.load(os.path.join(path, str(problem_index), 'policies.npy'), allow_pickle=True)
+    x_exp = np.load(os.path.join(path, str(problem_index), 'explore_policies.npy'), allow_pickle=True).reshape(-1, 2)
 
     if dim != 784:
         x *= 5
@@ -233,10 +233,10 @@ def plot_2D_contour(problem_index, path, save_fig=False):
 
     path_dir = os.path.join(base_dir, 'f_eval', '2D_Contour')
     path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(problem_index))
-    res = np.load(path_res).item()
+    res = np.load(path_res, allow_pickle=True).item()
 
-    x = np.load(os.path.join(path, str(problem_index), 'policies.npy'))
-    x_exp = np.load(os.path.join(path, str(problem_index), 'explore_policies.npy')).reshape(-1,2)[120:]
+    x = np.load(os.path.join(path, str(problem_index), 'policies.npy'), allow_pickle=True)
+    x_exp = np.load(os.path.join(path, str(problem_index), 'explore_policies.npy'), allow_pickle=True).reshape(-1,2)[120:]
 
     fig, ax = plt.subplots()
     cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
@@ -266,7 +266,7 @@ def plot_2D_contour_tmp(problem_index, save_fig=False):
 
     path_dir = os.path.join(base_dir, 'f_eval', '2D_Contour')
     path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(problem_index))
-    res = np.load(path_res).item()
+    res = np.load(path_res, allow_pickle=True).item()
 
     fig, ax = plt.subplots()
     cs = ax.contour(res['x0'], res['x1'], res['z'], 100)

@@ -129,15 +129,15 @@ class Experiment(object):
             logger.info("---------------- frame: {} - Problem ID :{} ---------------".format(bbo_results['frame'], self.problem_id))
             logger.info("Problem iter index     :{}\t\tDim: {}\t\tDivergence: {} \t\tno_change: = {}".format(self.iter_index, self.action_space, bbo_results['divergence'], bbo_results['no_change']))
             if self.algorithm in ['first_order', 'second_order']:
-                logger.info("Statistics: |\t mean_grad = %.3f \t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['mean_grad'], bbo_results['grad_norm'], avg_reward, bbo_results['derivative_loss']))
+                logger.info("Statistics: mean_grad = %.3f \t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['mean_grad'], bbo_results['grad_norm'], avg_reward, bbo_results['derivative_loss']))
             elif self.algorithm == ['value']:
-                logger.info("Statistics: |\t value = %.3f \t reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'], avg_reward, bbo_results['value_loss']))
+                logger.info("Statistics: value = %.3f \t reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'], avg_reward, bbo_results['value_loss']))
             elif self.algorithm == 'anchor':
-                logger.info("Statistics: |\t grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'], bbo_results['value'], avg_reward, bbo_results['derivative_loss'], bbo_results['value_loss']))
-            logger.info("Best observe      : |\t %.3f \t Pi_evaluate: = %.3f| \tBest_pi_evaluate: = %.3f" % (bbo_results['best_observed'], bbo_results['reward_pi_evaluate'][-1], bbo_results['best_pi_evaluate']))
-            logger.info("dist_x            : |\t %.3f           \t\t |dist_f: = %.3f|" % (bbo_results['dist_x'], bbo_results['dist_f']))
-            logger.info("trust_region      : |\t in_trust: = %d \t\t |min_sigma: = %.3f \t\t |epsilon: = %.3f" % (bbo_results['in_trust'], bbo_results['min_trust_sigma'], bbo_results['epsilon']))
-            logger.info("r_norm            : |\t mean: =%.3f    \t\t |sigma: =%.3f" % (bbo_results['r_norm_mean'], bbo_results['r_norm_sigma']))
+                logger.info("Statistics: grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'], bbo_results['value'], avg_reward, bbo_results['derivative_loss'], bbo_results['value_loss']))
+            logger.info("Best observe  : %.3f \t Pi_evaluate: = %.3f| \tBest_pi_evaluate: = %.3f| \t best_reward: = %.3f" % (bbo_results['best_observed'], bbo_results['reward_pi_evaluate'][-1], bbo_results['best_pi_evaluate'], bbo_results['best_reward']))
+            logger.info("dist_x        : %.3f           \t\t |dist_f: = %.3f|" % (bbo_results['dist_x'], bbo_results['dist_f']))
+            logger.info("trust_region  : in_trust: = %d \t\t |min_sigma: = %.3f \t\t |epsilon: = %.3f" % (bbo_results['in_trust'], bbo_results['min_trust_sigma'], bbo_results['epsilon']))
+            logger.info("r_norm        : mean: =%.3f    \t\t |sigma: =%.3f" % (bbo_results['r_norm_mean'], bbo_results['r_norm_sigma']))
 
             if args.debug and self.algorithm in ['value', 'anchor']:
                 self.value_vs_f_eval(bbo_results['frame'])
@@ -170,10 +170,8 @@ class Experiment(object):
 
         print("End BBO evaluation")
         self.compare_pi_evaluate()
-        try:
-            self.mean_grad_and_divergence()
-        except:
-            pass
+        self.mean_grad_and_divergence()
+        self.r_norm_vs_divergence()
 
         try:
             if self.action_space == 2:
@@ -259,10 +257,10 @@ class Experiment(object):
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
         path_dir = os.path.join(consts.baseline_dir, 'f_eval', '2D_Contour')
         path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(self.iter_index))
-        res = np.load(path_res).item()
+        res = np.load(path_res, allow_pickle=True).item()
 
-        x = 5*np.load(os.path.join(path, 'policies.npy'))
-        x_exp = 5*np.load(os.path.join(path, 'explore_policies.npy'))
+        x = 5*np.load(os.path.join(path, 'policies.npy'), allow_pickle=True)
+        x_exp = 5*np.load(os.path.join(path, 'explore_policies.npy'), allow_pickle=True)
 
         fig, ax = plt.subplots()
         cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
@@ -288,10 +286,10 @@ class Experiment(object):
         f0 = optimizer_res['f0'][0]
 
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
-        pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'))
-        frame_eval = np.load(os.path.join(path, 'frame_pi_evaluate.npy'))
-        pi_best = np.load(os.path.join(path, 'best_observed.npy'))
-        frame = np.load(os.path.join(path, 'frame.npy'))
+        pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'), allow_pickle=True)
+        frame_eval = np.load(os.path.join(path, 'frame_pi_evaluate.npy'), allow_pickle=True)
+        pi_best = np.load(os.path.join(path, 'best_observed.npy'), allow_pickle=True)
+        frame = np.load(os.path.join(path, 'frame.npy'), allow_pickle=True)
 
         min_val = min(min_val, min(pi_best))
 
@@ -326,26 +324,19 @@ class Experiment(object):
 
     def mean_grad_and_divergence(self):
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
-        mean_grad = np.load(os.path.join(path, 'mean_grad.npy'))
-        divergence = np.load(os.path.join(path, 'divergence.npy'))
-        frame = np.load(os.path.join(path, 'frame.npy'))
-
-        # divergence = divergence[1:] - divergence[:-1]
-        # mean_grad = mean_grad[1:]
+        mean_grad = np.load(os.path.join(path, 'mean_grad.npy'), allow_pickle=True)
+        divergence = np.load(os.path.join(path, 'divergence.npy'), allow_pickle=True)
+        frame = np.load(os.path.join(path, 'frame.npy'), allow_pickle=True)
 
         plt.subplot(111)
 
         colors = consts.color
 
-        for i in range(divergence.max()+1):
+        for i in set(divergence):
             index = (divergence == i)
             plt.plot(frame[index], mean_grad[index], '-o', color=colors[(i+1) % len(colors)], markersize=1)
 
-        # plt.plot(frame), mean_grad, color=colors[0], label='mean_grad')
-        # plt.plot(frame), divergence, color=colors[1], label='divergence')
-
         plt.title('alg {} - dim = {} index = {} ----- mean_grad vs divergence'.format(self.algorithm, self.action_space, self.iter_index))
-        #plt.grid(True, which='both')
 
         path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
         if not os.path.exists(path_dir_fig):
@@ -356,14 +347,30 @@ class Experiment(object):
 
         plt.close()
 
-    # def get_min_f0_val(self):
-    #     if self.action_space == 1:
-    #         min_val = 0
-    #         f0 = 1
-    #     else:
-    #         min_df = pd.read_csv(os.path.join(consts.baseline_dir, 'min_val.csv'))
-    #         tmp_df = min_df[(min_df.dim == self.action_space) & (min_df.iter_index == self.iter_index)]
-    #
-    #         min_val = float(tmp_df.min_val)
-    #         f0 = float(tmp_df.f0)
-    #     return min_val, f0
+
+    def r_norm_vs_divergence(self):
+        path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
+        norm_rewards = np.load(os.path.join(path, 'norm_rewards.npy'), allow_pickle=True)
+        divergence = np.load(os.path.join(path, 'divergence.npy'), allow_pickle=True)
+        frame = np.load(os.path.join(path, 'frame.npy'), allow_pickle=True)
+
+        plt.subplot(111)
+
+        colors = consts.color
+
+        min = 0
+        for i in set(divergence):
+            max = frame[divergence == i].max()
+            plt.plot(np.arange(min, max, 1), norm_rewards[min:max], '-o', color=colors[(i+1) % len(colors)], markersize=1)
+            min = max+1
+
+        plt.title('alg {} - dim = {} index = {} ----- r_norm vs divergence'.format(self.algorithm, self.action_space, self.iter_index))
+
+        path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
+        if not os.path.exists(path_dir_fig):
+            os.makedirs(path_dir_fig)
+
+        path_fig = os.path.join(path_dir_fig, 'r_norm vs divergence - dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
+        plt.savefig(path_fig)
+
+        plt.close()

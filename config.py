@@ -62,7 +62,6 @@ parser.add_argument('--cone-angle', type=float, default=3, help='cone angle - de
 parser.add_argument('--norm', type=str, default='robust_scaler', help='normalization option - min_max | mean | mean_std')
 parser.add_argument('--explore', type=str, default='cone', help='exploration option - cone | rand')
 boolean_feature("best-explore-update", True, 'move to the best value of exploration')
-parser.add_argument('--grad-steps', type=int, default=1, help='Gradient step')
 parser.add_argument('--stop-con', type=int, default=40, help='Stopping Condition')
 parser.add_argument('--agent', type=str, default='trust', help='Agent type - trust|robust|single')
 
@@ -81,7 +80,7 @@ parser.add_argument('--trust-factor', type=float, default=0.9, help='Warm up fac
 parser.add_argument('--trust-alg', type=str, default='relu', help='relu | tanh')
 parser.add_argument('--epsilon-factor', type=float, default=0.9, help='Epsilon factor')
 parser.add_argument('--learn-iteration', type=int, default=60, help='Learning iteration')
-parser.add_argument('--alpha', type=float, default=0.1, help='moving avg factor')
+parser.add_argument('--alpha', type=float, default=0.5, help='moving avg factor')
 parser.add_argument('--loss', type=str, default='huber', help='derivative loss huber|mse')
 parser.add_argument('--start', type=int, default=0, help='')
 
