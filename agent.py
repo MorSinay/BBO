@@ -25,7 +25,7 @@ class Agent(object):
         self.dirs_locks = DirsAndLocksSingleton(exp_name)
 
         self.best_op_x, self.best_op_f = get_best_solution(self.action_space, self.env.problem_iter)
-        self.best_op_x = torch.cuda.FloatTensor(self.best_op_x)
+        self.best_op_x = torch.FloatTensor(self.best_op_x).to(self.device)
 
         self.batch = args.batch
         self.max_batch = args.batch
@@ -258,9 +258,9 @@ class Agent(object):
 
     def exploration_rand(self, n_explore):
         pi = self.pi_net.pi.detach().clone()
-        rand_sign = (2*torch.randint(0, 2 ,size=(n_explore, self.action_space), device=self.device)-1).reshape(n_explore, self.action_space)
-        pi_explore = pi + self.warmup_factor*self.epsilon * rand_sign * torch.cuda.FloatTensor(n_explore, self.action_space).uniform_()
-        return pi_explore
+        rand_sign = (2*torch.randint(0, 2 ,size=(n_explore-1, self.action_space), device=self.device)-1).reshape(n_explore-1, self.action_space)
+        pi_explore = pi + self.warmup_factor*self.epsilon * rand_sign * torch.cuda.FloatTensor(n_explore-1, self.action_space).uniform_()
+        return torch.cat([pi.unsqueeze(0), pi_explore], dim=0)
 
 
     def cone_explore(self, n_explore, angle, pi, grad):
@@ -304,7 +304,7 @@ class Agent(object):
         self.optimizer_pi.zero_grad()
         if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
             self.optimizer_derivative.zero_grad()
-            grad = self.derivative_net(self.pi_net.pi).squeeze(0).clone()
+            grad = self.derivative_net(self.pi_net.pi).view_as(self.pi_net.pi).detach().clone()
 
             if self.hessian:
                 eps = 1

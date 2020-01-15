@@ -19,7 +19,10 @@ class TrustRegionAgent(Agent):
         print("Learning POLICY method using {} with TrustRegionAgent".format(reward_str))
 
         self.pi_trust_region = TrustRegion(self.pi_net)
-        self.r_norm = RobustNormalizer()
+        self.r_norm = RobustNormalizer(lr=0.5)
+        self.best_pi = None
+        self.best_reward = np.inf
+
         self.best_pi_evaluate = self.step_policy(self.pi_net.pi.detach(), to_env=False)
         self.f0 = self.best_pi_evaluate
         self.stop_con = args.stop_con
@@ -50,6 +53,12 @@ class TrustRegionAgent(Agent):
         explore_policies_rand = self.exploration_rand(self.warmup_explore)
         self.step_policy(explore_policies_rand)
         rewards_rand = self.env.reward
+
+        best_explore = rewards_rand.argmin()
+        if self.best_reward > rewards_rand[best_explore]:
+            self.best_pi = self.pi_trust_region.unconstrained_to_real(explore_policies_rand[best_explore].detach().clone())
+            self.best_reward = rewards_rand[best_explore]
+
         self.results['explore_policies'].append(self.pi_trust_region.unconstrained_to_real(explore_policies_rand))
         self.results['rewards'].append(rewards_rand)
 
@@ -168,7 +177,7 @@ class TrustRegionAgent(Agent):
         counter = -1
         self.env.reset()
         self.warmup()
-        for _ in tqdm(itertools.count()):
+        for i in tqdm(itertools.count()):
             counter += 1
             pi_explore, reward = self.exploration_step()
             self.results['explore_policies'].append(self.pi_trust_region.unconstrained_to_real(pi_explore))
@@ -181,13 +190,24 @@ class TrustRegionAgent(Agent):
             pi_eval = self.step_policy(pi, to_env=False)
             self.results['reward_pi_evaluate'].append(pi_eval)
             self.results['frame_pi_evaluate'].append(self.frame)
+
             if pi_eval < self.best_pi_evaluate:
                 self.no_change = 0
                 self.best_pi_evaluate = pi_eval
             else:
                 self.no_change += 1
+
+            if pi_eval < self.best_reward:
+                self.best_reward = pi_eval
+                self.best_pi = self.pi_trust_region.unconstrained_to_real(self.pi_net.pi.detach().clone())
+
             real_pi = self.pi_trust_region.unconstrained_to_real(pi)
             self.results['policies'].append(real_pi)
+
+            if (i+1) % self.printing_interval == 0:
+                self.save_and_print_results()
+                yield self.results
+                self.reset_result()
 
             if self.env.t or (self.env.best_observed - self.best_op_f) < -1:
                 self.save_and_print_results()
@@ -195,42 +215,20 @@ class TrustRegionAgent(Agent):
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
                 break
 
-            elif counter > self.stop_con and self.no_change > (self.stop_con/4):
-                counter = 0
-                self.divergence += 1
-                self.save_checkpoint(self.checkpoint, {'n': self.frame})
-                self.save_and_print_results()
-                self.update_best_pi()
-                self.warmup()
-
             elif self.frame >= self.budget:
                 self.save_and_print_results()
                 yield self.results
                 print("FAILED frame = {}".format(self.frame))
                 break
 
-            elif (self.frame % (self.printing_interval * self.n_explore)) == 0:
-                self.save_and_print_results()
-                yield self.results
-                self.reset_result()
+            elif counter > self.stop_con and self.no_change > (self.stop_con/4):
+                counter = 0
+                self.divergence += 1
+                self.update_best_pi()
+                self.warmup()
 
     def update_best_pi(self):
-
-        reward_pi_evaluate = np.load(os.path.join(self.analysis_dir, 'reward_pi_evaluate.npy'))
-        best_idx = reward_pi_evaluate.argmin()
-        pi_evaluate = np.load(os.path.join(self.analysis_dir, 'policies.npy'))[best_idx]
-        best_reward_pi_evaluate = reward_pi_evaluate[best_idx]
-
-        reward_pi_explore = np.load(os.path.join(self.analysis_dir, 'rewards.npy'))
-        best_idx = reward_pi_explore.argmin()
-        pi_explore = np.load(os.path.join(self.analysis_dir, 'explore_policies.npy'))[best_idx]
-        best_reward_pi_explore = reward_pi_explore[best_idx]
-
-        if best_reward_pi_evaluate < best_reward_pi_explore:
-            pi = torch.cuda.FloatTensor(pi_evaluate)
-        else:
-            pi = torch.cuda.FloatTensor(pi_explore)
-
+        pi = self.best_pi.detach().clone()
         self.pi_trust_region.squeeze(pi)
         self.epsilon *= self.epsilon_factor
         self.pi_net.pi_update(self.pi_trust_region.real_to_unconstrained(pi))
@@ -522,9 +520,14 @@ class TrustRegionAgent(Agent):
         pi_explore = self.exploration(self.n_explore)
         self.step_policy(pi_explore)
         rewards = self.env.reward
+
+        best_explore = rewards.argmin()
         if self.best_explore_update:
-            best_explore = rewards.argmin()
             self.pi_net.pi_update(pi_explore[best_explore])
+
+        if self.best_reward > rewards[best_explore]:
+            self.best_pi = self.pi_trust_region.unconstrained_to_real(pi_explore[best_explore].detach().clone())
+            self.best_reward = rewards[best_explore]
 
         self.r_norm(rewards, training=True)
 

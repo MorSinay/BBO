@@ -227,9 +227,10 @@ class SplineNet(nn.Module):
         self.pi_net = pi_net
         self.embedding = SplineEmbedding(device)
         self.head = SplineHead(output)
+        self.output = output
 
     def forward(self, x, normalize=True):
-        x = x.view(-1, action_space)
+        x = x.view(-1, self.output)
         if normalize:
             x = self.pi_net(x)
         # x_emb, x_emb2 = self.embedding(x)
