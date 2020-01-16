@@ -169,9 +169,21 @@ class Experiment(object):
                         self.writer.add_histogram("evaluation/value_net/%s" % name, param.clone().cpu().data.numpy(), bbo_results['frame'], 'fd')
 
         print("End BBO evaluation")
-        self.compare_pi_evaluate()
-        self.mean_grad_and_divergence()
-        self.r_norm_vs_divergence()
+        try:
+            self.compare_pi_evaluate()
+        except:
+            pass
+
+        try:
+            self.mean_grad_and_divergence()
+        except:
+            pass
+
+        try:
+            self.r_norm_vs_divergence()
+        except:
+            pass
+
 
         try:
             if self.action_space == 2:

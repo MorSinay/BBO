@@ -5,7 +5,10 @@ import torch.optim.lr_scheduler
 import numpy as np
 from tqdm import tqdm
 import torch.autograd as autograd
-from model_ddpg import RobustNormalizer, TrustRegion
+#from model_ddpg import RobustNormalizer, TrustRegion
+from model_ddpg import RobustNormalizer as RobustNormalizer
+from model_ddpg import TrustRegion
+
 import itertools
 from agent import Agent
 import os
@@ -19,7 +22,7 @@ class TrustRegionAgent(Agent):
         print("Learning POLICY method using {} with TrustRegionAgent".format(reward_str))
 
         self.pi_trust_region = TrustRegion(self.pi_net)
-        self.r_norm = RobustNormalizer(lr=0.5)
+        self.r_norm = RobustNormalizer(lr=args.robust_scaler_lr)
         self.best_pi = None
         self.best_reward = np.inf
 
@@ -80,7 +83,7 @@ class TrustRegionAgent(Agent):
         self.results['frame'] = self.frame
         self.results['best_observed'] = self.env.best_observed
         self.results['best_pi_evaluate'] = self.best_pi_evaluate
-        self.results['best_reward'] = self.best_reward
+        self.results['best_reward'] = self.best_reward.cpu().numpy()
         _, grad = self.get_grad()
         grad = grad.cpu().numpy().reshape(1, -1)
         self.results['grad'] = grad
@@ -201,10 +204,10 @@ class TrustRegionAgent(Agent):
                 self.no_change += 1
 
             if pi_eval < self.best_reward:
-                self.best_reward = pi_eval
+                self.best_reward = torch.cuda.FloatTensor(pi_eval)
                 self.best_pi = real_pi
 
-            if self.env.t or (self.env.best_observed - self.best_op_f) < -1:
+            if self.env.t:
                 self.save_and_print_results()
                 yield self.results
                 print("FINISHED SUCCESSFULLY - FRAME %d" % self.frame)
@@ -244,7 +247,7 @@ class TrustRegionAgent(Agent):
         real_pi = self.results['policies'][-1]
         norm_factor = self.r_norm.squash_derivative(pi_eval)*self.pi_trust_region.derivative_unconstrained(self.pi_trust_region.real_to_unconstrained(real_pi))
 
-        grad_norm = torch.norm(grad / norm_factor)
+        grad_norm = torch.clamp(torch.norm(grad / norm_factor), max=20)
         if self.mean_grad is None:
             self.mean_grad = grad_norm
         else:

@@ -5,9 +5,9 @@ import math
 from collections import defaultdict
 
 action_space = args.action_space
-layer = 64
+layer = 256
 delta = 10 # quantization levels / 2
-emb = 8 # embedding size
+emb = 32 # embedding size
 #parallel = 2 #int(layer / emb + .5)
 #emb2 = int(layer / action_space + .5) # embedding2 size
 
@@ -26,6 +26,65 @@ def init_weights(net, init='ortho'):
                 print('Init style not recognized...')
 
         net.param_count += sum([p.data.nelement() for p in module.parameters()])
+
+
+class RobustNormalizer2(object):
+
+    def __init__(self, outlayer=0.1, lr=0.1):
+        self.outlayer = outlayer
+        self.lr = lr
+        self.eps = 1e-5
+        self.squash_eps = 1e-5
+        self.m = None
+        self.n = None
+        self.mu = None
+        self.sigma = None
+
+        self.y1 = -2
+        self.y2 = 2
+
+    def reset(self):
+        self.m = None
+        self.n = None
+
+    def squash_derivative(self, x):
+        return x
+
+    def squash(self, x):
+
+        x = x * self.m + self.n
+
+        x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
+
+        return x
+
+    def __call__(self, x, training=False):
+        if training:
+            n = len(x)
+            outlayer = int(n * self.outlayer + .5)
+
+            x_cpu = x.cpu()
+
+            x2_ind = torch.kthvalue(x_cpu, n - outlayer, dim=0)[1]
+            x1_ind = torch.kthvalue(x_cpu, outlayer, dim=0)[1]
+            # curr_mu = torch.median(x_cpu, dim=0)[1]
+
+            m = (self.y2 - self.y1) / (x[x1_ind] - x[x2_ind])
+            n = self.y2 - m * x[x2_ind]
+
+            if self.m is None or self.n is None:
+                self.m = m
+                self.n = n
+            else:
+                self.m = (1 - self.lr) * self.m + self.lr * m
+                self.n = (1 - self.lr) * self.n + self.lr * n
+
+            self.mu = - self.n / self.m
+            self.sigma = 1 / self.m
+
+        else:
+            x = self.squash(x)
+            return x
 
 class RobustNormalizer(object):
 
