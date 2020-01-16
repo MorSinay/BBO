@@ -8,7 +8,7 @@ from apex import amp
 from loguru import logger
 from environment import Env
 import math
-from model import DuelNet, PiNet, SplineNet, MultipleOptimizer
+from model import DuelNet, PiNet
 
 class Algorithm(object):
 
@@ -38,14 +38,15 @@ class Algorithm(object):
         self.update_step = args.update_step
         self.best_explore_update = args.best_explore_update
         self.weight_decay = args.weight_decay
-        self.warm_up = args.warm_up
         self.grad = args.grad
         self.cone_angle = args.cone_angle
         self.warmup_factor = args.warmup_factor
         self.algorithm = args.algorithm
         self.grad_clip = args.grad_clip
         self.stop_con = args.stop_con
-        self.n_explore
+        self.n_explore = args.n_explore
+        self.epsilon_factor = args.epsilon_factor
+        self.warmup_explore = args.warmup_minibatch * self.n_explore
 
         if args.explore == 'rand':
             self.exploration = self.exploration_rand
@@ -321,6 +322,6 @@ class Algorithm(object):
 
         self.pi_net.eval()
         pi = self.pi_net.pi.detach().clone()
-        grad = self.pi_net.pi.grad.detach().clone()
+        grad = self.pi_net.grad.detach().clone()
         return pi, grad
 

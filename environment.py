@@ -139,8 +139,8 @@ class Env(object):
         landmarks = torch.stack([self.landmarks(img) for img in images])
         r_landmark = self.landmark_loss(landmarks)
 
-        attributes = self.attributes(images)
-        disc = self.discriminator(images)
+        attributes = self.attributes(images).detach()
+        disc = self.discriminator(images).detach()
 
         r_disc = self.disc_loss(disc, torch.cuda.FloatTensor(len(disc)).fill_(1.)).detach()
         r_att = self.att_loss(attributes, self.attributes_target.repeat(len(attributes), 1)).detach().mean(1)
@@ -160,8 +160,10 @@ class Env(object):
 
     def reset(self):
         self.best_policy = self.get_initial_solution()
-        self.best_image, self.best_reward = self.evaluate(self.best_policy)
         self.k = 0
+        results = self.evaluate(self.best_policy)
+
+        self.best_image, self.best_reward = results.image, results.reward
 
     def gen_images(self, policy):
 
@@ -191,7 +193,7 @@ class Env(object):
         budget = self.k + np.arange(len(policy))
         self.k += len(budget)
 
-        images = self.gen_images(policy)
+        images = self.gen_images(policy).detach()
         r = self.loss(images)
 
         mr = float(torch.max(r))

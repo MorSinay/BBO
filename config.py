@@ -44,7 +44,7 @@ parser = argparse.ArgumentParser(description=project_name)
 parser.add_argument('--dataset-dir', type=str, default='/localdata/elads/celeba/', help='Directory of the CelebA Dataset')
 
 parser.add_argument('--generator-dir', type=str,
-                    default='/home/dsi/elads/data/bbo/results/pagan_debug_iter_d_2_celeba_exp_0000_20191208_140431',
+                    default='/home/dsi/elads/data/bbo/results/pagan_debug_uniform_celeba_exp_0000_20191212_000606',
                     help='The generator/discriminator models')
 parser.add_argument('--classifier-dir', type=str,
                     default='/home/dsi/elads/data/bbo/results/attribute_debug_att_head_balanced_celeba_exp_0000_20191209_215136',
@@ -86,7 +86,7 @@ parser.add_argument('--weight-decay', type=float, default=0., help='L2 regulariz
 parser.add_argument('--clip', type=float, default=1., help='Clip Gradient L2 norm')
 
 parser.add_argument('--epochs', type=int, default=100, metavar='STEPS', help='Total number of backward steps')
-parser.add_argument('--train-epoch', type=int, default=10, metavar='BATCHES', help='Length of each epoch (in batches)')
+parser.add_argument('--train-epoch', type=int, default=50, metavar='BATCHES', help='Length of each epoch (in batches)')
 parser.add_argument('--test-epoch', type=int, default=10, metavar='BATCHES', help='Length of test epoch (in batches)')
 parser.add_argument('--batch', type=int, default=32, help='Batch Size')
 
@@ -112,19 +112,21 @@ parser.add_argument('--channel', type=int, default=32, help='Channel multiplier'
 # #actors parameters
 parser.add_argument('--problem-index', type=int, default=-1, help='Problem Index or -1 for random problem')
 parser.add_argument('--pi-lr', type=float, default=1e-2, metavar='LR', help='pi learning rate')
-#parser.add_argument('--pi-optim', type=str, default='sgd', metavar='optim', help='pi optimizer sgd | adam')
 parser.add_argument('--value-lr', type=float, default=1e-3, metavar='LR', help='value learning rate')
 parser.add_argument('--action-space', type=int, default=512, metavar='dimension', help='Problem dimension')
 parser.add_argument('--layer', type=int, default=256, help='Channel multiplier')
-parser.add_argument('--warm-up', type=int, default=4, help='Warm-Up iterations')
 parser.add_argument('--exploration', type=str, default='GRAD', metavar='N', help='GRAD|UNIFORM')
 
 parser.add_argument('--stop-con', type=int, default=40, help='Stopping Condition')
-parser.add_argument('--n-explore', type=int, default=64, help='exploration')
-
-
-
-
+parser.add_argument('--n-explore', type=int, default=32, help='exploration')
+parser.add_argument('--epsilon-factor', type=float, default=0.9, help='Epsilon factor')
+parser.add_argument('--warmup-minibatch', type=int, default=2, help='Warm up batches')
+parser.add_argument('--warmup-factor', type=int, default=1, help='Warm up factor')
+parser.add_argument('--cone-angle', type=float, default=3, help='cone angle - default pi/3')
+parser.add_argument('--grad-clip', type=float, default=0, help='grad clipping')
+parser.add_argument('--learn-iteration', type=int, default=60, help='Learning iteration')
+parser.add_argument('--loss', type=str, default='huber', help='derivative loss huber|mse')
+parser.add_argument('--trust-factor', type=float, default=0.9, help='Warm up factor')
 
 
 args = parser.parse_args()

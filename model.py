@@ -3,95 +3,177 @@ from torch import nn
 from config import args
 import torch.nn.functional as F
 
+action_space = args.action_space
 
-class ValueNet(nn.Module):
 
-    def __init__(self):
+class DuelNet(nn.Module):
 
-        super(ValueNet, self).__init__()
+    def __init__(self, pi_net, output):
 
-        self.action_space = args.action_space
-        self.fc = nn.Sequential(nn.Linear(args.action_space, 2 * args.layer, bias=True),
+        super(DuelNet, self).__init__()
+        self.pi_net = pi_net
+        layer = args.layer
+
+        self.fc = nn.Sequential(nn.Linear(action_space, layer, bias=True),
                                 nn.ReLU(),
-                                nn.Dropout(args.dropout),
-                                nn.Linear(2 * args.layer, 2 * args.layer, bias=True),
+                                nn.Linear(layer, 2*layer, bias=True),
                                 nn.ReLU(),
-                                nn.Dropout(args.dropout),
-                                nn.Linear(2 * args.layer, args.layer, bias=True),
+                                nn.Linear(2*layer, 2*layer, bias=True),
                                 nn.ReLU(),
-                                nn.Dropout(args.dropout),
-                                nn.Linear(args.layer, 1))
+                                nn.Linear(2*layer, layer, bias=True),
+                                nn.ReLU(),
+                                nn.Linear(layer, output))
 
-    def forward(self, pi):
-        pi = pi.view(-1, self.action_space)
+    def reset(self):
+        for weight in self.parameters():
+            nn.init.xavier_uniform(weight.data)
+
+    def forward(self, pi, normalize=True):
+        pi = pi.view(-1, action_space)
+        if normalize:
+            pi = self.pi_net(pi)
         x = self.fc(pi)
 
-        return x.view(-1)
+        return x
 
 
-class GradNet(nn.Module):
+class PiNet(nn.Module):
 
-    def __init__(self):
+    def __init__(self, init, device, action_space):
 
-        super(GradNet, self).__init__()
+        super(PiNet, self).__init__()
+        self.pi = nn.Parameter(init)
+        self.normalize = nn.Tanh()
+        self.device = device
+        self.action_space = action_space
 
-        self.action_space = args.action_space
-        self.fc = nn.Sequential(nn.Linear(args.action_space, 2 * args.layer, bias=True),
-                                nn.ReLU(),
-                                nn.Dropout(args.dropout),
-                                nn.Linear(2 * args.layer, 2 * args.layer, bias=True),
-                                nn.ReLU(),
-                                nn.Dropout(args.dropout),
-                                nn.Linear(2 * args.layer, args.layer, bias=True),
-                                nn.ReLU(),
-                                nn.Dropout(args.dropout),
-                                nn.Linear(args.layer, self.action_space))
+    @property
+    def detach(self):
+        return self.pi.detach
 
-    def forward(self, pi):
-        pi = pi.view(-1, self.action_space)
-        x = self.fc(pi)
+    @property
+    def grad(self):
+        return self.pi.grad
 
+    def inverse(self,  policy):
+        policy = torch.clamp(policy, min=-1 + 1e-3, max=1 - 1e-3)
+        return 0.5 * (torch.log(1 + policy) - torch.log(1 - policy))
+
+    def inverse_derivative(self,  policy):
+        return 0.5 / (1 + policy) - 1 / (1 - policy)
+
+    def forward(self, pi=None):
+        if pi is None:
+            return self.normalize(self.pi)
+        else:
+            return self.normalize(pi)
+
+    def pi_update(self, pi):
+        with torch.no_grad():
+            self.pi.data = pi
+
+    def grad_update(self, grads):
+        with torch.no_grad():
+            self.pi.grad = grads
+
+
+class TrustRegion(object):
+
+    def __init__(self, pi_net):
+        self.mu = torch.zeros_like(pi_net.pi)
+        self.sigma = torch.ones_like(pi_net.pi)
+        self.pi_net = pi_net
+        self.min_sigma = 0.1*torch.ones_like(pi_net.pi)
+        self.trust_factor = args.trust_factor
+
+    def bounderies(self):
+        lower, upper = (self.mu - self.sigma), (self.mu + self.sigma)
+        assert lower.min().item() >= -1, "lower min {}".format(lower.min())
+        assert upper.max().item() <= 1, "upper max {}".format(upper.max())
+        return lower, upper
+
+    def squeeze(self, pi):
+
+        for i in range(len(pi)):
+            if pi[i] < self.mu[i] + (1 - self.min_sigma[i]) * self.sigma[i] or pi[i] > self.mu[i] - (1 - self.min_sigma[i]) * self.sigma[i]:
+                self.sigma[i] = self.trust_factor * self.sigma[i]
+                #print("index {}: In trust region".format(i))
+            else:
+                assert (self.mu[i] - self.sigma[i] >= -1), "mu - sigma < -1"
+                assert (self.mu[i] + self.sigma[i] <= 1), "mu + sigma > 1"
+                if self.mu[i] - self.sigma[i] == -1 or self.mu[i] + self.sigma[i] == 1:
+                    self.sigma[i] = self.trust_factor * self.sigma[i]
+                    print("index {}: On global boundary".format(i))
+                else:
+                    print("index {}: On local boundary".format(i))
+
+        self.mu = pi
+
+        a = torch.max(self.mu - self.sigma, -1 * torch.ones_like(self.mu))
+        b = torch.min(self.mu + self.sigma, torch.ones_like(self.mu))
+        self.mu = (a + b) / 2
+        self.sigma = (b - a) / 2
+
+    def unconstrained_to_real(self, x):
+        x = self.pi_net(x)
+        x = self.mu + x * self.sigma
+        x = torch.clamp(x, min=-1, max=1)
+        return x
+
+    def real_to_unconstrained(self, x):
+        s = x.shape
+        x = (x - self.mu)/self.sigma.view(1, -1)
+        x = self.pi_net.inverse(x)
+        x = x.view(s)
+        return x
+
+    def derivative_unconstrained(self, x):
+        s = x.shape
+        x = self.sigma*(1 - self.pi_net(x)**2)
+        x = x.view(s)
         return x
 
 
 class RobustNormalizer(object):
 
-    def __init__(self, outlayer=0.1, delta=2, lr=0.1):
-        self.outlayer = outlayer
-        self.delta = delta
+    def __init__(self, outlier=0.1, lr=0.1):
+        self.outlier = outlier
         self.lr = lr
         self.eps = 1e-5
-        self.squash_eps = 1e-9
+        self.squash_eps = 1e-5
         self.m = None
         self.n = None
+        self.mu = None
+        self.sigma = None
+
+        self.y1 = -2
+        self.y2 = 2
 
     def reset(self):
         self.m = None
         self.n = None
 
-    def desquash(self, x):
-
-        x_clamp = torch.clamp(x, min=-1 + self.squash_eps, max=1 - self.squash_eps)
-
-        atahn = 0.5 * (torch.log(1 + x_clamp) - torch.log(1 - x_clamp))
-
-        return atahn * (x >= 0).float() + x * (x < 0).float()
-
     def squash(self, x):
 
+        x = x * self.m + self.n
+
         x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
+
         return x
 
     def __call__(self, x, training=False):
         if training:
             n = len(x)
-            outlayer = int(n * self.outlayer + .5)
+            outlier = int(n * self.outlier + .5)
 
-            up = torch.kthvalue(x, n - outlayer, dim=0)[0]
-            mu = torch.median(x, dim=0)[0]
+            x_cpu = x.cpu()
 
-            m = self.delta / (up - mu)
-            n = - m * mu
+            x2_ind = torch.kthvalue(x_cpu, n - outlier, dim=0)[1]
+            x1_ind = torch.kthvalue(x_cpu, outlier, dim=0)[1]
+            # curr_mu = torch.median(x_cpu, dim=0)[1]
+
+            m = (self.y2 - self.y1) / (x[x2_ind] - x[x1_ind])
+            n = self.y2 - m * x[x2_ind]
 
             if self.m is None or self.n is None:
                 self.m = m
@@ -100,10 +182,12 @@ class RobustNormalizer(object):
                 self.m = (1 - self.lr) * self.m + self.lr * m
                 self.n = (1 - self.lr) * self.n + self.lr * n
 
-        else:
-            x = self.squash(x * self.m + self.n)
-            return x
+            self.mu = - self.n / self.m
+            self.sigma = 1 / self.m
 
+        else:
+            x = self.squash(x)
+            return x
 
 
 # ADD these classes in order to load pretrained model
