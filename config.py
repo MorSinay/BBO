@@ -44,7 +44,7 @@ parser = argparse.ArgumentParser(description=project_name)
 parser.add_argument('--dataset-dir', type=str, default='/localdata/elads/celeba/', help='Directory of the CelebA Dataset')
 
 parser.add_argument('--generator-dir', type=str,
-                    default='/home/dsi/elads/data/bbo/results/pagan_debug_uniform_celeba_exp_0000_20191212_000606',
+                    default='/home/dsi/elads/data/bbo/results/pagan_store_80000_iter_d_2_celeba_exp_0000_20191208_1404301',
                     help='The generator/discriminator models')
 parser.add_argument('--classifier-dir', type=str,
                     default='/home/dsi/elads/data/bbo/results/attribute_debug_att_head_balanced_celeba_exp_0000_20191209_215136',
