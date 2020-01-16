@@ -51,7 +51,8 @@ parser.add_argument('--classifier-dir', type=str,
                     help='The classifier model')
 
 parser.add_argument('--predictor-path', type=str, default=predictor_path, help='Path for the landmark predictor')
-parser.add_argument('--algorithm', type=str, default='bbo', help='[vanilla_offline]')
+parser.add_argument('--algorithm', type=str, default='egl', help='[egl|igl]')
+
 parser.add_argument('--num', type=int, default=-1, help='Resume experiment number, set -1 for new experiment')
 parser.add_argument('--cpu-workers', type=int, default=48, help='How many CPUs will be used for the data loading')
 parser.add_argument('--cuda', type=int, default=0, help='GPU Number')
@@ -117,6 +118,11 @@ parser.add_argument('--action-space', type=int, default=512, metavar='dimension'
 parser.add_argument('--layer', type=int, default=256, help='Channel multiplier')
 parser.add_argument('--warm-up', type=int, default=4, help='Warm-Up iterations')
 parser.add_argument('--exploration', type=str, default='GRAD', metavar='N', help='GRAD|UNIFORM')
+
+parser.add_argument('--stop-con', type=int, default=40, help='Stopping Condition')
+parser.add_argument('--n-explore', type=int, default=64, help='exploration')
+
+
 
 
 

@@ -95,7 +95,7 @@ class Env(object):
         self.best_reward = None
         self.best_image = None
         self.k = None
-        self.results = namedtuple('env_results', 'image reward')
+        self.results = namedtuple('env_results', 'image reward budget')
         self.reset()
 
     def attributes(self, image):
@@ -154,12 +154,12 @@ class Env(object):
 
         return l
 
-    def get_initial_policy(self):
+    def get_initial_solution(self):
 
         return torch.cuda.FloatTensor(self.action_space).zero_()
 
     def reset(self):
-        self.best_policy = self.get_initial_policy()
+        self.best_policy = self.get_initial_solution()
         self.best_image, self.best_reward = self.evaluate(self.best_policy)
         self.k = 0
 
@@ -184,11 +184,12 @@ class Env(object):
             r = r.item()
             images = images.squeeze(0)
 
-        return self.results(image=torch.clamp(0.5 * images + 0.5, 0, 1), reward=r)
+        return self.results(image=torch.clamp(0.5 * images + 0.5, 0, 1), reward=r, budget=self.k)
 
     def step(self, policy):
 
-        self.k += len(policy)
+        budget = self.k + np.arange(len(policy))
+        self.k += len(budget)
 
         images = self.gen_images(policy)
         r = self.loss(images)
@@ -200,5 +201,5 @@ class Env(object):
             self.best_policy = policy[i].clone()
             self.best_image = torch.clamp(0.5 * images[i].clone() + 0.5, 0, 1)
 
-        return self.results(image=torch.clamp(0.5 * images + 0.5, 0, 1), reward=r)
+        return self.results(image=torch.clamp(0.5 * images + 0.5, 0, 1), reward=r, budget=budget)
 

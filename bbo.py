@@ -14,51 +14,28 @@ from model import ValueNet, GradNet
 from alg import Algorithm
 import os
 import copy
+from model import RobustNormalizer, TrustRegion
 
 import itertools
-import math
+
 
 class BBO(Algorithm):
 
     def __init__(self):
         super(BBO, self).__init__()
 
-        self.env = Env(self.problem_index)
-        self.pi_0 = self.env.get_initial_policy()
+        self.pi_trust_region = TrustRegion(self.pi_net)
+        self.r_norm = RobustNormalizer(lr=0.5)
 
-        if args.explore == 'cone':
-            self.exploration = self.explore_cone
+        self.best_pi = None
+        self.best_reward = np.inf
 
-        elif args.explore == 'rand':
-            self.exploration = self.explore_rand
-        else:
-            logger.info(f"explore: {args.explore}")
-            raise NotImplementedError
-
-        if self.grad:
-            self.fit_func = self.fit_grad
-            self.value_iter = 40
-            self.pi_net = self.pi_0
-            self.grad_net = GradNet()
-            self.grad_net.to(self.device)
-            self.optimizer_grad = torch.optim.Adam(self.grad_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=self.weight_decay)
-
-        else:
-            self.fit_func = self.fit_value
-            self.value_iter = 4
-            self.pi_net = nn.Parameter(self.pi_0)
-            self.value_net = ValueNet()
-            self.value_net.to(self.device)
-            self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=self.weight_decay)
-
-        self.optimizer_pi = torch.optim.SGD([self.pi_net], lr=self.pi_lr)
-        self.q_loss = nn.SmoothL1Loss(reduction='none')
+        self.best_pi_score = self.env.evaluate(self.pi_net.pi.detach())
+        self.no_change = 0
 
         self.replay_reward = torch.cuda.FloatTensor([])
         self.replay_policy = torch.cuda.FloatTensor([])
 
-        self.mean = 0.
-        self.std = 1.
         self.results = defaultdict(lambda: defaultdict(list))
 
     def update_pi_optimizer_lr(self):
@@ -72,7 +49,7 @@ class BBO(Algorithm):
         with torch.no_grad():
             if self.pi_net.grad is not None:
                 self.pi_net.grad.zero_()
-            self.pi_net.data = self.env.get_initial_policy()
+            self.pi_net.data = self.env.get_initial_solution()
 
     def learn(self):
 
@@ -86,10 +63,12 @@ class BBO(Algorithm):
 
         for n in tqdm(itertools.count(1)):
 
-            pi_explore, reward_explore, images_explore = self.explore(self.batch)
-            
-            # results['aux']['pi_explore'].append(pi_explore)
+            pi_explore, bbo_results = self.explore()
+
+            reward_explore, image_explore, budget = bbo_results.reward, bbo_results.image, bbo_results.budget
+
             self.results['scalar']['reward_explore'].append(float(reward_explore.mean()))
+            self.results['scalar']['budget'].append(float(budget.max()))
 
             self.fit(pi_explore, reward_explore)
 
@@ -111,39 +90,18 @@ class BBO(Algorithm):
                 yield self.results
                 self.results = defaultdict(lambda: defaultdict(list))
 
-    def norm(self, x):
-        x = (x - self.mean) / (self.std + 1e-5)
-        return x
-
-    def denorm(self, x):
-        x = (x * (self.std + 1e-5)) + self.mean
-        return x
+    def update_best_pi(self):
+        pi = self.best_pi.detach().clone()
+        self.pi_trust_region.squeeze(pi)
+        self.epsilon *= self.epsilon_factor
+        self.pi_net.pi_update(self.pi_trust_region.real_to_unconstrained(pi))
 
     def warmup(self):
-
-        rewards = []
-        explore_policies = []
-
-        for _ in range(self.warm_up):
-            pi_explore = torch.cuda.FloatTensor(self.batch, self.action_space).normal_()
-            bbo_results = self.env.step(pi_explore)
-            rewards.append(bbo_results.reward)
-            explore_policies.append(pi_explore)
-        rewards = torch.cat(rewards)
-        explore_policies = torch.cat(explore_policies)
-
-        self.mean = rewards.mean()
-        self.std = rewards.std()
-        self.results['scalar']['mean'].append(float(self.mean))
-        self.results['scalar']['std'].append(float(self.std))
-
-        best_idx = rewards.argmax()
-        pi = explore_policies[best_idx]
-
-        with torch.no_grad():
-            self.pi_net.data = pi
-
-        self.fit(explore_policies, rewards)
+        self.mean_grad = None
+        self.reset_net()
+        self.r_norm.reset()
+        self.update_replay_buffer()
+        self.value_optimize(self.value_iter)
 
     def fit(self, pi_explore, reward_explore):
 
@@ -204,139 +162,15 @@ class BBO(Algorithm):
 
                 self.results['scalar']['value_loss'].append(float(loss_q))
 
-    def get_n_grad_ahead(self, n):
+    def explore(self):
 
-        optimizer_state = copy.deepcopy(self.optimizer_pi.state_dict())
-        pi_array = [self.pi_net.detach()]
-        for _ in range(n-1):
-            pi, _ = self.grad_step()
-            pi_array.append(pi)
-
-        self.optimizer_pi.load_state_dict(optimizer_state)
-        with torch.no_grad():
-            self.pi_net.data = pi_array[0]
-
-        pi_array = torch.stack(pi_array)
-        return pi_array
-
-    def grad_step(self):
-        if self.grad:
-            self.grad_net.eval()
-            grad = self.grad_net(self.pi_net).detach().squeeze(0)
-            with torch.no_grad():
-                self.pi_net.grad = -grad.detach()
-        else:
-            self.value_net.eval()
-            self.optimizer_pi.zero_grad()
-            loss_pi = self.value_net(self.pi_net)
-            loss_pi.backward()
-
-        nn.utils.clip_grad_norm_(self.pi_net, self.clip/self.pi_lr)
-        self.optimizer_pi.step()
-
-        pi = self.pi_net.detach()
-        return pi, self.env.evaluate(pi).reward
-
-    def explore_rand(self, n_explore):
-
-        pi = self.pi_net.pi.detach().clone().cpu()
-        rand_sign = (2 * torch.randint(0, 2, size=(n_explore, self.action_space)) - 1).reshape(n_explore, self.action_space)
-        pi_explore = pi + self.warmup_factor * self.epsilon * rand_sign * torch.rand(n_explore, self.action_space)
-
-        return pi_explore
-
-    def explore_grad_rand(self, n_explore):
-
-        grads = self.get_grad().detach()
-        pi = self.pi_net.detach().unsqueeze(0)
-
-        explore_factor = self.delta * grads + self.epsilon * torch.cuda.FloatTensor(n_explore, self.action_space).normal_()
-        explore_factor *= 0.9 ** (2 * torch.arange(n_explore, device=self.device, dtype=torch.float32)).reshape(n_explore, 1)
-
-        pi_explore = pi + explore_factor  # gradient decent
-
-        return pi_explore
-
-    def explore_cone(self, n_explore):
-        alpha = math.pi / self.cone_angle
-        n = n_explore - 1
-        pi, grad = self.get_grad(grad_step=False)
-        pi, grad = pi.cpu(), grad.cpu()
-        m = len(pi)
-        pi = pi.unsqueeze(0)
-
-        x = torch.FloatTensor(n, m).normal_()
-        mag = torch.FloatTensor(n, 1).uniform_()
-
-        x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
-        grad = grad / (torch.norm(grad) + 1e-8)
-
-        cos = (x @ grad).unsqueeze(1)
-
-        dp = x - cos * grad.unsqueeze(0)
-
-        dp = dp / torch.norm(dp, dim=1, keepdim=True)
-
-        acos = torch.acos(torch.clamp(torch.abs(cos), 0, 1-1e-8))
-
-        new_cos = torch.cos(acos * alpha / (math.pi / 2))
-        new_sin = torch.sin(acos * alpha / (math.pi / 2))
-
-        cone = new_sin * dp + new_cos * grad
-
-        explore = pi - self.epsilon * mag * cone
-
-        return torch.cat([pi, explore])
-
-    def get_grad(self):
-        if self.grad:
-            self.grad_net.eval()
-            grad = self.grad_net(self.pi_net).detach().squeeze(0)
-            return grad
-        else:
-            self.value_net.eval()
-            self.optimizer_pi.zero_grad()
-            loss_pi = self.value_net(self.pi_net)
-            loss_pi.backward()
-            return self.pi_net.grad.detach()
-
-    def optimize(self):
-
-        pi = self.pi_net.detach()
-        pi_list = [pi]
-        value_list = [self.env.evaluate(pi).reward]
-
-        for _ in range(self.grad_steps):
-            pi, value = self.grad_step()
-            pi_list.append(pi)
-            value_list.append(value)
-
-        if self.update_step == 'n_step':
-            #no need to do action
-            pass
-        elif self.update_step == 'best_step':
-            best_idx = np.argmin(value_list)
-            with torch.no_grad():
-                self.pi_net.data = pi_list[best_idx]
-        elif self.update_step == 'first_vs_last':
-            if value_list[-1] > value_list[0]:
-                with torch.no_grad():
-                    self.pi_net.data = pi_list[0]
-        elif self.update_step == 'no_update':
-            with torch.no_grad():
-                self.pi_net.data = pi_list[0]
-        else:
-            raise NotImplementedError
-
-    def explore(self, n_explore):
-
-        pi_explore = self.explore_func(n_explore)
+        pi_explore = self.exploration(self.n_explore)
         bbo_results = self.env.step(pi_explore)
         rewards = bbo_results.reward
-        images = bbo_results.image
+
         if self.best_explore_update:
             best_explore = rewards.argmax()
             with torch.no_grad():
                 self.pi_net.data = pi_explore[best_explore]
 
-        return pi_explore, rewards, images
+        return pi_explore, bbo_results
