@@ -1,9 +1,11 @@
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+plt.style.use('seaborn-deep')
+
 from matplotlib import cm
 from mpl_toolkits.mplot3d import axes3d, Axes3D
-
+import torch
 try: import cocoex
 except: pass
 
@@ -182,7 +184,7 @@ def treeD_plot(problem_index):
     problem = suite.get_problem(problem_index)
     upper_bound = problem.upper_bounds
     lower_bound = problem.lower_bounds
-    interval = 0.1
+    interval = 0.001
     res_list = []
     for x0 in np.arange(lower_bound[0], upper_bound[0]+interval, interval):
         for x1 in np.arange(lower_bound[1], upper_bound[1]+interval, interval):
@@ -222,7 +224,7 @@ def treeD_plot_contour(problem_index):
     problem = suite.get_problem(problem_index)
     upper_bound = problem.upper_bounds
     lower_bound = problem.lower_bounds
-    interval = 0.1
+    interval = 0.001
 
     x0 = np.arange(lower_bound[0], upper_bound[0] + interval, interval)
     x1 = np.arange(lower_bound[1], upper_bound[1] + interval, interval)
@@ -304,7 +306,7 @@ def visualization(problem_index):
     problem = suite.get_problem(problem_index)
     upper_bound = problem.upper_bounds
     lower_bound = problem.lower_bounds
-    interval = 0.1
+    interval = 0.01
 
     #fig, (ax1, ax2) = plt.subplots(1, 2)
     fig = plt.figure()
@@ -563,6 +565,8 @@ def merge_bbo(optimizers=[], dimension=[1, 2, 3, 5, 10, 20, 40, 784], save_file=
     columns = baseline_df.columns
     best_observed = []
     for item in columns:
+        if item.startswith('trust'):
+            continue
         if item.endswith('_best_observed'):
             best_observed.append(item)
 
@@ -586,11 +590,13 @@ def merge_bbo(optimizers=[], dimension=[1, 2, 3, 5, 10, 20, 40, 784], save_file=
                 compare_method = np.abs(temp_df[best_observed_op].values - temp_df['min_val'].values) < epsilon
             count = len(compare_method)
             res.append(compare_method.sum()/count)
+
         optim = best_observed_op[:-len('_best_observed')]
-        ax.bar(x, res, width=w, color=Consts.color[j], align='center', label=optim)
+        ax.bar(x, res, width=w, color=Consts.color[j+1], align='center', label=optim)
 
     ax.set_xticks([i + len(dimension)//2 for i in X])
     ax.set_xticklabels(dimension)
+    ax.grid(True, which='both')
    # ax.autoscale(tight=True)
     #ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=4)
     ax.legend()
@@ -628,17 +634,13 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
 
     colors = Consts.color
 
-    x_max = -1
     for i, key in enumerate(compare_dirs.keys()):
         path = compare_dirs[key]
         try:
-            pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'), allow_pickle=True)
-            pi_best = np.load(os.path.join(path, 'best_observed.npy'), allow_pickle=True)
+            pi_best = np.load(os.path.join(path, 'observed_list_with_explore.npy'), allow_pickle=True)
 
             bbo_min_val = min(bbo_min_val, pi_best.min())
             min_val = min(min_val, bbo_min_val)
-
-            x_max = max(x_max, len(pi_eval), len(pi_best))
         except:
             pass
 
@@ -647,9 +649,10 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
         path = compare_dirs[key]
         try:
             pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'), allow_pickle=True)
-            pi_best = np.load(os.path.join(path, 'best_observed.npy'), allow_pickle=True)
+            pi_best = np.load(os.path.join(path, 'observed_list_with_explore.npy'), allow_pickle=True)
+            frame_eval = np.load(os.path.join(path, 'frame_pi_evaluate.npy'), allow_pickle=True)
 
-            ax1.loglog(np.arange(len(pi_eval)), (pi_eval - min_val)/(f0 - min_val), color=colors[i], label=key)
+            ax1.loglog(frame_eval, (pi_eval - min_val)/(f0 - min_val), color=colors[i], label=key)
             ax2.loglog(np.arange(len(pi_best)), (pi_best - min_val) / (f0 - min_val), color=colors[i])
 
         except:
@@ -661,8 +664,6 @@ def bbo_evaluate_compare(dim, index, prefix='CMP'):
     fig.suptitle("min value is {}, min bbo value is {}".format(optimizer_min_val, bbo_min_val))
     ax1.set_title('reward_pi_evaluate')
     ax2.set_title('best_observed')
-    ax1.set_xlim([10, x_max])
-    ax2.set_xlim([10, x_max])
 
     path_fig = os.path.join(Consts.baseline_dir, 'Compare bbo - dim = {} index = {}.pdf'.format(dim, index))
     plt.savefig(path_fig)
@@ -680,31 +681,98 @@ def get_best_solution(dim, index):
     assert (min(x) >= -5 and max(x) <= 5), "out of range - get_best_solution dim {} problem {}".format(dim, index)
     return x, best_val
 
+
+
+def plot_2d_first_value():
+    fig, axs = plt.subplots(1,4, figsize=(16, 3.5))
+    colors = Consts.color
+    value_dir = '/data/elkayam/gan_rl/results/RUN_value_spline_16_1_2/analysis'
+    first_order_dir = '/data/elkayam/gan_rl/results/RUN_first_order_spline_16_1_2/analysis'
+    baseline_dir = '/data/elkayam/gan_rl/baseline'
+    #problems = [[75,120,180,195],[210,240,255,270]]
+    problems = [120, 195, 240, 270]
+    #for i, set_p in enumerate(problems):
+    #for j, iter_index in enumerate(set_p):
+    for j, iter_index in enumerate(problems):
+        value_path = os.path.join(value_dir, str(iter_index))
+        first_order_path = os.path.join(first_order_dir, str(iter_index))
+        path_dir = os.path.join(baseline_dir, 'f_eval', '2D_Contour')
+        path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(iter_index))
+        res = np.load(path_res, allow_pickle=True).item()
+        min_val = res['z'].min()
+        res['z'] -= min_val
+        max_val = res['z'].max()
+        res['z'] /= (max_val + 1)
+
+        value_x = 5 * np.load(os.path.join(value_path, 'policies.npy'), allow_pickle=True)
+        first_order_x = 5 * np.load(os.path.join(first_order_path, 'policies.npy'), allow_pickle=True)
+
+        cs = axs[j].contour(res['x0'], res['x1'], np.log(res['z']), 60)
+
+        axs[j].plot(value_x[:, 0], value_x[:, 1], '-o', color=colors[3], markersize=0.5, label=r'$\nabla \hat{f}(x)$')
+        axs[j].plot(first_order_x[:, 0], first_order_x[:, 1], '-o', color=colors[0], markersize=0.5, label=r'$g_{\varepsilon}(x)$')
+        #axs[i, j].colorbar(cs)
+
+        axs[j].grid(b=True, which='both')
+        axs[j].set_xticklabels([])
+        axs[j].set_yticklabels([])
+        axs[j].set_xlabel(f"({'abcd'[j]})", fontsize=14)
+        axs[j].axis('equal')
+    axs[0].legend(prop={'size': 14})
+
+    plt.savefig(os.path.join(baseline_dir, f'egl_2d_compare.pdf'), bbox_inches='tight')
+
 if __name__ == '__main__':
 
+    plot_2d_first_value()
     # merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
 
 
     #optimizers = ['first_order_clip0', 'first_order_clip1', 'first_order_clip1_cone1']
-    optimizers = ['first_order_13_1']
-    dims = [1, 2, 3, 5, 10, 20, 40]
+    optimizers = ['first_order_log_rand', 'first_order_rand_relu']
+    dims = [40]
     #dims = [40]
     merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
     #merge_bbo(optimizers=optimizers, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
 
-    bbo_evaluate_compare(dim=40, index=15, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=105, prefix='RUN')
-    bbo_evaluate_compare(dim=40, index=120, prefix='RUN')
+    bbo_evaluate_compare(dim=40, index=0, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=15, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=30, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=45, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=60, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=75, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=90, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=105, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=120, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=135, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=150, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=165, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=180, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=195, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=210, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=225, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=240, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=255, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=270, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=285, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=300, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=315, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=330, prefix='DIM')
+    bbo_evaluate_compare(dim=40, index=345, prefix='DIM')
+    # bbo_evaluate_compare(dim=40, index=210, prefix='DIM')
+    # bbo_evaluate_compare(dim=40, index=225, prefix='DIM')
     #
 
     dims = [40]
 
     for dim in dims:
-        prefix = 'RUN'
+        prefix = 'DIM'
         fig_name = '{} dim {} best observed avg.pdf'.format(prefix,dim)
-        avg_dim_best_observed(dim=dim, save_file=fig_name, prefix=prefix)
+        avg_dim_best_observed(dim=dim, save_file=fig_name, prefix=prefix, with_op=False)
         fig_name = '{} dim {} dist avg.pdf'.format(prefix, dim)
         avg_dim_dist_from_best_x(dim=dim, save_file=fig_name, prefix=prefix)
+
+    #visualization(120)
 
     # # for i in tqdm(range(0, 360, 1)):
     # #     visualization(i)

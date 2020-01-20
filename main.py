@@ -14,8 +14,8 @@ from collections import defaultdict
 import sys
 import traceback
 
-filter_mod = 15
-problems_to_run = range(0, 360, filter_mod)
+filter_mod = args.filter
+problems_to_run = range(args.start, 360, filter_mod)
 #problems_to_run = [15, 30, 45, 105, 120, 135, 150, 180, 210]
 #problems_to_run = [105, 120, 135]
 def set_seed(seed):

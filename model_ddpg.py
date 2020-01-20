@@ -30,8 +30,8 @@ def init_weights(net, init='ortho'):
 
 class RobustNormalizer2(object):
 
-    def __init__(self, outlayer=0.1, lr=0.1):
-        self.outlayer = outlayer
+    def __init__(self, outlier=0.1, lr=0.1):
+        self.outlier = outlier
         self.lr = lr
         self.eps = 1e-5
         self.squash_eps = 1e-5
@@ -40,8 +40,8 @@ class RobustNormalizer2(object):
         self.mu = None
         self.sigma = None
 
-        self.y1 = -2
-        self.y2 = 2
+        self.y1 = -1
+        self.y2 = 1
 
     def reset(self):
         self.m = None
@@ -51,25 +51,43 @@ class RobustNormalizer2(object):
         return x
 
     def squash(self, x):
-
         x = x * self.m + self.n
 
-        x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
+        x_clamp_up = torch.clamp(x, min=self.squash_eps)
+        x_clamp_down = torch.clamp(x, max=-self.squash_eps)
 
+        x_log_up = torch.log(x_clamp_up) + 1
+        x_log_down = -torch.log(-x_clamp_down) - 1
+
+        x = x_log_up * (x >= 1).float() + x * (x >= -1).float() * (x < 1).float() + x_log_down * (x < -1).float()
+
+        return x
+
+    def desquash(self, x):
+
+        x_clamp_up = torch.clamp(x, min=self.squash_eps)
+        x_clamp_down = torch.clamp(x, max=-self.squash_eps)
+
+        x_exp_up = torch.exp(x_clamp_up - 1)
+        x_exp_down = -torch.exp(-(x_clamp_down + 1))
+
+        x = x_exp_up * (x >= 1).float() + x * (x >= -1).float() * (x < 1).float() + x_exp_down * (x < -1).float()
+
+        x = (x - self.n) / self.m
         return x
 
     def __call__(self, x, training=False):
         if training:
             n = len(x)
-            outlayer = int(n * self.outlayer + .5)
+            outlier = int(n * self.outlier + .5)
 
             x_cpu = x.cpu()
 
-            x2_ind = torch.kthvalue(x_cpu, n - outlayer, dim=0)[1]
-            x1_ind = torch.kthvalue(x_cpu, outlayer, dim=0)[1]
+            x2_ind = torch.kthvalue(x_cpu, n - outlier, dim=0)[1]
+            x1_ind = torch.kthvalue(x_cpu, outlier, dim=0)[1]
             # curr_mu = torch.median(x_cpu, dim=0)[1]
 
-            m = (self.y2 - self.y1) / (x[x1_ind] - x[x2_ind])
+            m = (self.y2 - self.y1) / (x[x2_ind] - x[x1_ind])
             n = self.y2 - m * x[x2_ind]
 
             if self.m is None or self.n is None:
@@ -88,8 +106,8 @@ class RobustNormalizer2(object):
 
 class RobustNormalizer(object):
 
-    def __init__(self, outlayer=0.1, delta=1, lr=0.1):
-        self.outlayer = outlayer
+    def __init__(self, outlier=0.1, delta=1, lr=0.1):
+        self.outlier = outlier
         self.delta = delta
         self.lr = lr
         self.temp_squash = nn.Tanh()
@@ -119,7 +137,7 @@ class RobustNormalizer(object):
 
     def squash_derivative_tanh(self, x):
         x = (1 - torch.tanh(x)**2) * (x >= 0).float() + 1 * (x < 0).float()
-        return x
+        return self.sigma*x
 
     def desquash_tanh(self, x):
         x_clamp = torch.clamp(x, -1 + self.squash_eps, 1 + self.squash_eps)
@@ -135,7 +153,7 @@ class RobustNormalizer(object):
 
     def squash_derivative_relu(self, x):
         x = self.alpha * (x >= 0).float() + 1 * (x < 0).float()
-        return x
+        return self.sigma*x
 
     def desquash_relu(self, x):
         x = ((x - 1 + self.alpha)/self.alpha) * (x >= 1).float() + x * (x < 1).float()
@@ -145,11 +163,11 @@ class RobustNormalizer(object):
     def __call__(self, x, training=False):
         if training:
             n = len(x)
-            outlayer = int(n * self.outlayer + .5)
+            outlier = int(n * self.outlier + .5)
 
             x_cpu = x.cpu()
-            up = torch.kthvalue(x_cpu, n - outlayer, dim=0)[1]
-            down = torch.kthvalue(x_cpu, outlayer + 1, dim=0)[1]
+            up = torch.kthvalue(x_cpu, n - outlier, dim=0)[1]
+            down = torch.kthvalue(x_cpu, outlier + 1, dim=0)[1]
 
             mu = torch.median(x, dim=0)[0]
             sigma = (x[up] - x[down]) * self.delta
@@ -198,7 +216,9 @@ class TrustRegion(object):
         self.mu = pi
 
         a = torch.max(self.mu - self.sigma, -1 * torch.ones_like(self.mu))
-        b = torch.min(self.mu + self.sigma, torch.ones_like(self.mu))
+        b = a + 2 * self.sigma
+        b = torch.min(b, torch.ones_like(self.mu))
+        a = b - 2 * self.sigma
         self.mu = (a + b) / 2
         self.sigma = (b - a) / 2
 

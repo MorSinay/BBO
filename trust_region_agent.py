@@ -5,9 +5,7 @@ import torch.optim.lr_scheduler
 import numpy as np
 from tqdm import tqdm
 import torch.autograd as autograd
-#from model_ddpg import RobustNormalizer, TrustRegion
-from model_ddpg import RobustNormalizer as RobustNormalizer
-from model_ddpg import TrustRegion
+from model_ddpg import RobustNormalizer2, RobustNormalizer, TrustRegion
 
 import itertools
 from agent import Agent
@@ -22,13 +20,17 @@ class TrustRegionAgent(Agent):
         print("Learning POLICY method using {} with TrustRegionAgent".format(reward_str))
 
         self.pi_trust_region = TrustRegion(self.pi_net)
-        self.r_norm = RobustNormalizer(lr=args.robust_scaler_lr)
-        self.best_pi = None
-        self.best_reward = np.inf
+        if args.trust_alg == 'log':
+            self.r_norm = RobustNormalizer2(lr=args.robust_scaler_lr)
+        else:
+            self.r_norm = RobustNormalizer(lr=args.robust_scaler_lr)
 
-        self.best_pi_evaluate = self.step_policy(self.pi_net.pi.detach(), to_env=False)
+        self.best_pi = self.pi_net.pi.detach().clone()
+        self.best_pi_evaluate = self.step_policy(self.best_pi, to_env=False)
+        self.best_reward = self.best_pi_evaluate
         self.f0 = self.best_pi_evaluate
-        self.stop_con = args.stop_con
+        self.trust_region_con = args.trust_region_con
+        self.min_iter = args.min_iter
         self.no_change = 0
 
     def update_replay_buffer(self):
@@ -37,23 +39,23 @@ class TrustRegionAgent(Agent):
         #self.tensor_replay_policy = None
 
         if self.tensor_replay_reward is not None:
-            pi = self.pi_trust_region.mu
-            explore_policies = self.tensor_replay_policy
-            rewards = self.tensor_replay_reward
-
-            in_range = torch.norm(explore_policies - pi, 1, dim=1) < self.pi_trust_region.sigma.min()
-            if in_range.sum():
-                explore_policies_from_buf = self.pi_trust_region.real_to_unconstrained(explore_policies[in_range])
-                rewards_from_buf = rewards[in_range]
-            else:
-                explore_policies_from_buf = torch.cuda.FloatTensor([])
-                rewards_from_buf = torch.cuda.FloatTensor([])
+            lower, upper = self.pi_trust_region.bounderies()
+            lower, upper = self.pi_trust_region.real_to_unconstrained(lower), self.pi_trust_region.real_to_unconstrained(upper)
+            self.tensor_replay_policy = torch.min(torch.max(self.tensor_replay_policy, lower), upper)
+            explore_policies_from_buf = self.tensor_replay_policy
+            rewards_from_buf = self.tensor_replay_reward
         else:
             explore_policies_from_buf = torch.cuda.FloatTensor([])
             rewards_from_buf = torch.cuda.FloatTensor([])
 
-        self.frame += self.warmup_explore
-        explore_policies_rand = self.exploration_rand(self.warmup_explore)
+        self.frame += self.warmup_minibatch*self.n_explore
+        explore_policies_rand = self.ball_explore(self.warmup_minibatch*self.n_explore)
+
+        # anchors = self.exploration_rand(self.warmup_minibatch)
+        # explore_policies_rand = torch.cuda.FloatTensor([])
+        # for i in range(self.warmup_minibatch):
+        #     explore_policies_rand = torch.cat([explore_policies_rand, self.cone_explore(self.n_explore, 1, anchors[i], torch.ones_like(anchors[i]))])
+
         self.step_policy(explore_policies_rand)
         rewards_rand = self.env.reward
 
@@ -167,7 +169,6 @@ class TrustRegionAgent(Agent):
 
     def warmup(self):
         self.mean_grad = None
-        self.reset_net()
         self.r_norm.reset()
         self.update_replay_buffer()
         self.value_optimize(self.value_iter)
@@ -179,6 +180,7 @@ class TrustRegionAgent(Agent):
     def minimize(self):
         counter = -1
         self.env.reset()
+        self.reset_net()
         self.warmup()
         for i in tqdm(itertools.count()):
             counter += 1
@@ -219,9 +221,10 @@ class TrustRegionAgent(Agent):
                 print("FAILED frame = {}".format(self.frame))
                 break
 
-            elif counter > self.stop_con and self.no_change > (self.stop_con/4):
+            elif counter > self.min_iter and self.no_change > self.trust_region_con:
                 counter = 0
                 self.divergence += 1
+                self.reset_net()
                 self.update_best_pi()
                 self.save_and_print_results()
                 yield self.results
@@ -235,9 +238,11 @@ class TrustRegionAgent(Agent):
 
     def update_best_pi(self):
         pi = self.best_pi.detach().clone()
+        real_replay = self.pi_trust_region.unconstrained_to_real(self.tensor_replay_policy)
         self.pi_trust_region.squeeze(pi)
         self.epsilon *= self.epsilon_factor
         self.pi_net.pi_update(self.pi_trust_region.real_to_unconstrained(pi))
+        self.tensor_replay_policy = self.pi_trust_region.real_to_unconstrained(real_replay)
 
     def pi_optimize(self):
 
@@ -245,9 +250,10 @@ class TrustRegionAgent(Agent):
 
         pi_eval = torch.cuda.FloatTensor([self.results['reward_pi_evaluate'][-1]])
         real_pi = self.results['policies'][-1]
-        norm_factor = self.r_norm.squash_derivative(pi_eval)*self.pi_trust_region.derivative_unconstrained(self.pi_trust_region.real_to_unconstrained(real_pi))
+        norm_factor = self.epsilon_factor**self.divergence
 
-        grad_norm = torch.clamp(torch.norm(grad / norm_factor), max=20)
+        grad_norm = torch.clamp(torch.norm(grad), max=20)/norm_factor
+
         if self.mean_grad is None:
             self.mean_grad = grad_norm
         else:
@@ -258,6 +264,8 @@ class TrustRegionAgent(Agent):
         self.tensor_replay_reward_norm = self.r_norm(self.tensor_replay_reward)
         self.tensor_replay_policy_norm = self.tensor_replay_policy
 
+        #print("r_norm: frame {} - min {} max {} avg {}".format(self.frame, self.tensor_replay_reward_norm.min(), self.tensor_replay_reward_norm.max(), self.tensor_replay_reward_norm.mean()))
+
         len_replay_buffer = len(self.tensor_replay_reward_norm)
         self.batch = min(self.max_batch, len_replay_buffer)
         minibatches = len_replay_buffer // self.batch
@@ -266,7 +274,6 @@ class TrustRegionAgent(Agent):
 
         if self.algorithm_method == 'first_order':
             self.first_order_method_optimize_single_ref(len_replay_buffer, minibatches, value_iter)
-            #self.first_order_method_optimize(len_replay_buffer, minibatches, value_iter)
         elif self.algorithm_method in ['value']:
             self.value_method_optimize(len_replay_buffer, minibatches, value_iter)
         else:
@@ -336,47 +343,6 @@ class TrustRegionAgent(Agent):
         loss /= value_iter
         self.results['value_loss'].append(loss)
         self.value_net.eval()
-
-    def first_order_method_optimize(self, len_replay_buffer, minibatches, value_iter):
-
-        loss = 0
-
-        self.derivative_net.train()
-        for _ in range(value_iter):
-            anchor_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch), replace=False)
-            batch_indexes = anchor_indexes // self.n_explore
-
-            for i, anchor_index in enumerate(anchor_indexes):
-                ref_index = torch.LongTensor(self.batch * batch_indexes[i][:, np.newaxis] + np.arange(self.batch)[np.newaxis, :])
-
-                r_1 = self.tensor_replay_reward_norm[anchor_index].unsqueeze(1).repeat(1, self.batch)
-                r_2 = self.tensor_replay_reward_norm[ref_index]
-                pi_1 = self.tensor_replay_policy_norm[anchor_index]
-                pi_2 = self.tensor_replay_policy_norm[ref_index]
-                pi_tag_1 = self.derivative_net(pi_1).unsqueeze(1).repeat(1, self.batch, 1)
-                pi_1 = pi_1.unsqueeze(1).repeat(1, self.batch, 1)
-
-                if self.importance_sampling:
-                    w = torch.clamp((1 / (torch.norm(pi_2 - pi_1, p=2, dim=2) + 1e-4)).flatten(), 0, 1)
-                else:
-                    w = 1
-
-                value = ((pi_2 - pi_1) * pi_tag_1).sum(dim=2).flatten()
-                target = (r_2 - r_1).flatten()
-
-                self.optimizer_derivative.zero_grad()
-                self.optimizer_pi.zero_grad()
-                if self.spline:
-                    loss_q = (w * self.q_loss(value, target)).sum()
-                else:
-                    loss_q = (w * self.q_loss(value, target)).mean()
-                loss += loss_q.detach().item()
-                loss_q.backward()
-                self.optimizer_derivative.step()
-
-        loss /= value_iter
-        self.results['derivative_loss'] = loss
-        self.derivative_net.eval()
 
     def first_order_method_optimize_single_ref(self, len_replay_buffer, minibatches, value_iter):
 

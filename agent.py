@@ -36,7 +36,6 @@ class Agent(object):
         self.budget = args.budget
         self.checkpoint = checkpoint
         self.algorithm_method = args.algorithm
-        self.stop_con = args.stop_con*self.n_explore
         self.grad_clip = args.grad_clip
         self.divergence = 0
         self.importance_sampling = args.importance_sampling
@@ -57,8 +56,7 @@ class Agent(object):
         self.pi_lr = args.pi_lr
         self.epsilon = args.epsilon
         self.delta = self.pi_lr
-        self.warmup_factor = args.warmup_factor
-        self.warmup_explore = args.warmup_minibatch * self.n_explore
+        self.warmup_minibatch = args.warmup_minibatch
         self.hessian = args.hassian
         self.mean_grad = None
         self.alpha = args.alpha
@@ -67,6 +65,8 @@ class Agent(object):
 
         if args.explore == 'rand':
             self.exploration = self.exploration_rand
+        elif args.explore == 'ball':
+            self.exploration = self.ball_explore
         elif args.explore == 'cone':
             if self.action_space == 1:
                 self.exploration = self.exploration_rand
@@ -258,9 +258,27 @@ class Agent(object):
     def exploration_rand(self, n_explore):
         pi = self.pi_net.pi.detach().clone()
         rand_sign = (2*torch.randint(0, 2 ,size=(n_explore-1, self.action_space), device=self.device)-1).reshape(n_explore-1, self.action_space)
-        pi_explore = pi + self.warmup_factor*self.epsilon * rand_sign * torch.cuda.FloatTensor(n_explore-1, self.action_space).uniform_()
+        pi_explore = pi - self.epsilon * rand_sign * torch.cuda.FloatTensor(n_explore-1, self.action_space).uniform_()
         return torch.cat([pi.unsqueeze(0), pi_explore], dim=0)
 
+    def ball_explore_(self, pi, n_explore):
+        pi = pi.unsqueeze(0)
+
+        x = torch.cuda.FloatTensor(n_explore, self.action_space).normal_()
+        mag = torch.cuda.FloatTensor(n_explore, 1).uniform_()
+
+        x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
+
+        explore = pi + self.epsilon * math.sqrt(self.action_space) * mag * x
+
+        return explore
+
+    def ball_explore(self, n_explore):
+        pi = self.pi_net.pi.detach().clone()
+
+        explore = self.ball_explore_(pi, n_explore-1)
+
+        return torch.cat([pi.unsqueeze(0), explore], dim=0)
 
     def cone_explore(self, n_explore, angle, pi, grad):
         alpha = math.pi/angle
@@ -285,14 +303,15 @@ class Agent(object):
 
         cone = new_sin * dp + new_cos * grad
 
-        explore = pi - self.epsilon * mag * cone
+        explore = pi - self.epsilon * math.sqrt(self.action_space) * mag * cone
 
         return explore
 
     def cone_explore_with_rand(self, n_explore):
         pi, grad = self.get_grad(grad_step=False)
 
-        explore_rand = self.cone_explore(n_explore//2, 1, pi, grad)
+        #explore_rand = self.cone_explore(n_explore//2, 1, pi, grad)
+        explore_rand = self.ball_explore_(pi, n_explore//2)
         explore_cone = self.cone_explore(n_explore - n_explore // 2 - 1, self.cone_angle, pi, grad)
 
         return torch.cat([pi.unsqueeze(0), explore_rand, explore_cone], dim=0)

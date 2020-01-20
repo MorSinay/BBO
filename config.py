@@ -58,11 +58,12 @@ parser.add_argument('--resume', type=int, default=-1, help='Resume experiment nu
 
 # #exploration parameters
 parser.add_argument('--epsilon', type=float, default=0.2, help='exploration parameter before behavioral period')
-parser.add_argument('--cone-angle', type=float, default=3, help='cone angle - default pi/3')
+parser.add_argument('--cone-angle', type=float, default=2, help='cone angle - default pi/3')
 parser.add_argument('--norm', type=str, default='robust_scaler', help='normalization option - min_max | mean | mean_std')
 parser.add_argument('--explore', type=str, default='cone', help='exploration option - cone | rand')
 boolean_feature("best-explore-update", True, 'move to the best value of exploration')
-parser.add_argument('--stop-con', type=int, default=40, help='Stopping Condition')
+parser.add_argument('--trust-region-con', type=int, default=10, help='Trust Region Condition')
+parser.add_argument('--min-iter', type=int, default=40, help='Minimum iteration')
 parser.add_argument('--agent', type=str, default='trust', help='Agent type - trust|robust|single')
 
 #
@@ -75,14 +76,14 @@ parser.add_argument('--printing-interval', type=int, default=50, help='Number of
 parser.add_argument('--replay-updates-interval', type=int, default=50, help='Number of training iterations between q-target updates')
 parser.add_argument('--replay-memory-factor', type=int, default=512, help='Replay factor')
 parser.add_argument('--warmup-minibatch', type=int, default=5, help='Warm up batches')
-parser.add_argument('--warmup-factor', type=int, default=1, help='Warm up factor')
 parser.add_argument('--trust-factor', type=float, default=0.9, help='Warm up factor')
-parser.add_argument('--trust-alg', type=str, default='tanh', help='relu | tanh')
+parser.add_argument('--trust-alg', type=str, default='relu', help='log |relu | tanh')
 parser.add_argument('--epsilon-factor', type=float, default=0.9, help='Epsilon factor')
 parser.add_argument('--learn-iteration', type=int, default=60, help='Learning iteration')
 parser.add_argument('--alpha', type=float, default=0.5, help='moving avg factor')
 parser.add_argument('--loss', type=str, default='huber', help='derivative loss huber|mse')
 parser.add_argument('--start', type=int, default=0, help='')
+parser.add_argument('--filter', type=int, default=15, help='')
 
 
 #
@@ -127,7 +128,10 @@ class Consts(object):
         except:
             pass
 
-    color = ['r', 'b', 'g', 'y', 'c', 'm', 'k', 'lime', 'gold', 'slategray', 'indigo', 'maroon', 'plum', 'pink', 'tan', 'khaki', 'silver',
+    # color = ['r', 'b', 'g', 'y', 'c', 'm', 'k', 'lime', 'gold', 'slategray', 'indigo', 'maroon', 'plum', 'pink', 'tan', 'khaki', 'silver',
+    #          'navy', 'skyblue', 'teal', 'darkkhaki', 'indianred', 'orchid', 'lightgrey', 'dimgrey']
+
+    color = ['r', 'dodgerblue', 'green', 'darkorange', 'mediumpurple', 'peru', 'pink', 'lightslategrey', 'gold', 'turquoise', 'lime', 'slategray', 'indigo', 'maroon', 'plum', 'tan', 'khaki', 'silver',
              'navy', 'skyblue', 'teal', 'darkkhaki', 'indianred', 'orchid', 'lightgrey', 'dimgrey']
 
 consts = Consts()

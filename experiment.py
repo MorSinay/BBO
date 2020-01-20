@@ -10,6 +10,7 @@ from config import consts, args, DirsAndLocksSingleton
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+plt.style.use('seaborn-deep')
 from environment import one_d_change_dim
 from logger import logger
 from distutils.dir_util import copy_tree
@@ -207,24 +208,24 @@ class Experiment(object):
 
             pi = pi.reshape(-1, 1)
 
-            plt.subplot(111)
-            plt.plot(policy[:, 0], norm_f, color='g', markersize=1, label='f')
-            plt.plot(policy[:, 0], value, '-o', color='b', markersize=1, label='value')
-            plt.plot(policy[:, 0], policy_grads, 'H', color='m', markersize=1, label='norm_grad')
-            plt.plot(5*pi[0], pi_value, 'X', color='r', markersize=4, label='pi')
-            plt.plot(5*pi_with_grad[0], pi_value, 'v', color='c', markersize=4, label='gard')
+            fig, ax = plt.subplots()
+            ax.plot(policy[:, 0], norm_f, color='g', markersize=1, label='f')
+            ax.plot(policy[:, 0], value, '-o', color='b', markersize=1, label='value')
+            ax.plot(policy[:, 0], policy_grads, 'H', color='m', markersize=1, label='norm_grad')
+            ax.plot(5*pi[0], pi_value, 'X', color='r', markersize=4, label='pi')
+            ax.plot(5*pi_with_grad[0], pi_value, 'v', color='c', markersize=4, label='gard')
 
-            plt.title('value net for alg {} - {}D_index_{} - iteration {}'.format(self.algorithm, self.action_space, self.iter_index, n))
-            plt.xlabel('x')
-            plt.ylabel('f(x)')
-            plt.legend()
+            ax.set_title('value net for alg {} - {}D_index_{} - iteration {}'.format(self.algorithm, self.action_space, self.iter_index, n))
+            ax.set_xlabel('x')
+            ax.set_ylabel('f(x)')
+            ax.legend()
 
             path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
             if not os.path.exists(path_dir_fig):
                 os.makedirs(path_dir_fig)
 
             path_fig = os.path.join(path_dir_fig, 'value iter {}.pdf'.format(n))
-            plt.savefig(path_fig)
+            fig.savefig(path_fig)
             plt.close()
 
     def grad_norm_on_f_eval(self, n):
@@ -277,10 +278,10 @@ class Experiment(object):
         fig, ax = plt.subplots()
         cs = ax.contour(res['x0'], res['x1'], res['z'], 100)
         colors = consts.color
-        plt.plot(x_exp[:, 0], x_exp[:, 1], '.', color=colors[0], markersize=1)
-        plt.plot(x[:, 0], x[:, 1], '-o', color=colors[1], markersize=1)
+        ax.plot(x_exp[:, 0], x_exp[:, 1], '.', color=colors[0], markersize=1)
+        ax.plot(x[:, 0], x[:, 1], '-o', color=colors[1], markersize=1)
 
-        plt.title('alg {} - 2D_Contour index {}'.format(self.algorithm, self.iter_index))
+        ax.set_title('alg {} - 2D_Contour index {}'.format(self.algorithm, self.iter_index))
         fig.colorbar(cs)
 
         path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
@@ -288,7 +289,7 @@ class Experiment(object):
             os.makedirs(path_dir_fig)
 
         path_fig = os.path.join(path_dir_fig, '2D_index_{}.pdf'.format(self.iter_index))
-        plt.savefig(path_fig)
+        fig.savefig(path_fig)
 
         plt.close()
 
@@ -305,7 +306,7 @@ class Experiment(object):
 
         min_val = min(min_val, min(pi_best))
 
-        _, ax = plt.subplots()
+        fig, ax = plt.subplots()
 
         colors = consts.color
         #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
@@ -330,7 +331,7 @@ class Experiment(object):
             os.makedirs(path_dir_fig)
 
         path_fig = os.path.join(path_dir_fig, 'BestVsEval - dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
-        plt.savefig(path_fig)
+        fig.savefig(path_fig)
 
         plt.close()
 
@@ -340,22 +341,22 @@ class Experiment(object):
         divergence = np.load(os.path.join(path, 'divergence.npy'), allow_pickle=True)
         frame = np.load(os.path.join(path, 'frame.npy'), allow_pickle=True)
 
-        plt.subplot(111)
+        fig, ax = plt.subplots()
 
         colors = consts.color
 
         for i in set(divergence):
             index = (divergence == i)
-            plt.plot(frame[index], mean_grad[index], '-o', color=colors[(i+1) % len(colors)], markersize=1)
+            ax.plot(frame[index], mean_grad[index], '-o', color=colors[(i+1) % len(colors)], markersize=1)
 
-        plt.title('alg {} - dim = {} index = {} ----- mean_grad vs divergence'.format(self.algorithm, self.action_space, self.iter_index))
+        ax.set_title('alg {} - dim = {} index = {} ----- mean_grad vs divergence'.format(self.algorithm, self.action_space, self.iter_index))
 
         path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
         if not os.path.exists(path_dir_fig):
             os.makedirs(path_dir_fig)
 
         path_fig = os.path.join(path_dir_fig, 'mean_grad vs divergence - dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
-        plt.savefig(path_fig)
+        fig.savefig(path_fig)
 
         plt.close()
 
@@ -366,23 +367,23 @@ class Experiment(object):
         divergence = np.load(os.path.join(path, 'divergence.npy'), allow_pickle=True)
         frame = np.load(os.path.join(path, 'frame.npy'), allow_pickle=True)
 
-        plt.subplot(111)
+        fig, ax = plt.subplots()
 
         colors = consts.color
 
         min = 0
         for i in set(divergence):
             max = frame[divergence == i].max()
-            plt.plot(np.arange(min, max, 1), norm_rewards[min:max], '-o', color=colors[(i+1) % len(colors)], markersize=1)
+            ax.plot(np.arange(min, max, 1), norm_rewards[min:max], '-o', color=colors[(i+1) % len(colors)], markersize=1)
             min = max+1
 
-        plt.title('alg {} - dim = {} index = {} ----- r_norm vs divergence'.format(self.algorithm, self.action_space, self.iter_index))
+        ax.set_title('alg {} - dim = {} index = {} ----- r_norm vs divergence'.format(self.algorithm, self.action_space, self.iter_index))
 
         path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
         if not os.path.exists(path_dir_fig):
             os.makedirs(path_dir_fig)
 
         path_fig = os.path.join(path_dir_fig, 'r_norm vs divergence - dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
-        plt.savefig(path_fig)
+        fig.savefig(path_fig)
 
         plt.close()
