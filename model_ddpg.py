@@ -516,7 +516,7 @@ class PiNet(nn.Module):
         self.action_space = action_space
 
     def inverse(self,  policy):
-        policy = torch.clamp(policy, min=-1 + 1e-3, max=1 - 1e-3)
+        policy = torch.clamp(policy, min=-1 + 1e-5, max=1 - 1e-5)
         return 0.5 * (torch.log(1 + policy) - torch.log(1 - policy))
 
     def inverse_derivative(self,  policy):

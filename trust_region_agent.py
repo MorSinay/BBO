@@ -35,26 +35,8 @@ class TrustRegionAgent(Agent):
 
     def update_replay_buffer(self):
 
-        #self.tensor_replay_reward = None
-        #self.tensor_replay_policy = None
-
-        if self.tensor_replay_reward is not None:
-            lower, upper = self.pi_trust_region.bounderies()
-            lower, upper = self.pi_trust_region.real_to_unconstrained(lower), self.pi_trust_region.real_to_unconstrained(upper)
-            self.tensor_replay_policy = torch.min(torch.max(self.tensor_replay_policy, lower), upper)
-            explore_policies_from_buf = self.tensor_replay_policy
-            rewards_from_buf = self.tensor_replay_reward
-        else:
-            explore_policies_from_buf = torch.cuda.FloatTensor([])
-            rewards_from_buf = torch.cuda.FloatTensor([])
-
         self.frame += self.warmup_minibatch*self.n_explore
         explore_policies_rand = self.ball_explore(self.warmup_minibatch*self.n_explore)
-
-        # anchors = self.exploration_rand(self.warmup_minibatch)
-        # explore_policies_rand = torch.cuda.FloatTensor([])
-        # for i in range(self.warmup_minibatch):
-        #     explore_policies_rand = torch.cat([explore_policies_rand, self.cone_explore(self.n_explore, 1, anchors[i], torch.ones_like(anchors[i]))])
 
         self.step_policy(explore_policies_rand)
         rewards_rand = self.env.reward
@@ -69,16 +51,8 @@ class TrustRegionAgent(Agent):
         self.r_norm(rewards_rand, training=True)
         self.results['norm_rewards'].append(self.r_norm(rewards_rand, training=False))
 
-        explore_policies = torch.cat([explore_policies_from_buf, explore_policies_rand])
-        rewards = torch.cat([rewards_from_buf, rewards_rand])
-
-        replay_size = (len(explore_policies) // self.n_explore) * self.n_explore
-
-        explore_policies = explore_policies[-replay_size:]
-        rewards = rewards[-replay_size:]
-
-        self.tensor_replay_reward = rewards
-        self.tensor_replay_policy = explore_policies
+        self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, rewards_rand])[-self.replay_memory_size:]
+        self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, explore_policies_rand])[-self.replay_memory_size:]
 
     def results_pi_update_with_explore(self):
 
@@ -248,8 +222,6 @@ class TrustRegionAgent(Agent):
 
         _, grad = self.get_grad(grad_step=True)
 
-        pi_eval = torch.cuda.FloatTensor([self.results['reward_pi_evaluate'][-1]])
-        real_pi = self.results['policies'][-1]
         norm_factor = self.epsilon_factor**self.divergence
 
         grad_norm = torch.clamp(torch.norm(grad), max=20)/norm_factor

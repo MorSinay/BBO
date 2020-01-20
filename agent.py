@@ -51,10 +51,10 @@ class Agent(object):
         self.frame = 0
         self.n_offset = 0
         self.results = defaultdict(list)
-        self.tensor_replay_reward = None
-        self.tensor_replay_policy = None
+        self.tensor_replay_reward = torch.cuda.FloatTensor([])
+        self.tensor_replay_policy = torch.cuda.FloatTensor([])
         self.pi_lr = args.pi_lr
-        self.epsilon = args.epsilon
+        self.epsilon = args.epsilon * math.sqrt(self.action_space)
         self.delta = self.pi_lr
         self.warmup_minibatch = args.warmup_minibatch
         self.hessian = args.hassian
@@ -269,7 +269,7 @@ class Agent(object):
 
         x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
 
-        explore = pi + self.epsilon * math.sqrt(self.action_space) * mag * x
+        explore = pi + self.epsilon * mag * x
 
         return explore
 
@@ -303,7 +303,7 @@ class Agent(object):
 
         cone = new_sin * dp + new_cos * grad
 
-        explore = pi - self.epsilon * math.sqrt(self.action_space) * mag * cone
+        explore = pi - self.epsilon * mag * cone
 
         return explore
 
