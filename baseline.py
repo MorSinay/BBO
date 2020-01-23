@@ -21,7 +21,7 @@ if username == 'morsi':
     from mpl_toolkits.mplot3d import axes3d, Axes3D  # <-- Note the capitalization!
     base_dir = os.path.join('/Users', username, 'Desktop', 'baseline')
 else:
-    from vae import VaeProblem, VAE
+    from gauss_uniform_vae import VaeProblem, VAE
     base_dir = os.path.join('/data/', username, 'gan_rl', 'baseline')
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)

@@ -8,7 +8,7 @@ import os
 import pwd
 import random
 import numpy as np
-from vae import VaeProblem, VAE
+from gauss_uniform_vae import VaeProblem, VAE
 from environment import EnvCoco, EnvVae, EnvOneD
 from collections import defaultdict
 import sys

@@ -148,22 +148,22 @@ class EnvVae(Env):
         self.reward = None
         self.t = 0
         self.k = 0
-        self.vae_problem = vae_problem
-        self.output_size = self.vae_problem.dimension
+        self.problem = vae_problem
+        self.output_size = self.problem.dimension
 
         self.reset()
-        self.upper_bounds = self.vae_problem.upper_bounds
-        self.lower_bounds = self.vae_problem.lower_bounds
-        self.initial_solution = self.vae_problem.initial_solution
+        self.upper_bounds = self.problem.upper_bounds
+        self.lower_bounds = self.problem.lower_bounds
+        self.initial_solution = self.problem.initial_solution
 
     def get_problem_dim(self):
         return self.output_size
 
     def get_problem_index(self):
-        return self.vae_problem.index
+        return self.problem.index
 
     def get_problem_id(self):
-        return 'vae_' + str(self.vae_problem.id)
+        return 'vae_' + str(self.problem.id)
 
     def constrains(self):
          return self.lower_bounds, self.upper_bounds
@@ -181,39 +181,40 @@ class EnvVae(Env):
         return policy
 
     def step_policy(self, policy):
-        if self.to_numpy:
-            policy = policy.cpu().numpy()
-        assert ((np.clip(policy, self.lower_bounds, self.upper_bounds) - policy).sum() < 0.000001), "clipping error {}".format(policy)
+        if self.to_numpy == False:
+            policy = torch.cuda.FloatTensor(policy)
+
         self.reward = []
         if len(policy.shape) == 2:
             for i in range(policy.shape[0]):
-                res = self.vae_problem.func(policy[i])
+                res = self.problem.func(policy[i])
                 self.observed_list.append(res)
-                self.best_list.append(self.problem.best_observed_fvalue1)
+                self.best_list.append(self.problem.problem.best_observed_fvalue1)
                 self.reward.append(res)
                 self.k += 1
         else:
-            res = self.vae_problem.func(policy)
+            res = self.problem.func(policy)
             self.observed_list.append(res)
-            self.best_list.append(self.problem.best_observed_fvalue1)
+            self.best_list.append(self.problem.problem.best_observed_fvalue1)
             self.reward.append(res)
             self.k += 1
 
         self.reward = torch.cuda.FloatTensor(self.reward)
-        self.best_observed = self.vae_problem.problem.best_observed_fvalue1
-        self.t = self.vae_problem.problem.final_target_hit
+        self.best_observed = self.problem.problem.best_observed_fvalue1
+        self.t = self.problem.problem.final_target_hit
 
     def f(self, policy):
-        if self.to_numpy:
-            policy = policy.cpu().numpy()
-        res = self.vae_problem.func(policy)
+        if self.to_numpy == False:
+            policy = torch.cuda.FloatTensor(policy)
+
+        res = self.problem.func(policy)
         self.observed_list.append(res)
-        self.best_list.append(self.problem.best_observed_fvalue1)
+        self.best_list.append(self.problem.problem.best_observed_fvalue1)
         self.pi_list.append(policy)
         return res
 
     def get_f0(self):
-        return self.vae_problem.func(self.initial_solution)
+        return self.problem.func(self.initial_solution)
 
 class EnvOneD(Env):
 

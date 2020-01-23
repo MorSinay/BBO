@@ -24,8 +24,12 @@ class Agent(object):
         self.env = env
         self.dirs_locks = DirsAndLocksSingleton(exp_name)
 
-        self.best_op_x, self.best_op_f = get_best_solution(self.action_space, self.env.problem_iter)
-        self.best_op_x = torch.FloatTensor(self.best_op_x/5).to(self.device)
+        if self.action_space == 784:
+            self.best_op_x = torch.cuda.FloatTensor(self.env.get_initial_solution())
+            self.best_op_f = 0.
+        else:
+            self.best_op_x, self.best_op_f = get_best_solution(self.action_space, self.env.problem_iter)
+            self.best_op_x = torch.FloatTensor(self.best_op_x/5).to(self.device)
 
         self.batch = args.batch
         self.max_batch = args.batch

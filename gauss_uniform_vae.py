@@ -13,18 +13,7 @@ from config import args
 import pathlib
 import socket
 from tqdm import tqdm
-
-
-username = pwd.getpwuid(os.geteuid()).pw_name
-project_name = 'vae_bbo'
-
-if "gpu" in socket.gethostname():
-    root_dir = os.path.join('/home/dsi/', username, 'data', project_name)
-elif "root" == username:
-    root_dir = os.path.join('/workspace/data', project_name)
-else:
-    root_dir = os.path.join('/data/', username, 'gan_rl', project_name)
-
+from config import consts
 
 class VAE(nn.Module):
     def __init__(self, vae_mode):
@@ -96,6 +85,7 @@ class VAE(nn.Module):
 
 class VaeModel(object):
     def __init__(self, vae_mode):
+        root_dir = consts.vaedir
         self.vae_mode = vae_mode
         is_cuda = torch.cuda.is_available()
         torch.manual_seed(128)
@@ -198,14 +188,14 @@ class VaeModel(object):
 
 class VaeProblem(object):
     def __init__(self, problem_index):
-        dim = args.latent
+        self.latent = args.latent
         self.vae = VaeModel(args.vae)
         self.vae.load_model()
         self.vae.model.eval()
         self.problem = None
 
         suite_name = "bbob"
-        suite_filter_options = ("dimensions: " + str(dim))
+        suite_filter_options = ("dimensions: " + str(self.latent))
         self.suite = cocoex.Suite(suite_name, "", suite_filter_options)
         self.reset(problem_index)
 
@@ -221,7 +211,7 @@ class VaeProblem(object):
         self.index = self.problem.index
         self.id = 'vae_'+str(self.problem.id)
         self.dimension = 784
-        self.initial_solution = self.vae.model.decode(torch.FloatTensor(self.problem.initial_solution).to(self.device)).detach().cpu().numpy()
+        self.initial_solution = self.vae.model(torch.cuda.FloatTensor(self.problem.initial_solution), part='dec').detach().cpu().numpy()
         self.lower_bounds = -np.ones(self.dimension)
         self.upper_bounds = np.ones(self.dimension)
         self.evaluations = 0
@@ -231,9 +221,9 @@ class VaeProblem(object):
         return None
 
     def denormalize(self, policy):
-        assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "denormalized"
+        assert (np.max(policy) <= 1) or (np.min(policy) >= -1), "policy shape {} min {} max {}".format(policy.shape, policy.min(), policy.max())
         if len(policy.shape) == 2:
-            assert (policy.shape[1] == self.output_size), "action error"
+            assert (policy.shape[1] == self.latent), "action error"
             upper = np.repeat(self.z_upper_bounds, policy.shape[0], axis=0)
             lower = np.repeat(self.z_lower_bounds, policy.shape[0], axis=0)
         else:
@@ -244,11 +234,9 @@ class VaeProblem(object):
         return policy
 
     def func(self, x):
-        x = torch.FloatTensor(x).to(self.device)
-        mu, logvar = self.vae.model.encode(x)
-        z = self.vae.model.reparameterize(mu, logvar).detach().cpu().numpy()
-        z = self.denormalize(z)
-        z = np.clip(z, self.z_lower_bounds, self.z_upper_bounds)
+        z, _, _, _ = self.vae.model(x.unsqueeze(0), 'enc')
+        z = torch.tanh(z).detach().cpu().numpy()
+        z = self.denormalize(z).flatten()
         f_val = self.problem(z)
 
         self.best_observed_fvalue1 = self.problem.best_observed_fvalue1
