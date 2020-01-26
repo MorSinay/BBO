@@ -12,11 +12,32 @@ from torch import nn
 from model import ResClassifier, ResGenerator, ResDiscriminator
 import pandas as pd
 # from apex import amp
+from tqdm import tqdm
+
+
+class DummyTqdm(object):
+
+    def __init__(self):
+        self.n = 0
+
+    def update(self, n):
+        self.n += n
+
+    def close(self):
+        pass
+
+
+def get_tqdm(display=False):
+
+    if display:
+        return tqdm(total=args.budget, unit='steps')
+    else:
+        return DummyTqdm()
 
 
 class Env(object):
 
-    def __init__(self, ind):
+    def __init__(self, ind, display=False):
 
         # lendmark predictor
         self.predictor_path = args.predictor_path
@@ -27,12 +48,37 @@ class Env(object):
         self.action_space = args.action_space
         self.markers = 68
         self.factor = 5
+        self.grace = .1
+        self.max_budget = int(args.budget * (1 + self.grace))
+        self.display = display
 
         self.transform = transforms.Compose([transforms.ToTensor(),
                                  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
         # dataset for generating landmark problem
         self.dataset = torchvision.datasets.ImageFolder(root=exp.dataset_dir)
+
+        # load generator/discriminator and attribute classifier
+
+        generator_path = os.path.join(args.generator_dir, 'checkpoints', 'checkpoint')
+        classifier_path = os.path.join(args.classifier_dir, 'checkpoints', 'checkpoint')
+
+        checkpoint = torch.load(generator_path)
+        self.generator = checkpoint['generator_model']
+        self.generator.module.load_state_dict(checkpoint['generator'])
+        self.discriminator = checkpoint['discriminator_model']
+        self.discriminator.module.load_state_dict(checkpoint['discriminator'])
+
+        checkpoint = torch.load(classifier_path)
+        self.classifier = checkpoint['net_model']
+        self.classifier.load_state_dict(checkpoint['net'])
+
+        self.generator.device_ids = list(range(torch.cuda.device_count()))
+        self.discriminator.device_ids = list(range(torch.cuda.device_count()))
+
+        self.generator.eval()
+        self.discriminator.eval()
+        self.classifier.eval()
 
         self.disc_loss = nn.MSELoss(reduction='none')
 
@@ -50,37 +96,32 @@ class Env(object):
         self.att_loss = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight.to(exp.device), reduction='none')
 
         # gan pretrained model
-        self.model = torch.hub.load('facebookresearch/pytorch_GAN_zoo:hub', 'PGAN', model_name='celebAHQ-512',
-                                    pretrained=True, useGPU=True)
-
-        self.generator = self.model.netG
-        self.discriminator = self.model.netD
-
-        # self.generator = self.generator.to(exp.device)
-        # self.discriminator = self.discriminator.to(exp.device)
-        #
-        # self.generator = nn.DataParallel(self.generator)
-        # self.discriminator = nn.DataParallel(self.discriminator)
-
-        self.generator.eval()
-        self.discriminator.eval()
+        # self.model = torch.hub.load('facebookresearch/pytorch_GAN_zoo:hub', 'PGAN', model_name='celebAHQ-512',
+        #                             pretrained=True, useGPU=True)
+        # self.model.netG.eval()
 
         self.penalty = args.penalty
         self.scale = np.stack([self.width * np.ones(self.markers), self.height * np.ones(self.markers)], axis=1)
 
         ind = ind if ind > 0 else np.random.randint(len(self.dataset))
         while True:
-
-            self.z_target = torch.cuda.FloatTensor(1, self.action_space).normal_()
-            image = self.gen_images(self.z_target)[0].detach()
-
+            self.problem = ind
+            image = self.transform(self.dataset[ind][0]).to(exp.device)
+            # self.z_target = torch.cuda.FloatTensor(1, self.action_space).normal_()
+            # image = self.gen_images(self.z_target)[0].detach()
             landmark_target = self.landmarks(image)
             landmark_target = landmark_target.view(1, *landmark_target.shape)
             if not torch.isnan(landmark_target.sum()).item():
                 self.landmark_target = landmark_target
                 self.image_target = torch.clamp(0.5 * image + 0.5, 0, 1)
 
-                # self.attributes_target = (self.attributes(image) > 0.).float()
+                # self.attributes_target = (self.attributes(image) > 0.).detach().float()
+
+                self.attributes_target = torch.cuda.FloatTensor(self.att.iloc[ind][self.att_name] > 0).unsqueeze(0)
+
+                self.attributes_target_text = '\n'.join([f"| {att}: \t{'yes' if self.attributes_target[0, i] > 0 else 'no'}"
+                                                         for i, att in enumerate(self.att_name)])
+
                 break
             ind += 1
 
@@ -132,16 +173,13 @@ class Env(object):
         landmarks = torch.stack([self.landmarks(img) for img in images])
         r_landmark = self.landmark_loss(landmarks)
 
-        # attributes = self.attributes(images).detach()
-        disc = self.discriminator(images).detach().squeeze(1)
+        attributes = self.attributes(images).detach()
+        disc = self.discriminator(images).detach()
 
-        # return -torch.tanh(disc.detach())
-        # return torch.tanh(disc.detach())
+        r_disc = -torch.tanh(disc).detach()
+        r_att = self.att_loss(attributes, self.attributes_target.repeat(len(attributes), 1)).detach().mean(1)
 
-        r_disc = -torch.tanh(disc.detach())
-        # # r_att = self.att_loss(attributes, self.attributes_target.repeat(len(attributes), 1)).detach().mean(1)
-        #
-        return r_landmark * 10 + r_disc
+        return r_landmark * 100 + r_disc * 2 + r_att
 
     def landmark_loss(self, landmarks):
 
@@ -152,11 +190,16 @@ class Env(object):
 
     def get_initial_solution(self):
 
-        return torch.cuda.FloatTensor(self.action_space).zero_()
+        return torch.cuda.FloatTensor(exp.solution) / self.factor
+        # return torch.cuda.FloatTensor(self.action_space).zero_()
 
     def reset(self):
+
+        if self.k is not None:
+            self.k.close()
+
         self.best_policy = self.get_initial_solution()
-        self.k = 0
+        self.k = get_tqdm(display=self.display)
         results = self.evaluate(self.best_policy)
 
         self.best_image, self.best_reward = results.image, results.reward
@@ -182,12 +225,16 @@ class Env(object):
             r = r.item()
             images = images.squeeze(0)
 
-        return self.results(image=torch.clamp(0.5 * images + 0.5, 0, 1), reward=r, budget=self.k)
+        return self.results(image=torch.clamp(0.5 * images + 0.5, 0, 1), reward=r, budget=self.k.n)
 
     def step(self, policy):
 
-        budget = self.k + np.arange(len(policy))
-        self.k += len(budget)
+        if self.k.n >= self.max_budget:
+            raise RuntimeError("max iter num")
+
+        budget = self.k.n + np.arange(len(policy))
+        self.k.update(len(budget))
+        # print progress
 
         images = self.gen_images(policy).detach()
         r = self.loss(images)

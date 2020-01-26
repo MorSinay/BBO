@@ -43,15 +43,21 @@ parser = argparse.ArgumentParser(description=project_name)
 # global parameters
 parser.add_argument('--dataset-dir', type=str, default='/localdata/elads/celeba/', help='Directory of the CelebA Dataset')
 
+# parser.add_argument('--generator-dir', type=str,
+#                     default='/home/dsi/elads/data/bbo/results/pagan_store_80000_iter_d_2_celeba_exp_0000_20191208_1404301',
+#                     help='The generator/discriminator models')
+
 parser.add_argument('--generator-dir', type=str,
-                    default='/home/dsi/elads/data/bbo/results/pagan_store_80000_iter_d_2_celeba_exp_0000_20191208_1404301',
+                    default='/home/dsi/elads/data/bbo/results/pagan_debug_iter_d_2_celeba_exp_0000_20191208_140431',
                     help='The generator/discriminator models')
+
 parser.add_argument('--classifier-dir', type=str,
                     default='/home/dsi/elads/data/bbo/results/attribute_debug_att_head_balanced_celeba_exp_0000_20191209_215136',
                     help='The classifier model')
 
 parser.add_argument('--predictor-path', type=str, default=predictor_path, help='Path for the landmark predictor')
-parser.add_argument('--algorithm', type=str, default='egl', help='[egl|igl]')
+parser.add_argument('--algorithm', type=str, default='egl', help='[egl|igl|all baselines]')
+parser.add_argument('--architecture', type=str, default='fc', help='[fc|res|spline]')
 
 parser.add_argument('--num', type=int, default=-1, help='Resume experiment number, set -1 for new experiment')
 parser.add_argument('--cpu-workers', type=int, default=48, help='How many CPUs will be used for the data loading')
@@ -59,6 +65,7 @@ parser.add_argument('--cuda', type=int, default=0, help='GPU Number')
 parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
 
 # booleans
+boolean_feature("baseline", False, 'Baseline routine')
 
 boolean_feature("optimize", False, 'Optimization routine')
 boolean_feature("multi-gpu", False, 'Split batch over all GPUs')
@@ -72,7 +79,8 @@ boolean_feature("lognet", False, 'Log networks data to tensorboard')
 # experiment parameters
 
 parser.add_argument('--dataset', type=str, default='celeba', help='Dataset name [full|mini]')
-parser.add_argument('--seed', type=int, default=0, help='Seed for reproducability')
+parser.add_argument('--seed', type=int, default=0, help='Seed for reproducibility')
+parser.add_argument('--solution-seed', type=int, default=19870109, help='Seed for initial solution')
 parser.add_argument('--image-size', type=int, default=64, help='Size of image after reshape')
 parser.add_argument('--height', type=int, default=218, help='Image Height')
 parser.add_argument('--width', type=int, default=178, help='Image width')
@@ -81,52 +89,51 @@ parser.add_argument('--width', type=int, default=178, help='Image width')
 
 
 parser.add_argument('--penalty', type=float, default=10., help='Penalty for no face detection')
-
 parser.add_argument('--weight-decay', type=float, default=0., help='L2 regularization coefficient')
-parser.add_argument('--clip', type=float, default=1., help='Clip Gradient L2 norm')
 
 parser.add_argument('--epochs', type=int, default=100, metavar='STEPS', help='Total number of backward steps')
-parser.add_argument('--train-epoch', type=int, default=50, metavar='BATCHES', help='Length of each epoch (in batches)')
+parser.add_argument('--train-epoch', type=int, default=10, metavar='BATCHES', help='Length of each epoch (in batches)')
 parser.add_argument('--test-epoch', type=int, default=10, metavar='BATCHES', help='Length of test epoch (in batches)')
-parser.add_argument('--batch', type=int, default=32, help='Batch Size')
+parser.add_argument('--batch', type=int, default=1024, help='Batch Size')
 
 # # booleans
 boolean_feature("load-last-model", False, 'Load the last saved model')
-boolean_feature("grad", False, 'Use grad net')
 boolean_feature('importance-sampling', False, "Derivative eval")
 boolean_feature("best-explore-update", True, 'move to the best value of exploration')
 
+
 # #exploration parameters
-parser.add_argument('--epsilon', type=float, default=0.2, metavar='ε', help='exploration parameter before behavioral period')
-parser.add_argument('--explore', type=str, default='rand', metavar='explore', help='exploration option - grad_rand | grad_guided | rand')
-parser.add_argument('--update-step', type=str, default='n_step', metavar='update', help='pi update step - n_step | best_step | first_vs_last | no_update')
-parser.add_argument('--grad-steps', type=int, default=8, metavar='grad', help='Gradient step')
+parser.add_argument('--epsilon', type=float, default=0.1, metavar='ε', help='exploration parameter before behavioral period')
+parser.add_argument('--explore', type=str, default='cone_rand', metavar='exp', help='rand|ball|cone')
 
 # #train parameters
-parser.add_argument('--replay-memory-factor', type=int, default=10, help='Replay factor')
-parser.add_argument('--delta', type=float, default=0.1, metavar='delta', help='Total variation constraint')
+parser.add_argument('--replay-memory-factor', type=int, default=64, help='Replay factor')
 parser.add_argument('--dropout', type=float, default=0., help='Dropout regularization coefficient')
 parser.add_argument('--channel', type=int, default=32, help='Channel multiplier')
 
 #
 # #actors parameters
-parser.add_argument('--problem-index', type=int, default=-1, help='Problem Index or -1 for random problem')
-parser.add_argument('--pi-lr', type=float, default=1e-2, metavar='LR', help='pi learning rate')
+parser.add_argument('--problem-index', type=int, default=40000, help='Problem Index or -1 for random problem')
+parser.add_argument('--pi-lr', type=float, default=0.02, metavar='LR', help='pi learning rate')
 parser.add_argument('--value-lr', type=float, default=1e-3, metavar='LR', help='value learning rate')
 parser.add_argument('--action-space', type=int, default=512, metavar='dimension', help='Problem dimension')
 parser.add_argument('--layer', type=int, default=256, help='Channel multiplier')
-parser.add_argument('--exploration', type=str, default='GRAD', metavar='N', help='GRAD|UNIFORM')
 
 parser.add_argument('--stop-con', type=int, default=40, help='Stopping Condition')
 parser.add_argument('--n-explore', type=int, default=32, help='exploration')
-parser.add_argument('--epsilon-factor', type=float, default=0.9, help='Epsilon factor')
-parser.add_argument('--warmup-minibatch', type=int, default=2, help='Warm up batches')
+parser.add_argument('--epsilon-factor', type=float, default=0.95, help='Epsilon factor')
+parser.add_argument('--warmup-minibatch', type=int, default=10, help='Warm up batches')
+# parser.add_argument('--warmup-minibatch', type=int, default=18, help='Warm up batches')
+
 parser.add_argument('--warmup-factor', type=int, default=1, help='Warm up factor')
 parser.add_argument('--cone-angle', type=float, default=3, help='cone angle - default pi/3')
 parser.add_argument('--grad-clip', type=float, default=0, help='grad clipping')
-parser.add_argument('--learn-iteration', type=int, default=60, help='Learning iteration')
+parser.add_argument('--clip', type=float, default=0., help='Clip Gradient L2 norm')
+
+parser.add_argument('--learn-iteration', type=int, default=80, help='Learning iteration')
 parser.add_argument('--loss', type=str, default='huber', help='derivative loss huber|mse')
 parser.add_argument('--trust-factor', type=float, default=0.9, help='Warm up factor')
+parser.add_argument('--budget', type=int, default=10000, help='Number of steps')
 
 
 args = parser.parse_args()
@@ -154,6 +161,10 @@ class Experiment(object):
 
     def __init__(self):
 
+        np.random.seed(args.solution_seed)
+        self.solution = np.random.randn(args.action_space)
+        np.random.seed(None)
+
         set_seed()
 
         torch.set_num_threads(100)
@@ -173,7 +184,8 @@ class Experiment(object):
         self.opt_level = "O1"  if args.half else "O0"
 
         if "gpu" in socket.gethostname():
-            self.root_dir = os.path.join('/home/dsi/', username, 'data', project_name)
+            # self.root_dir = os.path.join('/home/dsi/', username, 'data', project_name)
+            self.root_dir = os.path.join('/localdata/', username, 'data', project_name)
         elif "root" == username:
             self.root_dir = os.path.join('/workspace/data', project_name)
         else:
@@ -182,14 +194,14 @@ class Experiment(object):
         self.base_dir = os.path.join(self.root_dir, 'results')
         self.data_dir = os.path.join(self.root_dir, 'data', args.dataset)
 
-        for folder in [self.base_dir, self.root_dir, self.data_dir]:
+        for folder in [self.root_dir, self.base_dir, self.data_dir]:
             if not os.path.exists(folder):
                 os.makedirs(folder)
 
         dirs = os.listdir(self.base_dir)
 
         self.resume = args.num
-        temp_name = "%s_%s_%s_exp" % (args.algorithm, args.identifier, args.dataset)
+        temp_name = "%s_%s_%s_p_%04d_exp" % (args.algorithm, args.identifier, args.dataset, args.problem_index)
         self.exp_name = ""
         self.load_model = True
         if self.resume >= 0:
@@ -238,7 +250,7 @@ class Experiment(object):
 
             # make log dirs
             os.makedirs(os.path.join(self.results_dir, 'train'))
-            os.makedirs(os.path.join(self.results_dir, 'eval'))
+            os.makedirs(os.path.join(self.results_dir, 'test'))
 
             # copy code to dir
             copy_tree(os.path.dirname(os.path.realpath(__file__)), self.code_dir)
@@ -265,6 +277,13 @@ class Experiment(object):
     def log_data(self, train_results, test_results=None, n=0, alg=None):
 
         defaults_argv = defaultdict(dict)
+
+        # if 'pickle' in train_results:
+        np.save(os.path.join(self.results_dir, 'train', f'{n:06d}'), dict(train_results))
+
+        # if test_results is not None and 'pickle' in test_results:
+        if test_results is not None:
+            np.save(os.path.join(self.results_dir, 'test', f'{n:06d}'), dict(test_results))
 
         for param, val in train_results['scalar'].items():
             if type(val) is dict:
@@ -300,25 +319,27 @@ class Experiment(object):
                             pass
 
             for log_type in train_results:
-                log_func = getattr(self.writer, f"add_{log_type}")
-                for param in train_results[log_type]:
+                if hasattr(self.writer, f"add_{log_type}"):
+                    log_func = getattr(self.writer, f"add_{log_type}")
+                    for param in train_results[log_type]:
 
-                    if type(train_results[log_type][param]) is dict:
-                        for p, v in train_results[log_type][param].items():
-                            log_func(f"train_{param}/{p}", v, n, **defaults_argv[log_type])
-                    else:
-                        log_func(f"train/{param}", train_results[log_type][param], n, **defaults_argv[log_type])
+                        if type(train_results[log_type][param]) is dict:
+                            for p, v in train_results[log_type][param].items():
+                                log_func(f"train_{param}/{p}", v, n, **defaults_argv[log_type])
+                        else:
+                            log_func(f"train/{param}", train_results[log_type][param], n, **defaults_argv[log_type])
 
             if test_results is not None:
                 for log_type in test_results:
-                    log_func = getattr(self.writer, f"add_{log_type}")
-                    for param in test_results[log_type]:
+                    if hasattr(self.writer, f"add_{log_type}"):
+                        log_func = getattr(self.writer, f"add_{log_type}")
+                        for param in test_results[log_type]:
 
-                        if type(test_results[log_type][param]) is dict:
-                            for p, v in test_results[log_type][param].items():
-                                log_func(f"eval_{param}/{p}", v, n, **defaults_argv[log_type])
-                        else:
-                            log_func(f"eval/{param}", test_results[log_type][param], n, **defaults_argv[log_type])
+                            if type(test_results[log_type][param]) is dict:
+                                for p, v in test_results[log_type][param].items():
+                                    log_func(f"eval_{param}/{p}", v, n, **defaults_argv[log_type])
+                            else:
+                                log_func(f"eval/{param}", test_results[log_type][param], n, **defaults_argv[log_type])
 
         stat_line = 'Train: '
         for param in train_results['scalar']:
@@ -333,12 +354,9 @@ class Experiment(object):
                     stat_line += '  %s %g \t|' % (param, test_results['scalar'][param])
             logger.info(stat_line)
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def exit(self):
         if args.tensorboard:
-            self.writer.export_scalars_to_json(os.path.join(self.tensorboard_dir, "all_scalars.json"))
+            # self.writer.export_scalars_to_json(os.path.join(self.tensorboard_dir, "all_scalars.json"))
             self.writer.close()
 
 

@@ -4,11 +4,21 @@ from torch import nn
 import torch.nn.functional as F
 import copy
 from collections import defaultdict
-from apex import amp
+# from apex import amp
 from loguru import logger
-from environment import Env
+from environment2 import Env
 import math
-from model import DuelNet, PiNet
+from model import DuelNet, DuelResNet, PiNet, SplineNet, MultipleOptimizer
+
+if args.architecture == 'fc':
+    NeuralNet = DuelNet
+elif args.architecture == 'res':
+    NeuralNet = DuelResNet
+elif args.architecture == 'spline':
+    NeuralNet = SplineNet
+else:
+    raise NotImplementedError
+
 
 class Algorithm(object):
 
@@ -27,35 +37,32 @@ class Algorithm(object):
 
         self.action_space = args.action_space
         self.epsilon = args.epsilon
-        self.delta = args.delta
         self.batch = args.batch
-        self.replay_memory_size = self.batch * args.replay_memory_factor
+        self.n_explore = args.n_explore
+        self.replay_memory_size = self.n_explore * args.replay_memory_factor
         self.problem_index = args.problem_index
         self.pi_lr = args.pi_lr
         self.value_lr = args.value_lr
-        self.grad_steps = args.grad_steps
         self.importance_sampling = args.importance_sampling
-        self.update_step = args.update_step
         self.best_explore_update = args.best_explore_update
         self.weight_decay = args.weight_decay
-        self.grad = args.grad
         self.cone_angle = args.cone_angle
         self.warmup_factor = args.warmup_factor
         self.algorithm = args.algorithm
         self.grad_clip = args.grad_clip
         self.stop_con = args.stop_con
-        self.n_explore = args.n_explore
         self.epsilon_factor = args.epsilon_factor
-        self.warmup_explore = args.warmup_minibatch * self.n_explore
+        self.warmup_minibatch = args.warmup_minibatch
+        self.budget = args.budget
 
         if args.explore == 'rand':
             self.exploration = self.exploration_rand
+        elif args.explore == 'ball':
+            self.exploration = self.ball_explore
         elif args.explore == 'cone':
-            if self.action_space == 1:
-                self.exploration = self.exploration_rand
-            else:
-                self.exploration = self.cone_explore_with_rand
-                self.cone_angle = args.cone_angle
+            self.exploration = self.cone_explore
+        elif args.explore == 'cone_rand':
+            self.exploration = self.cone_rand_explore
         else:
             print("explore:" + args.explore)
             raise NotImplementedError
@@ -68,25 +75,27 @@ class Algorithm(object):
         self.pi_net.eval()
         
         self.value_iter = args.learn_iteration
-        
+
         if self.algorithm == 'egl':
-            self.grad_net = DuelNet(self.pi_net, self.action_space)
-            self.grad_net.to(self.device)
-            self.optimizer_grad = torch.optim.Adam(self.grad_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-            self.grad_net.eval()
-            self.grad_net_zero = copy.deepcopy(self.grad_net.state_dict())
-            
+            output = self.action_space
         elif self.algorithm == 'igl':
-
-            self.value_net = DuelNet(self.pi_net, 1)
-            self.value_net.to(self.device)
-            self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-
-            self.value_net.eval()
-            self.value_net_zero = copy.deepcopy(self.value_net.state_dict())
-        
+            output = 1
         else:
             raise NotImplementedError
+
+        self.net = NeuralNet(self.pi_net, output=output)
+        self.net.to(self.device)
+
+        if args.architecture == 'spline':
+
+            opt_sparse = torch.optim.SparseAdam(self.net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
+            opt_dense = torch.optim.Adam(self.net.head.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-04)
+            self.optimizer = MultipleOptimizer(opt_sparse, opt_dense)
+
+        else:
+            self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
+
+        self.net_zero = copy.deepcopy(self.net.state_dict())
 
         if args.loss == 'huber':
             self.q_loss = nn.SmoothL1Loss(reduction='none')
@@ -194,10 +203,6 @@ class Algorithm(object):
             self.get_optimizers()
 
         state = {'aux': aux}
-        try:
-            state['amp'] = amp.state_dict()
-        except:
-            pass
 
         for net in self.networks_dict:
             state[net] = self.state_dict(self.networks_dict[net])
@@ -228,42 +233,19 @@ class Algorithm(object):
             self.optimizers_dict[optimizer].load_state_dict(state[optimizer])
             # pass
 
-        try:
-            amp.load_state_dict(state['amp'])
-        except Exception as e:
-            logger.error(str(e))
-
         return state['aux']
 
     def reset_net(self):
-        if self.algorithm == 'egl':
-            self.grad_net.load_state_dict(self.grad_net_zero)
-            self.optimizer_grad.state = defaultdict(dict)
-        if self.algorithm == 'igl':
-            self.value_net.load_state_dict(self.value_net_zero)
-            self.optimizer_value.state = defaultdict(dict)
-
-    def get_n_grad_ahead(self, n):
-
-        optimizer_state = copy.deepcopy(self.optimizer_pi.state_dict())
-        pi_array = [self.pi_net.pi.detach().clone()]
-        for _ in range(n):
-            pi, _ = self.get_grad(grad_step=True)
-            pi_array.append(pi)
-
-        self.optimizer_pi.load_state_dict(optimizer_state)
-        self.pi_net.pi_update(pi_array[0].to(self.device))
-
-        pi_array = torch.stack(pi_array)
-        return pi_array
+        self.net.load_state_dict(self.net_zero)
+        self.optimizer.state = defaultdict(dict)
 
     def exploration_rand(self, n_explore):
         pi = self.pi_net.pi.detach().clone()
-        rand_sign = (2*torch.randint(0, 2 ,size=(n_explore-1, self.action_space), device=self.device)-1).reshape(n_explore-1, self.action_space)
+        rand_sign = (2*torch.randint(0, 2,size=(n_explore-1, self.action_space), device=self.device)-1).reshape(n_explore-1, self.action_space)
         pi_explore = pi + self.warmup_factor*self.epsilon * rand_sign * torch.cuda.FloatTensor(n_explore-1, self.action_space).uniform_()
         return torch.cat([pi.unsqueeze(0), pi_explore], dim=0)
 
-    def cone_explore(self, n_explore, angle, pi, grad):
+    def cone_explore_(self, n_explore, angle, pi, grad):
         alpha = math.pi/angle
         pi = pi.unsqueeze(0)
 
@@ -286,30 +268,57 @@ class Algorithm(object):
 
         cone = new_sin * dp + new_cos * grad
 
-        explore = pi - self.epsilon * mag * cone
+        explore = pi - self.epsilon * math.sqrt(self.action_space) * mag * cone
 
         return explore
 
-    def cone_explore_with_rand(self, n_explore):
+    def cone_rand_explore(self, n_explore):
         pi, grad = self.get_grad(grad_step=False)
 
-        explore_rand = self.cone_explore(n_explore//2, 1, pi, grad)
-        explore_cone = self.cone_explore(n_explore - n_explore // 2 - 1, self.cone_angle, pi, grad)
+        # explore_rand = self.ball_explore_(n_explore//2, 1, pi, grad)
+        explore_rand = self.ball_explore_(pi, n_explore // 2)
+        explore_cone = self.cone_explore_(n_explore - n_explore // 2 - 1, self.cone_angle, pi, grad)
 
         return torch.cat([pi.unsqueeze(0), explore_rand, explore_cone], dim=0)
+
+    def cone_explore(self, n_explore):
+        pi, grad = self.get_grad(grad_step=False)
+
+        explore_cone = self.cone_explore_(n_explore - 1, self.cone_angle, pi, grad)
+
+        return torch.cat([pi.unsqueeze(0), explore_cone], dim=0)
+
+    def ball_explore_(self, pi, n_explore):
+        pi = pi.unsqueeze(0)
+
+        x = torch.cuda.FloatTensor(n_explore, self.action_space).normal_()
+        mag = torch.cuda.FloatTensor(n_explore, 1).uniform_()
+
+        x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
+
+        explore = pi + self.epsilon * math.sqrt(self.action_space) * mag * x
+
+        return explore
+
+    def ball_explore(self, n_explore):
+
+        pi = self.pi_net.pi.detach().clone()
+        explore = self.ball_explore_(pi, n_explore - 1)
+
+        return torch.cat([pi.unsqueeze(0), explore], dim=0)
 
     def get_grad(self, grad_step=False):
 
         self.pi_net.train()
         self.optimizer_pi.zero_grad()
         if self.algorithm == 'egl':
-            self.optimizer_grad.zero_grad()
-            grad = self.grad_net(self.pi_net.pi).view_as(self.pi_net.pi).detach().clone()
+            self.optimizer.zero_grad()
+            grad = self.net(self.pi_net.pi).view_as(self.pi_net.pi).detach().clone()
 
             self.pi_net.grad_update(grad)
         elif self.algorithm == 'igl':
-            self.optimizer_value.zero_grad()
-            loss_pi = self.value_net(self.pi_net.pi)
+            self.optimizer.zero_grad()
+            loss_pi = self.net(self.pi_net.pi)
             loss_pi.backward()
         else:
             raise NotImplementedError
@@ -320,7 +329,6 @@ class Algorithm(object):
         if grad_step:
             self.optimizer_pi.step()
 
-        self.pi_net.eval()
         pi = self.pi_net.pi.detach().clone()
         grad = self.pi_net.grad.detach().clone()
         return pi, grad

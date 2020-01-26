@@ -6,6 +6,7 @@ import os
 from bbo import BBO
 from tqdm import tqdm
 from collections import defaultdict
+from baseline import Baseline
 
 
 def get_algorithm():
@@ -27,7 +28,18 @@ def reload(alg):
     return aux
 
 
-def optimize(alg):
+def baseline():
+
+    b = Baseline()
+    train_results = b.learn()
+
+    exp.log_data(train_results, n=1, alg=None)
+
+
+def optimize():
+
+    alg = get_algorithm()
+
     aux = reload(alg)
     n_offset = aux['n']
 
@@ -42,16 +54,19 @@ def optimize(alg):
 
 def main():
 
-    alg = get_algorithm()
-
     if args.optimize:
         logger.info("Optimization session")
-        optimize(alg)
+        optimize()
+
+    elif args.baseline:
+        logger.info("Baseline session")
+        baseline()
 
     else:
         raise NotImplementedError
 
     logger.info("End of simulation")
+    exp.exit()
 
 
 if __name__ == '__main__':

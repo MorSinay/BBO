@@ -2,17 +2,216 @@ import torch
 from torch import nn
 from config import args
 import torch.nn.functional as F
+from collections import defaultdict
 
 action_space = args.action_space
+
+delta = 10  # quantization levels / 2
+emb = 512  # embedding size
+
+
+class MultipleOptimizer:
+    def __init__(self, *op):
+        self.optimizers = op
+
+    def zero_grad(self):
+        for op in self.optimizers:
+            op.zero_grad()
+
+    def step(self):
+        for op in self.optimizers:
+            op.step()
+
+    def state_dict(self):
+        op_dict = defaultdict()
+        for i, op in enumerate(self.optimizers):
+            op_dict[str(i)] = op.state_dict()
+
+    def load_state_dict(self, op_dict):
+        for i, op in enumerate(self.optimizers):
+            op.load_state_dict(op_dict[str(i)])
+
+
+class SplineEmbedding(nn.Module):
+
+    def __init__(self):
+        super(SplineEmbedding, self).__init__()
+
+        self.delta = delta
+        self.actions = action_space
+        self.emb = emb
+
+        self.ind_offset = torch.arange(self.actions, dtype=torch.int64).to(exp.device).unsqueeze(0)
+        self.b = nn.Embedding((2 * self.delta + 1) * self.actions, emb, sparse=True)
+
+    def forward(self, x):
+        n = len(x)
+
+        xl = (x * self.delta).floor()
+        xli = self.actions * (xl.long() + self.delta) + self.ind_offset
+        xl = xl / self.delta
+        xli = xli.view(-1)
+
+        xh = (x * self.delta + 1).floor()
+        xhi = self.actions * (xh.long() + self.delta) + self.ind_offset
+        xh = xh / self.delta
+        xhi = xhi.view(-1)
+
+        bl = self.b(xli).view(n, self.actions, self.emb)
+        bh = self.b(xhi).view(n, self.actions, self.emb)
+
+        delta = 1 / self.delta
+
+        x = x.unsqueeze(2)
+        xl = xl.unsqueeze(2)
+        xh = xh.unsqueeze(2)
+
+        h = bh / delta * (x - xl) + bl / delta * (xh - x)
+
+        h = h.mean(dim=1)
+
+        return h
+
+
+class SplineHead(nn.Module):
+
+    def __init__(self, n=1):
+        super(SplineHead, self).__init__()
+
+        self.layer = args.layer
+        self.emb = emb
+        self.actions = action_space
+        self.n = n
+
+        input_len = emb + self.actions
+
+        self.fc = nn.Sequential(spectral_norm(nn.Linear(input_len, self.layer, bias=True)),
+                                ResBlock(self.layer),
+                                # ResBlock(self.layer),
+                                # ResBlock(self.layer),
+                                ResBlock(self.layer),
+                                ResBlock(self.layer),
+                                ResBlock(self.layer),
+                                # nn.BatchNorm1d(self.layer, affine=True),
+                                nn.ReLU(),
+                                spectral_norm(nn.Linear(self.layer, n, bias=True)))
+
+        #         self.fc = nn.Sequential(nn.Linear(parallel * emb + actions, layer, bias=True),
+        # #                                 nn.ReLU(),
+        # #                                 nn.Linear(layer, layer, bias=True),
+        # #                                 nn.ReLU(),
+        # #                                 nn.Linear(layer, layer, bias=True),
+        # #                                 nn.ReLU(),
+        #                         nn.Linear(layer, layer, bias=True),
+        #                         nn.ReLU(),
+        #                         nn.Linear(layer, layer//2, bias=True),
+        #                         nn.ReLU(),
+        #                         nn.Linear(layer//2, n, bias=True))
+
+        init_weights(self, init='ortho')
+
+    def forward(self, x, x_emb):
+
+        x = torch.cat([x, x_emb], dim=1)
+
+        x = self.fc(x)
+        if self.n == 1:
+            x.squeeze_(1)
+
+        return x
+
+
+class SplineNet(nn.Module):
+
+    def __init__(self, pi_net, output=1):
+        super(SplineNet, self).__init__()
+
+        self.pi_net = pi_net
+        self.embedding = SplineEmbedding()
+        self.head = SplineHead(output)
+
+    def forward(self, pi, normalize=True):
+        pi = pi.view(-1, action_space)
+        if normalize:
+            pi = self.pi_net(pi)
+
+        x_emb = self.embedding(pi)
+        x = self.head(pi, x_emb)
+
+        return x
+
+
+class DuelResNet(nn.Module):
+
+    def __init__(self, pi_net, output=1):
+        super(DuelResNet, self).__init__()
+
+        self.actions = action_space
+        self.n = output
+        self.layer = args.layer
+        self.pi_net = pi_net
+
+        input_len = self.actions
+
+        self.fc = nn.Sequential(spectral_norm(nn.Linear(input_len, self.layer, bias=True)),
+                                # nn.Linear(input_len, layer, bias=True),
+                                ResBlock(self.layer),
+                                ResBlock(self.layer),
+                                ResBlock(self.layer),
+                                ResBlock(self.layer),
+                                nn.ReLU(),
+                                spectral_norm(nn.Linear(self.layer, output, bias=True)))
+
+                                # nn.Linear(self.layer, output, bias=True))
+
+        init_weights(self, init='ortho')
+
+    def forward(self, pi, normalize=True):
+        pi = pi.view(-1, action_space)
+        if normalize:
+            pi = self.pi_net(pi)
+        x = self.fc(pi)
+
+        if self.n == 1:
+            x.squeeze_(1)
+
+        return x
+
+
+class ResBlock(nn.Module):
+
+    def __init__(self, layer):
+
+        super(ResBlock, self).__init__()
+
+        # self.fc = nn.Sequential(nn.BatchNorm1d(layer, affine=True),
+        #                         nn.ReLU(),
+        #                         spectral_norm(nn.Linear(layer, layer, bias=False)),
+        #                         nn.BatchNorm1d(layer, affine=True),
+        #                         nn.ReLU(),
+        #                         spectral_norm(nn.Linear(layer, layer, bias=False)),
+        #                        )
+
+        self.fc = nn.Sequential(nn.ReLU(),
+                                spectral_norm(nn.Linear(layer, layer, bias=True)),
+                                nn.ReLU(),
+                                spectral_norm(nn.Linear(layer, layer, bias=True)),
+                               )
+
+    def forward(self, x):
+
+        h = self.fc(x)
+        return x + h
 
 
 class DuelNet(nn.Module):
 
-    def __init__(self, pi_net, output):
+    def __init__(self, pi_net, output=1):
 
         super(DuelNet, self).__init__()
         self.pi_net = pi_net
         layer = args.layer
+        self.n = output
 
         self.fc = nn.Sequential(nn.Linear(action_space, layer, bias=True),
                                 nn.ReLU(),
@@ -33,6 +232,9 @@ class DuelNet(nn.Module):
         if normalize:
             pi = self.pi_net(pi)
         x = self.fc(pi)
+
+        if self.n == 1:
+            x.squeeze_(1)
 
         return x
 
@@ -70,11 +272,11 @@ class PiNet(nn.Module):
 
     def pi_update(self, pi):
         with torch.no_grad():
-            self.pi.data = pi
+            self.pi.data = pi.data.clone()
 
     def grad_update(self, grads):
         with torch.no_grad():
-            self.pi.grad = grads
+            self.pi.grad = grads.data.clone()
 
 
 class TrustRegion(object):
@@ -110,7 +312,10 @@ class TrustRegion(object):
         self.mu = pi
 
         a = torch.max(self.mu - self.sigma, -1 * torch.ones_like(self.mu))
-        b = torch.min(self.mu + self.sigma, torch.ones_like(self.mu))
+        b = a + 2 * self.sigma
+        b = torch.min(b, torch.ones_like(self.mu))
+        a = b - 2 * self.sigma
+
         self.mu = (a + b) / 2
         self.sigma = (b - a) / 2
 
@@ -157,7 +362,15 @@ class RobustNormalizer(object):
 
         x = x * self.m + self.n
 
-        x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
+        x_clamp_up = torch.clamp(x, min=self.squash_eps)
+        x_clamp_down = torch.clamp(x, max=-self.squash_eps)
+
+        x_log_up = torch.log(x_clamp_up) + 1
+        x_log_down = -torch.log(-x_clamp_down) - 1
+
+        x = x_log_up * (x >= 1).float() + x * (x >= -1).float() * (x < 1).float() + x_log_down * (x < -1).float()
+
+        # x = torch.tanh(x) * (x >= 0).float() + x * (x < 0).float()
 
         return x
 
@@ -949,15 +1162,20 @@ class MiniDiscriminator(nn.Module):
         for p in self.parameters():
             p.data.clamp_(-c, c)
 
-def init_weights(net):
+
+def init_weights(net, init=None):
+
+    if init == None:
+        init = args.init
+
     net.param_count = 0
     for module in net.modules():
         if isinstance(module, (nn.Conv1d, nn.Conv2d, nn.Linear, nn.ConvTranspose2d, nn.ConvTranspose1d)):
-            if args.init == 'ortho':
+            if init == 'ortho':
                 torch.nn.init.orthogonal_(module.weight)
-            elif args.init == 'N02':
+            elif init == 'N02':
                 torch.nn.init.normal_(module.weight, 0, 0.02)
-            elif args.init in ['glorot', 'xavier']:
+            elif init in ['glorot', 'xavier']:
                 torch.nn.init.xavier_uniform_(module.weight)
             else:
                 print('Init style not recognized...')
