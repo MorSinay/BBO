@@ -7,7 +7,7 @@ import torch.nn as nn
 from collections import defaultdict
 from torchvision.utils import save_image
 from config import args, DirsAndLocksSingleton
-from model_ddpg import DuelNet, PiNet, SplineNet, MultipleOptimizer
+from model_ddpg import DuelNet, PiNet, SplineNet, SplineNet_Elad, MultipleOptimizer
 import math
 import os
 import copy
@@ -31,6 +31,7 @@ class Agent(object):
             self.best_op_x, self.best_op_f = get_best_solution(self.action_space, self.env.problem_iter)
             self.best_op_x = torch.FloatTensor(self.best_op_x/5).to(self.device)
 
+        self.use_trust_region = args.trust_region
         self.batch = args.batch
         self.max_batch = args.batch
         self.n_explore = args.n_explore
@@ -41,6 +42,8 @@ class Agent(object):
         self.checkpoint = checkpoint
         self.algorithm_method = args.algorithm
         self.grad_clip = args.grad_clip
+        self.req_lambda = 1e-3
+        self.regularization = args.regularization
         self.divergence = 0
         self.importance_sampling = args.importance_sampling
         self.best_explore_update = args.best_explore_update
@@ -89,7 +92,12 @@ class Agent(object):
         self.value_iter = args.learn_iteration
         if self.algorithm_method in ['first_order', 'second_order']:
             if self.spline:
-                self.derivative_net = SplineNet(self.device, self.pi_net, output=self.action_space)
+                if args.spline_set == 'mor':
+                    self.derivative_net = SplineNet(self.device, self.pi_net, output=self.action_space)
+                elif args.spline_set == 'elad':
+                    self.derivative_net = SplineNet_Elad(self.device, self.pi_net, output=self.action_space)
+                else:
+                    raise NotImplementedError
                 self.derivative_net.to(self.device)
                 # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
                 opt_sparse = torch.optim.SparseAdam(self.derivative_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
@@ -104,7 +112,12 @@ class Agent(object):
             self.derivative_net_zero = copy.deepcopy(self.derivative_net.state_dict())
         elif self.algorithm_method == 'value':
             if self.spline:
-                self.value_net = SplineNet(self.device, self.pi_net, output=1)
+                if args.spline_set == 'mor':
+                    self.value_net = SplineNet(self.device, self.pi_net, output=1)
+                elif args.spline_set == 'elad':
+                    self.value_net = SplineNet_Elad(self.device, self.pi_net, output=1)
+                else:
+                    raise NotImplementedError
                 self.value_net.to(self.device)
                 # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
                 opt_sparse = torch.optim.SparseAdam(self.value_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
@@ -327,6 +340,8 @@ class Agent(object):
         if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
             self.optimizer_derivative.zero_grad()
             grad = self.derivative_net(self.pi_net.pi).view_as(self.pi_net.pi).detach().clone()
+            # replace NaN values with zeros
+            grad[grad != grad] = 0
 
             if self.hessian:
                 eps = 1
@@ -355,7 +370,7 @@ class Agent(object):
             raise NotImplementedError
 
         if self.grad_clip != 0:
-            nn.utils.clip_grad_norm_(self.pi_net.pi, self.grad_clip / self.pi_lr)
+            nn.utils.clip_grad_norm_(self.pi_net.pi, self.epsilon / self.pi_lr)
 
         if grad_step:
             self.optimizer_pi.step()

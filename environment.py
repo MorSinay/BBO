@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from config import args
 
 class Env(object):
 
@@ -10,6 +11,13 @@ class Env(object):
         self.best_list = []
         self.pi_list = []
         self.to_numpy = to_numpy
+        self.budget = 1.1*args.budget
+        self.samples = 0
+
+        if self.need_norm:
+            self.denormalize = self.with_denormalize
+        else:
+            self.denormalize = self.no_normalization
 
     def get_observed_and_pi_list(self):
         return self.best_list, self.observed_list, self.pi_list
@@ -58,12 +66,10 @@ class EnvCoco(Env):
         self.reset()
         self.upper_bounds = self.problem.upper_bounds
         self.lower_bounds = self.problem.lower_bounds
-        self.initial_solution = self.problem.initial_solution
-
-        if self.need_norm:
-            self.denormalize = self.with_denormalize
+        if args.initial:
+            self.initial_solution = (args.initial/5)*np.ones(shape=self.problem.initial_solution.shape)
         else:
-            self.denormalize = self.no_normalization
+            self.initial_solution = self.problem.initial_solution
 
     def get_f0(self):
         return self.problem(self.initial_solution)
@@ -111,15 +117,19 @@ class EnvCoco(Env):
                 res = self.problem(policy[i])
                 self.observed_list.append(res)
                 self.best_list.append(self.problem.best_observed_fvalue1)
+                self.samples += 1
                 self.reward.append(res)
                 self.k += 1
         else:
             res = self.problem(policy)
             self.observed_list.append(res)
             self.best_list.append(self.problem.best_observed_fvalue1)
+            self.samples += 1
             self.reward.append(res)
             self.k += 1
 
+        if self.samples >= self.budget:
+            raise RuntimeError
         self.reward = torch.cuda.FloatTensor(self.reward)
         self.best_observed = self.problem.best_observed_fvalue1
         self.t = self.problem.final_target_hit
@@ -132,6 +142,9 @@ class EnvCoco(Env):
         self.observed_list.append(res)
         self.best_list.append(self.problem.best_observed_fvalue1)
         self.pi_list.append(policy)
+        self.samples += 1
+        if self.samples >= self.budget:
+            raise RuntimeError
         return res
 
     def get_problem_index(self):
@@ -152,9 +165,9 @@ class EnvVae(Env):
         self.output_size = self.problem.dimension
 
         self.reset()
-        self.upper_bounds = self.problem.upper_bounds
-        self.lower_bounds = self.problem.lower_bounds
-        self.initial_solution = self.problem.initial_solution
+        self.upper_bounds = self.problem.upper_bounds.detach().to(self.problem.device)
+        self.lower_bounds = self.problem.lower_bounds.detach().to(self.problem.device)
+        self.initial_solution = self.problem.initial_solution.detach().cpu().numpy()
 
     def get_problem_dim(self):
         return self.output_size
@@ -166,7 +179,7 @@ class EnvVae(Env):
         return 'vae_' + str(self.problem.id)
 
     def constrains(self):
-         return self.lower_bounds, self.upper_bounds
+         return self.lower_bounds.cpu().numpy(), self.upper_bounds.cpu().numpy()
 
     def get_initial_solution(self):
         return self.initial_solution
@@ -177,12 +190,30 @@ class EnvVae(Env):
         self.k = 0
         self.t = 0
 
-    def denormalize(self, policy):
+    def no_normalization(self, policy):
+
+        policy = torch.min(torch.max(policy, self.lower_bounds), self.upper_bounds)
+        return policy
+
+    def with_denormalize(self, policy):
+        assert (torch.max(policy) <= 1) or (torch.min(policy) >= -1), "denormalized"
+        if len(policy.shape) == 2:
+            assert (policy.shape[1] == self.output_size), "action error, shape is {} and not {}".format(policy.shape[1], self.output_size)
+            upper = torch.repeat(self.upper_bounds.reshape(1, -1), policy.shape[0], axis=0)
+            lower = torch.repeat(self.lower_bounds.reshape(1, -1), policy.shape[0], axis=0)
+        else:
+            upper = self.upper_bounds
+            lower = self.lower_bounds
+
+        policy = 0.5 * (policy + 1) * (upper - lower) + lower
         return policy
 
     def step_policy(self, policy):
         if self.to_numpy == False:
             policy = torch.cuda.FloatTensor(policy)
+
+        policy = self.denormalize(policy)
+        assert ((policy <= self.upper_bounds).all() and (policy >= self.lower_bounds).all()), "clipping error {}".format(policy)
 
         self.reward = []
         if len(policy.shape) == 2:
@@ -190,14 +221,19 @@ class EnvVae(Env):
                 res = self.problem.func(policy[i])
                 self.observed_list.append(res)
                 self.best_list.append(self.problem.problem.best_observed_fvalue1)
+                self.samples += 1
                 self.reward.append(res)
                 self.k += 1
         else:
             res = self.problem.func(policy)
             self.observed_list.append(res)
             self.best_list.append(self.problem.problem.best_observed_fvalue1)
+            self.samples += 1
             self.reward.append(res)
             self.k += 1
+
+        if self.samples >= self.budget:
+            raise RuntimeError
 
         self.reward = torch.cuda.FloatTensor(self.reward)
         self.best_observed = self.problem.problem.best_observed_fvalue1
@@ -211,6 +247,9 @@ class EnvVae(Env):
         self.observed_list.append(res)
         self.best_list.append(self.problem.problem.best_observed_fvalue1)
         self.pi_list.append(policy)
+        self.samples += 1
+        if self.samples >= self.budget:
+            raise RuntimeError
         return res
 
     def get_f0(self):
@@ -231,12 +270,6 @@ class EnvOneD(Env):
         self.upper_bounds = self.problem.upper_bounds[0]
         self.lower_bounds = self.problem.lower_bounds[0]
         self.initial_solution = np.array([self.problem.initial_solution[0]])
-
-        if self.need_norm:
-            self.denormalize = self.with_denormalize
-        else:
-            self.denormalize = self.no_normalization
-
 
     def get_f0(self):
         return self.problem(one_d_change_dim(self.initial_solution).flatten())
@@ -290,14 +323,19 @@ class EnvOneD(Env):
                 res = self.problem(policy[i])
                 self.observed_list.append(res)
                 self.best_list.append(self.problem.best_observed_fvalue1)
+                self.samples += 1
                 self.reward.append(res)
                 self.k += 1
         else:
             res = self.problem(policy)
             self.observed_list.append(res)
             self.best_list.append(self.problem.best_observed_fvalue1)
+            self.samples += 1
             self.reward.append(res)
             self.k += 1
+
+        if self.samples >= self.budget:
+            raise RuntimeError
 
         self.reward = torch.cuda.FloatTensor(self.reward)
         self.best_observed = self.problem.best_observed_fvalue1
@@ -311,6 +349,9 @@ class EnvOneD(Env):
         res = self.problem(policy)
         self.observed_list.append(res)
         self.best_list.append(self.problem.best_observed_fvalue1)
+        self.samples += 1
+        if self.samples >= self.budget:
+            raise RuntimeError
         return res
 
 def one_d_change_dim(policy):

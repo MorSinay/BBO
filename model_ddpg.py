@@ -3,13 +3,10 @@ from torch import nn
 from config import args
 import math
 from collections import defaultdict
+from torch.nn.utils import spectral_norm
 
 action_space = args.action_space
-layer = 256
 delta = 10 # quantization levels / 2
-emb = 32 # embedding size
-#parallel = 2 #int(layer / emb + .5)
-#emb2 = int(layer / action_space + .5) # embedding2 size
 
 def init_weights(net, init='ortho'):
     net.param_count = 0
@@ -33,7 +30,7 @@ class RobustNormalizer2(object):
     def __init__(self, outlier=0.1, lr=0.1):
         self.outlier = outlier
         self.lr = lr
-        self.eps = 1e-5
+        self.eps = 1e-5*torch.cuda.FloatTensor([1])
         self.squash_eps = 1e-5
         self.m = None
         self.n = None
@@ -87,7 +84,7 @@ class RobustNormalizer2(object):
             x1_ind = torch.kthvalue(x_cpu, outlier, dim=0)[1]
             # curr_mu = torch.median(x_cpu, dim=0)[1]
 
-            m = (self.y2 - self.y1) / (x[x2_ind] - x[x1_ind])
+            m = (self.y2 - self.y1) / (x[x2_ind] - x[x1_ind] + self.eps)
             n = self.y2 - m * x[x2_ind]
 
             if self.m is None or self.n is None:
@@ -97,11 +94,35 @@ class RobustNormalizer2(object):
                 self.m = (1 - self.lr) * self.m + self.lr * m
                 self.n = (1 - self.lr) * self.n + self.lr * n
 
-            self.mu = - self.n / self.m
-            self.sigma = 1 / self.m
+            self.mu = - self.n / (self.m + self.eps)
+            self.sigma = max(1 / self.m, self.eps)
 
         else:
             x = self.squash(x)
+            return x
+
+class NoRobustNormalizer(object):
+
+    def __init__(self):
+        self.mu = torch.zeros(1)
+        self.sigma = torch.ones(1)
+
+    def reset(self):
+        return
+
+    def squash_derivative(self, x):
+        return x
+
+    def squash(self, x):
+        return x
+
+    def desquash(self, x):
+        return x
+
+    def __call__(self, x, training=False):
+        if training:
+            return
+        else:
             return x
 
 class RobustNormalizer(object):
@@ -111,7 +132,7 @@ class RobustNormalizer(object):
         self.delta = delta
         self.lr = lr
         self.temp_squash = nn.Tanh()
-        self.eps = 1e-5
+        self.eps = 1e-5*torch.cuda.FloatTensor([1])
         self.squash_eps = 1e-9
         self.mu = None
         self.sigma = None
@@ -179,6 +200,8 @@ class RobustNormalizer(object):
                 self.mu = (1 - self.lr) * self.mu + self.lr * mu
                 self.sigma = (1 - self.lr) * self.sigma + self.lr * sigma
 
+            self.sigma = max(self.sigma, self.eps)
+
         else:
             x = self.squash(x)
             return x
@@ -241,6 +264,42 @@ class TrustRegion(object):
         x = x.view(s)
         return x
 
+
+class NoTrustRegion(object):
+
+    def __init__(self, pi_net):
+        self.mu = torch.zeros_like(pi_net.pi)
+        self.sigma = torch.ones_like(pi_net.pi)
+        self.pi_net = pi_net
+
+    def bounderies(self):
+        lower, upper = (self.mu - self.sigma), (self.mu + self.sigma)
+        assert lower.min().item() >= -1, "lower min {}".format(lower.min())
+        assert upper.max().item() <= 1, "upper max {}".format(upper.max())
+        return lower, upper
+
+    def squeeze(self, pi):
+        return
+
+    def unconstrained_to_real(self, x):
+        x = self.pi_net(x)
+        x = self.mu + x * self.sigma
+        x = torch.clamp(x, min=-1, max=1)
+        return x
+
+    def real_to_unconstrained(self, x):
+        s = x.shape
+        x = (x - self.mu)/self.sigma.view(1, -1)
+        x = self.pi_net.inverse(x)
+        x = x.view(s)
+        return x
+
+    def derivative_unconstrained(self, x):
+        s = x.shape
+        x = self.sigma*(1 - self.pi_net(x)**2)
+        x = x.view(s)
+        return x
+
 class MultipleOptimizer:
     def __init__(self, *op):
         self.optimizers = op
@@ -277,8 +336,6 @@ class SplineNet(nn.Module):
             x = self.pi_net(x)
 
         x = torch.clamp(x, max=1-1e-3)
-        # x_emb, x_emb2 = self.embedding(x)
-        # x = self.head(x, x_emb, x_emb2)
 
         x_emb = self.embedding(x)
         x = self.head(x, x_emb)
@@ -292,14 +349,12 @@ class SplineEmbedding(nn.Module):
 
         self.delta = delta
         self.actions = action_space
-        self.emb = emb
-        #self.emb2 = emb2
+        self.emb = 32
         self.device = device
 
         self.ind_offset = torch.arange(self.actions, dtype=torch.int64).to(device).unsqueeze(0)
 
-        self.b = nn.Embedding((2 * self.delta + 1) * self.actions, emb, sparse=True)
-        #self.b2 = nn.Embedding((2 * self.delta + 1) * self.actions, emb2, sparse=True)
+        self.b = nn.Embedding((2 * self.delta + 1) * self.actions, self.emb, sparse=True)
 
     def forward(self, x):
         n = len(x)
@@ -309,7 +364,6 @@ class SplineEmbedding(nn.Module):
         xl = xl / self.delta
         xli = xli.view(-1)
 
-
         xh = (x * self.delta + 1).floor()
         xhi = self.actions * (xh.long() + self.delta) + self.ind_offset
         xh = xh / self.delta
@@ -318,9 +372,6 @@ class SplineEmbedding(nn.Module):
         bl = self.b(xli).view(n, self.actions, self.emb)
         bh = self.b(xhi).view(n, self.actions, self.emb)
 
-       # bl2 = self.b2(xli).view(n, self.actions, self.emb2)
-       # bh2 = self.b2(xhi).view(n, self.actions, self.emb2)
-
         delta = 1 / self.delta
 
         x = x.unsqueeze(2)
@@ -328,9 +379,6 @@ class SplineEmbedding(nn.Module):
         xh = xh.unsqueeze(2)
 
         h = bh / delta * (x - xl) + bl / delta * (xh - x)
-       # h2 = bh2 / delta* (x - xl) + bl2 / delta * (xh - x)
-
-       # return h, h2
         return h
 
 class SplineHead(nn.Module):
@@ -338,41 +386,25 @@ class SplineHead(nn.Module):
     def __init__(self, output=1):
         super(SplineHead, self).__init__()
 
-        self.emb = emb
+        self.emb = 32
         self.actions = action_space
         self.output = output
-       # self.emb2 = emb2
-        self.global_interaction = GlobalModule(emb) #nn.ModuleList([GlobalModule(emb) for _ in range(parallel)])
+        self.global_interaction = GlobalModule(self.emb)
+        self.layer = args.layer
+        input_len = self.emb + self.actions
 
-        #input_len = parallel * emb + self.actions #+ emb2 * self.actions
-        input_len = emb + self.actions #+ emb2 * self.actions
-
-        self.fc = nn.Sequential(#spectral_norm(nn.Linear(input_len, layer, bias=False)),
-                                nn.Linear(input_len, layer, bias=True),
-                                ResBlock(layer),
-                                ResBlock(layer),
-                             #   ResBlock(layer),
-                              #  ResBlock(layer),
-                               # ResBlock(layer),
-                               # ResBlock(layer),
-                                #nn.BatchNorm1d(layer, affine=True),
+        self.fc = nn.Sequential(nn.Linear(input_len, self.layer, bias=True),
+                                ResBlock(self.layer),
+                                ResBlock(self.layer),
                                 nn.ReLU(),
-                                #spectral_norm(nn.Linear(layer, output, bias=True)))
-                                nn.Linear(layer, output, bias=True))
+                                nn.Linear(self.layer, output, bias=True))
 
         init_weights(self, init='ortho')
 
-    #def forward(self, x, x_emb, x_emb2):
     def forward(self, x, x_emb):
-        #h2 = x_emb2.view(len(x_emb2), self.emb2 * self.actions)
-
         h = x_emb.transpose(2, 1)
-        #h = torch.cat([gi(h) for gi in self.global_interaction], dim=1)
         h = self.global_interaction(h)
 
-#        x = x.squeeze(2)
-
-        #x = torch.cat([x, h, h2], dim=1)
         x = torch.cat([x, h], dim=1)
 
         x = self.fc(x)
@@ -386,15 +418,6 @@ class ResBlock(nn.Module):
     def __init__(self, layer):
 
         super(ResBlock, self).__init__()
-
-        # self.fc = nn.Sequential(nn.BatchNorm1d(layer, affine=True),
-        #                         nn.ReLU(),
-        #                         spectral_norm(nn.Linear(layer, layer, bias=False)),
-        #                         nn.BatchNorm1d(layer, affine=True),
-        #                         nn.ReLU(),
-        #                         spectral_norm(nn.Linear(layer, layer, bias=False)),
-        #                        )
-
         self.fc = nn.Sequential(nn.ReLU(),
                                 nn.Linear(layer, layer, bias=True),
                                 nn.ReLU(),
@@ -412,10 +435,9 @@ class GlobalModule(nn.Module):
         super(GlobalModule, self).__init__()
 
         self.actions = action_space
-        self.emb = emb
+        self.emb = 32
 
         self.blocks = nn.Sequential(
-        #    GlobalBlock(planes),
             GlobalBlock(planes),
             nn.AdaptiveAvgPool1d(1)
         )
@@ -432,33 +454,25 @@ class GlobalBlock(nn.Module):
         super(GlobalBlock, self).__init__()
 
         self.actions = action_space
-        self.emb = emb
+        self.emb = 32
 
         self.query = nn.Sequential(
-            #nn.BatchNorm1d(planes, affine=True),
             nn.ReLU(),
-            #spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
             nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=True),
         )
 
         self.key = nn.Sequential(
-            # nn.BatchNorm1d(planes, affine=True),
             nn.ReLU(),
-            # spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
             nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=True),
         )
 
         self.value = nn.Sequential(
-            # nn.BatchNorm1d(planes, affine=True),
             nn.ReLU(),
-            # spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
             nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=True),
         )
 
         self.output = nn.Sequential(
-            # nn.BatchNorm1d(planes, affine=True),
             nn.ReLU(),
-            # spectral_norm(nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=False)),
             nn.Conv1d(planes, planes, kernel_size=1, padding=0, bias=True),
         )
 
@@ -535,3 +549,120 @@ class PiNet(nn.Module):
     def grad_update(self, grads):
         with torch.no_grad():
             self.pi.grad = grads
+
+
+
+
+class SplineNet_Elad(nn.Module):
+
+    def __init__(self, device, pi_net, output=1):
+        super(SplineNet_Elad, self).__init__()
+
+        self.pi_net = pi_net
+        self.embedding = SplineEmbedding_Elad(device)
+        self.head = SplineHead_Elad(output)
+        self.output = output
+
+    def forward(self, x, normalize=True):
+        x = x.view(-1, action_space)
+        if normalize:
+            x = self.pi_net(x)
+
+        x = torch.clamp(x, max=1-1e-3)
+        x_emb = self.embedding(x)
+        x = self.head(x, x_emb)
+
+        return x
+
+class SplineEmbedding_Elad(nn.Module):
+
+    def __init__(self, device):
+        super(SplineEmbedding_Elad, self).__init__()
+
+        self.delta = delta
+        self.actions = action_space
+        self.emb = 512
+        self.device = device
+
+        self.ind_offset = torch.arange(self.actions, dtype=torch.int64).to(device).unsqueeze(0)
+        self.b = nn.Embedding((2 * self.delta + 1) * self.actions, self.emb, sparse=True)
+
+    def forward(self, x):
+        n = len(x)
+
+        xl = (x * self.delta).floor()
+        xli = self.actions * (xl.long() + self.delta) + self.ind_offset
+        xl = xl / self.delta
+        xli = xli.view(-1)
+
+        xh = (x * self.delta + 1).floor()
+        xhi = self.actions * (xh.long() + self.delta) + self.ind_offset
+        xh = xh / self.delta
+        xhi = xhi.view(-1)
+
+        bl = self.b(xli).view(n, self.actions, self.emb)
+        bh = self.b(xhi).view(n, self.actions, self.emb)
+
+        delta = 1 / self.delta
+
+        x = x.unsqueeze(2)
+        xl = xl.unsqueeze(2)
+        xh = xh.unsqueeze(2)
+
+        h = bh / delta * (x - xl) + bl / delta * (xh - x)
+
+        h = h.mean(dim=1)
+
+        return h
+
+
+
+class SplineHead_Elad(nn.Module):
+
+    def __init__(self, output=1):
+        super(SplineHead_Elad, self).__init__()
+
+        self.layer = args.layer
+        self.emb = 512
+        self.actions = action_space
+        self.output = output
+
+        input_len = self.emb + self.actions
+
+        self.fc = nn.Sequential(spectral_norm(nn.Linear(input_len, self.layer, bias=True)),
+                                ResBlock_Elad(self.layer),
+                                ResBlock_Elad(self.layer),
+                                ResBlock_Elad(self.layer),
+                                ResBlock_Elad(self.layer),
+                                nn.ReLU(),
+                                spectral_norm(nn.Linear(self.layer, self.output, bias=True)))
+
+        init_weights(self, init='ortho')
+
+    def forward(self, x, x_emb):
+
+        x = torch.cat([x, x_emb], dim=1)
+
+        x = self.fc(x)
+        if self.output == 1:
+            x = x.squeeze(1)
+
+        return x
+
+
+
+class ResBlock_Elad(nn.Module):
+
+    def __init__(self, layer):
+
+        super(ResBlock_Elad, self).__init__()
+        self.fc = nn.Sequential(nn.ReLU(),
+                                spectral_norm(nn.Linear(layer, layer, bias=True)),
+                                nn.ReLU(),
+                                spectral_norm(nn.Linear(layer, layer, bias=True)),
+                               )
+
+    def forward(self, x):
+
+        h = self.fc(x)
+        return x + h

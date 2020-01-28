@@ -5,7 +5,7 @@ import torch.optim.lr_scheduler
 import numpy as np
 from tqdm import tqdm
 import torch.autograd as autograd
-from model_ddpg import RobustNormalizer2, RobustNormalizer, TrustRegion
+from model_ddpg import RobustNormalizer2, RobustNormalizer, NoRobustNormalizer, TrustRegion, NoTrustRegion
 
 import itertools
 from agent import Agent
@@ -19,11 +19,24 @@ class TrustRegionAgent(Agent):
         reward_str = "TrustRegion"
         print("Learning POLICY method using {} with TrustRegionAgent".format(reward_str))
 
-        self.pi_trust_region = TrustRegion(self.pi_net)
-        if args.trust_alg == 'log':
+        if self.use_trust_region:
+            self.pi_trust_region = TrustRegion(self.pi_net)
+        else:
+            self.pi_trust_region = NoTrustRegion(self.pi_net)
+
+        if args.r_norm_alg == 'log':
             self.r_norm = RobustNormalizer2(lr=args.robust_scaler_lr)
+        elif args.r_norm_alg == 'none':
+            self.r_norm = NoRobustNormalizer()
         else:
             self.r_norm = RobustNormalizer(lr=args.robust_scaler_lr)
+
+        if self.algorithm_method == 'first_order':
+            self.value_optimize_method = self.first_order_method_optimize_single_ref
+        elif self.algorithm_method in ['value']:
+            self.value_optimize_method = self.value_method_optimize
+        else:
+            raise NotImplementedError
 
         self.best_pi = self.pi_net.pi.detach().clone()
         self.best_pi_evaluate = self.step_policy(self.best_pi, to_env=False)
@@ -34,6 +47,9 @@ class TrustRegionAgent(Agent):
         self.no_change = 0
 
     def update_replay_buffer(self):
+
+        # self.tensor_replay_reward = torch.cuda.FloatTensor([])
+        # self.tensor_replay_policy = torch.cuda.FloatTensor([])
 
         self.frame += self.warmup_minibatch*self.n_explore
         explore_policies_rand = self.ball_explore(self.warmup_minibatch*self.n_explore)
@@ -215,6 +231,7 @@ class TrustRegionAgent(Agent):
         real_replay = self.pi_trust_region.unconstrained_to_real(self.tensor_replay_policy)
         self.pi_trust_region.squeeze(pi)
         self.epsilon *= self.epsilon_factor
+        self.epsilon = max(self.epsilon, 1e-4)
         self.pi_net.pi_update(self.pi_trust_region.real_to_unconstrained(pi))
         self.tensor_replay_policy = self.pi_trust_region.real_to_unconstrained(real_replay)
 
@@ -242,14 +259,7 @@ class TrustRegionAgent(Agent):
         self.batch = min(self.max_batch, len_replay_buffer)
         minibatches = len_replay_buffer // self.batch
 
-        assert minibatches, 'minibatch is zero'
-
-        if self.algorithm_method == 'first_order':
-            self.first_order_method_optimize_single_ref(len_replay_buffer, minibatches, value_iter)
-        elif self.algorithm_method in ['value']:
-            self.value_method_optimize(len_replay_buffer, minibatches, value_iter)
-        else:
-            raise NotImplementedError
+        self.value_optimize_method(len_replay_buffer, minibatches, value_iter)
 
     # def anchor_method_optimize(self, len_replay_buffer, minibatches, value_iter):
     #     self.value_method_optimize(len_replay_buffer, minibatches)
@@ -348,6 +358,10 @@ class TrustRegionAgent(Agent):
                     loss_q = (w * self.q_loss(value, target)).sum()
                 else:
                     loss_q = (w * self.q_loss(value, target)).mean()
+
+                if self.regularization:
+                    loss_q += self.req_lambda*(torch.norm(pi_tag_1, p=2, dim=1)**2).mean()
+
                 loss += loss_q.detach().item()
                 loss_q.backward()
                 self.optimizer_derivative.step()

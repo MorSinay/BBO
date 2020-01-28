@@ -211,9 +211,10 @@ class VaeProblem(object):
         self.index = self.problem.index
         self.id = 'vae_'+str(self.problem.id)
         self.dimension = 784
-        self.initial_solution = self.vae.model(torch.cuda.FloatTensor(self.problem.initial_solution), part='dec').detach().cpu().numpy()
-        self.lower_bounds = -np.ones(self.dimension)
-        self.upper_bounds = np.ones(self.dimension)
+        self.lower_bounds = -5*torch.ones(self.dimension, dtype=torch.float)
+        self.upper_bounds = 5*torch.ones(self.dimension, dtype=torch.float)
+        #self.initial_solution = torch.min(torch.max(self.vae.model(torch.cuda.FloatTensor(self.problem.initial_solution), part='dec'), self.lower_bounds), self.upper_bounds).detach()/5
+        self.initial_solution = torch.zeros(self.dimension, dtype=torch.float)
         self.evaluations = 0
         self.final_target_hit = self.problem.final_target_hit
 
@@ -235,8 +236,9 @@ class VaeProblem(object):
 
     def func(self, x):
         z, _, _, _ = self.vae.model(x.unsqueeze(0), 'enc')
-        z = torch.tanh(z).detach().cpu().numpy()
-        z = self.denormalize(z).flatten()
+        z = z.detach().cpu().numpy()
+        #z = self.denormalize(z).flatten()
+        z = np.clip(z.flatten(), a_min=self.z_lower_bounds, a_max=self.z_upper_bounds)
         f_val = self.problem(z)
 
         self.best_observed_fvalue1 = self.problem.best_observed_fvalue1

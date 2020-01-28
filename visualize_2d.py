@@ -26,7 +26,7 @@ import pickle
 username = pwd.getpwuid(os.geteuid()).pw_name
 from config import Consts
 
-epsilon = 1
+epsilon = 0.1
 filter_mod = 1
 optimization_function = {'trust-ncg': scipy.optimize.minimize,
                          'trust-constr': scipy.optimize.minimize,
@@ -75,6 +75,7 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
             best_f, f, x = env.get_observed_and_pi_list()
 
         except:
+            env.samples = 0
             x = env.initial_solution
             f.append(func(x))
             best_f.append(f[0])
@@ -109,41 +110,42 @@ def compare_problem_baseline(dim, index, budget=1000, sub_budget=100):
         pickle.dump(df, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def run_problem(alg, fmin,  problem, x0, budget):
-        if alg == 'slsqp':
-            x, best_val, _, _, _ = fmin(problem, x0, iter=budget, full_output=True, iprint=-1)
 
-        elif alg == 'fmin':
-            x, best_val, _, eval_num, _ = fmin(problem, x0, maxfun=budget, disp=False, full_output=True)
+    if alg == 'slsqp':
+        x, best_val, _, _, _ = fmin(problem, x0, iter=budget, full_output=True, iprint=-1)
 
-        elif alg == 'cma':
-            x, _ = fmin(problem, x0, 2, {'maxfevals': budget, 'verbose':-9}, restarts=0)
+    elif alg == 'fmin':
+        x, best_val, _, eval_num, _ = fmin(problem, x0, maxfun=budget, disp=False, full_output=True)
 
-        elif alg == 'cobyla':
-            x = fmin(problem, x0, cons=lambda x: None, maxfun=budget, disp=0, rhoend=1e-9)
+    elif alg == 'cma':
+        x, _ = fmin(problem, x0, 2, {'maxfevals': budget, 'verbose':-9}, restarts=0)
 
-        elif alg == 'powell':
-            x, best_val, _, _, eval_num, _ = fmin(problem, x0, maxiter=budget, full_output=1)
+    elif alg == 'cobyla':
+        x = fmin(problem, x0, cons=lambda x: None, maxfun=budget, disp=0, rhoend=1e-9)
 
-        elif alg == 'cg':
-            x, best_val, eval_num, _, _ = fmin(problem, x0, maxiter=budget, full_output=1)
+    elif alg == 'powell':
+        x, best_val, _, _, eval_num, _ = fmin(problem, x0, maxiter=budget, full_output=1)
 
-        elif alg == 'bfgs':
-            x, best_val, _, _, eval_num, _, _ = fmin(problem, x0, maxiter=budget, full_output=1)
+    elif alg == 'cg':
+        x, best_val, eval_num, _, _ = fmin(problem, x0, maxiter=budget, full_output=1)
 
-        elif alg == 'trust-ncg':
-            _ = fmin(problem, x0, args=(), method='trust-ncg', jac='cs', hess='cs', options={'maxiter': budget, 'disp': False})
+    elif alg == 'bfgs':
+        x, best_val, _, _, eval_num, _, _ = fmin(problem, x0, maxiter=budget, full_output=1)
 
-        elif alg == 'trust-constr':
-            _ = fmin(problem, x0, args=(), method='trust-constr', jac='2-point', hess='2-point', options={'maxiter': budget, 'disp': False})
+    elif alg == 'trust-ncg':
+        _ = fmin(problem, x0, args=(), method='trust-ncg', jac='cs', hess='cs', options={'maxiter': budget, 'disp': False})
 
-        elif alg == 'trust-exact':
-            _ = fmin(problem, x0, args=(), method='trust-exact', jac='2-point', hess='2-point', options={'maxiter': budget, 'disp': False})
+    elif alg == 'trust-constr':
+        _ = fmin(problem, x0, args=(), method='trust-constr', jac='2-point', hess='2-point', options={'maxiter': budget, 'disp': False})
 
-        elif alg == 'trust-krylov':
-            _ = fmin(problem, x0, args=(), method='trust-krylov', jac='2-point', hess='2-point', options={'maxiter': budget, 'disp': False})
+    elif alg == 'trust-exact':
+        _ = fmin(problem, x0, args=(), method='trust-exact', jac='2-point', hess='2-point', options={'maxiter': budget, 'disp': False})
 
-        else:
-            raise NotImplementedError
+    elif alg == 'trust-krylov':
+        _ = fmin(problem, x0, args=(), method='trust-krylov', jac='2-point', hess='2-point', options={'maxiter': budget, 'disp': False})
+
+    else:
+        raise NotImplementedError
 
 
 def create_copy_file(prefix, dim, index):
@@ -216,7 +218,7 @@ def calc_f0():
 
     df = pd.DataFrame(data_dict)
     file = os.path.join(save_dir, 'f0.csv')
-    df.to_csv(file)
+    df.to_csv(file, index=False)
 
 
 def treeD_plot_contour(problem_index):
@@ -418,7 +420,7 @@ def merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40, 784]):
 
     df = pd.DataFrame(data)
     file = os.path.join(Consts.baseline_dir, 'compare.csv')
-    df.to_csv(file)
+    df.to_csv(file, index=False)
 
 def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40]):
 
@@ -428,7 +430,7 @@ def run_baseline(dims=[1, 2, 3, 5, 10, 20, 40]):
 
     merge_baseline_one_line_compare(dims)
 
-def avg_dim_best_observed(dim, save_file, alg_name, prefix, with_op=False, axs=None):
+def avg_dim_best_observed(dim, save_file, alg_name_list, prefix_list, with_op=False, axs=None):
 
     max_len = 150000
     res_dir = Consts.outdir
@@ -439,13 +441,22 @@ def avg_dim_best_observed(dim, save_file, alg_name, prefix, with_op=False, axs=N
     dim_len = int(np.log10(dim)) + 2
     indexes = set([str(x) for x in range(360)])
     for dir in dirs:
-        if dir.startswith(prefix) and dir.endswith(str(dim)):
-            alg = dir[len(prefix) + 1: -dim_len]
-            compare_dirs[alg] = os.path.join(res_dir, dir, 'analysis')
-            dir_index = os.listdir(compare_dirs[alg])
-            indexes = indexes.intersection(dir_index)
-        else:
-            continue
+        for i, prefix in enumerate(prefix_list):
+            if dir.startswith(prefix) and dir.endswith(str(dim)):
+                #alg = dir[len(prefix) + 1: -dim_len]
+                alg = alg_name_list[i]
+                compare_dirs[alg] = os.path.join(res_dir, dir, 'analysis')
+                dir_index = os.listdir(compare_dirs[alg])
+                tmp_id = []
+                for id in dir_index:
+                    try:
+                        pi_best = np.load(os.path.join(compare_dirs[alg], id, 'best_list_with_explore.npy'), allow_pickle=True)
+                    except:
+                        continue
+                    tmp_id.append(id)
+                indexes = indexes.intersection(set(tmp_id))
+            else:
+                continue
 
     data = defaultdict(list)
     for index in indexes:
@@ -463,10 +474,11 @@ def avg_dim_best_observed(dim, save_file, alg_name, prefix, with_op=False, axs=N
 
         min_val -= 1e-5
         if with_op:
-            for i, op in enumerate(optimizer_res['fmin']):
+            for op in optimization_function.keys():
                 if op.startswith('trust'):
                     continue
                 res = optimizer_res[optimizer_res['fmin'] == op]
+                i = (optimizer_res['fmin'] == op).idxmax()
                 arr = np.array(res['best_list'][i])
                 arr = np.clip(arr, a_max=f0, a_min=min_val)
                 arr = arr[:max_len]
@@ -474,16 +486,17 @@ def avg_dim_best_observed(dim, save_file, alg_name, prefix, with_op=False, axs=N
                 arr = (arr - min_val) / (f0 - min_val + 1e-5)
                 data[op].append(arr)
 
-        for key, path in compare_dirs.items():
+        for key in alg_name_list:
             try:
-                pi_best = np.load(os.path.join(path, index, 'best_list_with_explore.npy'),  allow_pickle=True)
+                pi_best = np.load(os.path.join(compare_dirs[key], index, 'best_list_with_explore.npy'),  allow_pickle=True)
+                pi_best = np.clip(pi_best, a_max=f0, a_min=min_val)
                 pi_best = pi_best[:max_len]
                 pi_best = np.concatenate([pi_best, pi_best[-1] * np.ones(max_len - len(pi_best))])
                 pi_best = (pi_best - min_val) / (f0 - min_val + 1e-5)
             except:
                 continue
 
-            data[key+alg_name].append(pi_best)
+            data[key].append(pi_best)
 
     if axs is None:
         axs = plt.subplot(111)
@@ -506,7 +519,7 @@ def avg_dim_best_observed(dim, save_file, alg_name, prefix, with_op=False, axs=N
     axs.axis('tight')
 
     if path_fig is not None:
-        axs.legend(loc='upper right')
+        axs.legend(loc='lower left')
         plt.savefig(path_fig)
         plt.close()
     else:
@@ -563,12 +576,52 @@ def avg_dim_dist_from_best_x(dim, save_file, prefix):
     plt.savefig(path_fig)
     plt.close()
 
-def merge_bbo(optimizers=[], disp_name=[], dimension=[1, 2, 3, 5, 10, 20, 40, 784], save_file='baseline_cmp.pdf', plot_sum=False):
+def get_csv_from_run(optimizer, disp_name, dim):
+    res_dir = os.path.join(Consts.outdir, optimizer + '_' + str(dim), 'analysis')
+    dirs = os.listdir(res_dir)
+
+    data = defaultdict(list)
+    i_num = ['01','02','03','04','05','71','72','73','74','75','76','77','78','79','80']
+    f_num = list(range(1, 25 ,1))
+
+    if dim==1:
+        prefix = '1D'
+    else:
+        prefix = 'coco'
+
+    for dir in dirs:
+        try:
+            index = int(dir)
+            id = '{}_bbob_f{:03d}_i{}_d{:02}'.format(prefix, f_num[index // 15], i_num[index % 15], max(dim, 2))
+            path = os.path.join(res_dir, dir)
+            pi_best = np.load(os.path.join(path, 'best_list_with_explore.npy'), allow_pickle=True)
+        except:
+            continue
+        number_of_evaluations = len(pi_best)
+        best_observed = pi_best.min()
+        data['id'].append(id)
+        data[disp_name+'_best_observed'].append(best_observed)
+        data[disp_name + '_number_of_evaluations'].append(number_of_evaluations)
+
+    df = pd.DataFrame(data)
+    save_dir = os.path.join(Consts.baseline_dir, 'results', disp_name)
+    if not os.path.exists(save_dir):
+        try:
+            os.makedirs(save_dir)
+        except:
+            pass
+
+    file = os.path.join(save_dir, '{}_{}.csv'.format(disp_name, dim))
+    df.to_csv(file, index=False)
+
+
+def merge_bbo(optimizers=[], disp_name=[], dimension=[1, 2, 3, 5, 10, 20, 40, 784], save_file='baseline_cmp.pdf', plot_sum=False, need_merged=True):
     compare_file = os.path.join(Consts.baseline_dir, 'compare.csv')
     assert os.path.exists(compare_file), 'no compare file'
 
     baseline_df = pd.read_csv(os.path.join(compare_file))
     res_dir = os.path.join(Consts.baseline_dir, 'results')
+
 
     for i, op in enumerate(optimizers):
         op_df = pd.read_csv(os.path.join(res_dir, op, op+'_{}'.format(dimension[0]) + ".csv"))
@@ -577,9 +630,10 @@ def merge_bbo(optimizers=[], disp_name=[], dimension=[1, 2, 3, 5, 10, 20, 40, 78
             df_d = pd.read_csv(os.path.join(res_dir, op, op+'_{}'.format(dim) + ".csv"))
             op_df = op_df.append(df_d, ignore_index=True)
 
-        op_df = op_df[['id', 'best_observed', 'number_of_evaluations']]
-        op_df = op_df.rename(columns={"best_observed": disp_name[i]+"_best_observed",
-                                "number_of_evaluations": op+"_number_of_evaluations"})
+        if need_merged:
+            op_df = op_df[['id', 'best_observed', 'number_of_evaluations']]
+            op_df = op_df.rename(columns={"best_observed": disp_name[i]+"_best_observed",
+                                    "number_of_evaluations": disp_name[i]+"_number_of_evaluations"})
 
         baseline_df = baseline_df.merge(op_df, on='id')
 
@@ -591,10 +645,10 @@ def merge_bbo(optimizers=[], disp_name=[], dimension=[1, 2, 3, 5, 10, 20, 40, 78
         if item.endswith('_best_observed'):
             best_observed.append(item)
 
-    baseline_df['min_val'] = baseline_df[best_observed].min(axis=1)
+    baseline_df['min_val'] = baseline_df[best_observed].astype(np.float).min(axis=1)
 
     file = os.path.join(Consts.baseline_dir, 'tmp_compare.csv')
-    baseline_df.to_csv(file)
+    baseline_df.to_csv(file, index=False)
 
     X = [20*i for i in range(len(dimension))]
     ax = plt.subplot(111)
@@ -608,7 +662,9 @@ def merge_bbo(optimizers=[], disp_name=[], dimension=[1, 2, 3, 5, 10, 20, 40, 78
             if plot_sum:
                 compare_method = (temp_df[best_observed_op].values - temp_df['min_val'].values) / np.abs(temp_df['f0'].values)
             else:
-                compare_method = np.abs(temp_df[best_observed_op].values - temp_df['min_val'].values) < epsilon
+                compare_method_1 = (np.abs(temp_df[best_observed_op].astype(np.float).values - temp_df['min_val'].astype(np.float).values) < 1)
+                compare_method_2 = (temp_df[best_observed_op].astype(np.float).values - temp_df['min_val'].astype(np.float).values)/temp_df['min_val'].astype(np.float).values < 0.001
+                compare_method = np.bitwise_and(compare_method_1, compare_method_2)
             count = len(compare_method)
             res.append(compare_method.sum()/count)
 
@@ -620,7 +676,7 @@ def merge_bbo(optimizers=[], disp_name=[], dimension=[1, 2, 3, 5, 10, 20, 40, 78
     ax.grid(True, which='both')
     ax.autoscale(tight=True)
     #ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=4)
-    ax.legend()
+    ax.legend(prop={'size': 10}, loc='upper left', borderaxespad=0)
     #plt.title("BASELINE COMPARE - BUDGET {}".format(max_budget))
     path_fig = os.path.join(res_dir, save_file)
     plt.savefig(path_fig)
@@ -708,10 +764,15 @@ def get_best_solution(dim, index):
 def plot_2d_first_value():
     fig, axs = plt.subplots(1,4, figsize=(16, 3.5))
     colors = Consts.color
-    value_dir = '/data/elkayam/gan_rl/results/PAPER_value_spline_16_1_2/analysis'
-    first_order_dir = '/data/elkayam/gan_rl/results/PAPER_first_order_spline_16_1_2/analysis'
+    #value_dir = '/data/elkayam/gan_rl/results/PAPER_value_spline_16_1_2/analysis'
+    #first_order_dir = '/data/elkayam/gan_rl/results/PAPER_first_order_spline_16_1_2/analysis'
+    #problems = [120, 195, 240, 270]
+    value_dir = '/data/elkayam/gan_rl/results/RUN_value_24_1_spline_2/analysis'
+    first_order_dir = '/data/elkayam/gan_rl/results/RUN_first_order_24_1_spline_2/analysis'
+
     #problems = [[75,120,180,195],[210,240,255,270]]
-    problems = [120, 195, 240, 270]
+    problems = [120, 240, 255, 270]
+    #problems = [75,120,180,195]
     #for i, set_p in enumerate(problems):
     #for j, iter_index in enumerate(set_p):
     for j, iter_index in enumerate(problems):
@@ -721,14 +782,14 @@ def plot_2d_first_value():
         path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(iter_index))
         res = np.load(path_res, allow_pickle=True).item()
         min_val = res['z'].min()
-        res['z'] -= min_val
+        res['z'] -= min_val - 1e-3
         max_val = res['z'].max()
-        res['z'] /= (max_val + 1)
+        res['z'] /= (max_val + 1e-3)
 
         value_x = 5 * np.load(os.path.join(value_path, 'policies.npy'), allow_pickle=True)
         first_order_x = 5 * np.load(os.path.join(first_order_path, 'policies.npy'), allow_pickle=True)
 
-        cs = axs[j].contour(res['x0'], res['x1'], np.log(res['z']), 60)
+        cs = axs[j].contour(res['x0'], res['x1'], np.log(res['z']), 100)
 
         axs[j].plot(value_x[:, 0], value_x[:, 1], '-o', color=colors[4], markersize=0.5, label='IGL')
         axs[j].plot(first_order_x[:, 0], first_order_x[:, 1], '-o', color=colors[0], markersize=0.5, label='EGL')
@@ -739,89 +800,242 @@ def plot_2d_first_value():
         axs[j].set_yticklabels([])
         axs[j].set_xlabel('({})'.format('abcd'[j]), fontsize=14)
         axs[j].axis('equal')
-    axs[0].legend(prop={'size': 14})
+
+    axs[3].legend(prop={'size': 14}, bbox_to_anchor=(1.04, 1), borderaxespad=0)
+    #axs[0].legend(prop={'size': 14})
 
     plt.savefig(os.path.join(Consts.baseline_dir, 'egl_2d_compare.pdf'), bbox_inches='tight')
 
+
+def plot_2d_first_divergance():
+    fig, axs = plt.subplots(1,4, figsize=(16, 3.5))
+    colors = Consts.color
+    #value_dir = '/data/elkayam/gan_rl/results/PAPER_value_spline_16_1_2/analysis'
+    #first_order_dir = '/data/elkayam/gan_rl/results/PAPER_first_order_spline_16_1_2/analysis'
+    #problems = [120, 195, 240, 270]
+    first_order_dir = '/data/elkayam/gan_rl/results/CMP_first_order_plot_2/analysis'
+
+    #problems = [[75,120,180,195],[210,240,255,270]]
+    problems = [201, 14, 120, 97]
+    #problems = [75,120,180,195]
+    #for i, set_p in enumerate(problems):
+    #for j, iter_index in enumerate(set_p):
+    for j, iter_index in enumerate(problems):
+        first_order_path = os.path.join(first_order_dir, str(iter_index))
+        path_dir = os.path.join(Consts.baseline_dir, 'f_eval', '2D_Contour')
+        path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(iter_index))
+        res = np.load(path_res, allow_pickle=True).item()
+        min_val = res['z'].min()
+        res['z'] -= min_val - 1e-3
+        max_val = res['z'].max()
+        res['z'] /= (max_val + 1e-3)
+
+        cs = axs[j].contour(res['x0'], res['x1'], np.log(res['z']), 100)
+
+        first_order_x = 5 * np.load(os.path.join(first_order_path, 'policies.npy'), allow_pickle=True)
+        frame_policy = np.load(os.path.join(first_order_path, 'frame_pi_evaluate.npy'), allow_pickle=True)
+        divergence = np.load(os.path.join(first_order_path, 'divergence.npy'), allow_pickle=True)
+        frame = np.load(os.path.join(first_order_path, 'frame.npy'), allow_pickle=True)
+
+        min = 0
+        for i in set(divergence):
+            if i > 10:
+                break
+            max = frame[divergence == i].max()
+            index = np.bitwise_and(frame_policy >= min, frame_policy <= max)
+            axs[j].plot(first_order_x[index, 0], first_order_x[index, 1], '-o', color=colors[(i + 1) % len(colors)], markersize=1, label='tr_{}'.format(i))
+            min = max + 1
+
+        #axs[j].plot(first_order_x[:, 0], first_order_x[:, 1], '-o', color=colors[0], markersize=0.5, label='EGL')
+        #axs[i, j].colorbar(cs)
+
+        axs[j].grid(b=True, which='both')
+        axs[j].set_xticklabels([])
+        axs[j].set_yticklabels([])
+        axs[j].set_xlabel('({})'.format('abcd'[j]), fontsize=14)
+        axs[j].axis('equal')
+
+    axs[3].legend(prop={'size': 14}, bbox_to_anchor=(1.04, 1), borderaxespad=0)
+    #axs[0].legend(prop={'size': 14})
+
+    plt.savefig(os.path.join(Consts.baseline_dir, 'egl_2d_compare_divergence.pdf'), bbox_inches='tight')
+
+
+def plot_2d_first_value_and_divergance():
+    fig, axs = plt.subplots(1,4, figsize=(16, 3.5))
+    colors = Consts.color
+    #value_dir = '/data/elkayam/gan_rl/results/PAPER_value_spline_16_1_2/analysis'
+    #first_order_dir = '/data/elkayam/gan_rl/results/PAPER_first_order_spline_16_1_2/analysis'
+    #problems = [120, 195, 240, 270]
+    value_dir = '/data/elkayam/gan_rl/results/RUN_value_24_1_spline_2/analysis'
+    first_order_dir = '/data/elkayam/gan_rl/results/RUN_first_order_24_1_spline_2/analysis'
+
+    problems = [255, 240]
+    for j, iter_index in enumerate(problems):
+        value_path = os.path.join(value_dir, str(iter_index))
+        first_order_path = os.path.join(first_order_dir, str(iter_index))
+        path_dir = os.path.join(Consts.baseline_dir, 'f_eval', '2D_Contour')
+        path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(iter_index))
+        res = np.load(path_res, allow_pickle=True).item()
+        min_val = res['z'].min()
+        res['z'] -= min_val - 1e-3
+        max_val = res['z'].max()
+        res['z'] /= (max_val + 1e-3)
+
+        value_x = 5 * np.load(os.path.join(value_path, 'policies.npy'), allow_pickle=True)
+        first_order_x = 5 * np.load(os.path.join(first_order_path, 'policies.npy'), allow_pickle=True)
+
+        cs = axs[j].contour(res['x0'], res['x1'], np.log(res['z']), 100)
+
+        axs[j].plot(value_x[:, 0], value_x[:, 1], '-o', color=colors[4], markersize=0.5, label='IGL')
+        axs[j].plot(first_order_x[:, 0], first_order_x[:, 1], '-o', color=colors[0], markersize=0.5, label='EGL')
+
+        axs[j].grid(b=True, which='both')
+        axs[j].set_xticklabels([])
+        axs[j].set_yticklabels([])
+        axs[j].set_xlabel('({})'.format('abcd'[j]), fontsize=14)
+        axs[j].axis('equal')
+
+    axs[0].legend(prop={'size': 14}, loc='upper left')
+
+    first_order_dir = '/data/elkayam/gan_rl/results/CMP_first_order_plot_2/analysis'
+
+    problems = [201, 120]
+
+    for j, iter_index in enumerate(problems):
+        first_order_path = os.path.join(first_order_dir, str(iter_index))
+        path_dir = os.path.join(Consts.baseline_dir, 'f_eval', '2D_Contour')
+        path_res = os.path.join(path_dir, '2D_index_{}.npy'.format(iter_index))
+        res = np.load(path_res, allow_pickle=True).item()
+        min_val = res['z'].min()
+        res['z'] -= min_val - 1e-3
+        max_val = res['z'].max()
+        res['z'] /= (max_val + 1e-3)
+
+        cs = axs[j+2].contour(res['x0'], res['x1'], np.log(res['z']), 100)
+
+        first_order_x = 5 * np.load(os.path.join(first_order_path, 'policies.npy'), allow_pickle=True)
+        frame_policy = np.load(os.path.join(first_order_path, 'frame_pi_evaluate.npy'), allow_pickle=True)
+        divergence = np.load(os.path.join(first_order_path, 'divergence.npy'), allow_pickle=True)
+        frame = np.load(os.path.join(first_order_path, 'frame.npy'), allow_pickle=True)
+
+        min = 0
+        for i in set(divergence):
+            if i > 10:
+                break
+            max = frame[divergence == i].max()
+            index = np.bitwise_and(frame_policy >= min, frame_policy <= max)
+            axs[j+2].plot(first_order_x[index, 0], first_order_x[index, 1], '-o', color=colors[(i + 1) % len(colors)], markersize=1, label='tr_{}'.format(i))
+            min = max - 1
+
+        axs[j+2].grid(b=True, which='both')
+        axs[j+2].set_xticklabels([])
+        axs[j+2].set_yticklabels([])
+        axs[j+2].set_xlabel('({})'.format('abcd'[j]), fontsize=14)
+        axs[j+2].axis('equal')
+
+    axs[3].legend(prop={'size': 12}, bbox_to_anchor=(1.04, 1), borderaxespad=0)
+    #axs[0].legend(prop={'size': 14})
+
+    plt.savefig(os.path.join(Consts.baseline_dir, 'egl_2d_compare_value_divergence_.pdf'), bbox_inches='tight')
+
 def plot_avg_dim():
     fig, axs = plt.subplots(1, 4, figsize=(16, 3.5))
-    prefix = 'PAPER_first_order_24_1'
-    alg_name = 'EGL'
 
-    dims = [2, 3, 10, 40]
+    dims = [40]
     for i, dim in enumerate(dims):
-        axs[i] = avg_dim_best_observed(dim=dim, save_file='', alg_name=alg_name, prefix=prefix, with_op=True, axs=axs[i])
+        prefix = ['ABL_first_order_fc_no_tr_map', 'ABL_first_order_fc_no_tr_no_map', 'ABL_first_order_fc_tr_map', 'ABL_first_order_fc_tr_no_map', 'ABL_first_order_spline_elad_tr_map', 'ABL_first_order_spline_mor_tr_map']
+        alg_name = ['fc_no_tr_map', 'fc_no_tr_no_map','fc_tr_map','fc_tr_no_map', 'spline_elad_tr_map','spline_mor_tr_map']
+        avg_dim_best_observed(dim=dim, save_file='', alg_name_list=alg_name, prefix_list=prefix, with_op=False, axs=axs[i])
 
-        axs[i].set_xlabel('({})'.format('abcd'[i]), fontsize=14)
-        axs[i].axis('tight')
+    axs[0].legend(loc='lower left')
 
-    axs[0].legend(prop={'size': 14})
+    prefix = ['RUN_value_24_1_spline', 'RUN_first_order_24_1_spline']
+    alg_name = ['IGL', 'EGL']
+
+    dims = [5, 10, 40]
+    for i, dim in enumerate(dims):
+        axs[i+1] = avg_dim_best_observed(dim=dim, save_file='', alg_name_list=alg_name, prefix_list=prefix, with_op=True, axs=axs[i+1])
+
+        axs[i+1].set_xlabel('({})'.format('abcd'[i+1]), fontsize=14)
+        axs[i+1].axis('tight')
+
+    axs[3].legend(prop={'size': 14}, bbox_to_anchor=(1.04, 1), borderaxespad=0)
+    #axs[0].legend(prop={'size': 14})
 
     fig.savefig(os.path.join(Consts.baseline_dir, 'egl_dim_avg.pdf'), bbox_inches='tight')
     #fig.savefig(os.path.join(Consts.baseline_dir, 'egl_dim_avg.pdf'))
 
 if __name__ == '__main__':
 
+    # for dim in [1, 2, 3, 5, 10, 20, 40]:
+    #     get_csv_from_run('RUN_first_order_24_1_spline', 'EGL', dim)
+    #     get_csv_from_run('RUN_value_24_1_spline', 'IGL', dim)
+
+    #plot_2d_first_value_and_divergance()
     #plot_2d_first_value()
-    #plot_avg_dim()
-    # # merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
-    #
-    #
+    #plot_2d_first_divergance()
+    plot_avg_dim()
+    # # # # merge_baseline_one_line_compare(dims=[1, 2, 3, 5, 10, 20, 40])
+    # # #
+    # # #
     # #optimizers = ['first_order_clip0', 'first_order_clip1', 'first_order_clip1_cone1']
-    optimizers = ['value_24_1_spline', 'first_order_24_1_spline']
-    disp_name = ['IGL', 'EGL']
-    dims = [2]
-    #dims = [40]
-    merge_bbo(optimizers=optimizers, disp_name=disp_name, dimension=dims, save_file='baseline_cmp_success.pdf', plot_sum=False)
-    # #merge_bbo(optimizers=optimizers, disp_name=disp_name, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
-    #
-    # bbo_evaluate_compare(dim=40, index=0, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=15, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=30, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=45, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=60, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=75, prefix='DIM')
-    # # bbo_evaluate_compare(dim=40, index=90, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=105, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=120, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=135, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=150, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=165, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=180, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=195, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=210, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=225, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=240, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=255, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=270, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=285, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=300, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=315, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=330, prefix='DIM')
-    # bbo_evaluate_compare(dim=40, index=345, prefix='DIM')
-    # # bbo_evaluate_compare(dim=40, index=210, prefix='DIM')
-    # # bbo_evaluate_compare(dim=40, index=225, prefix='DIM')
-    # #
-    #
-    #dims = [1,2,3,5,10,20,40]
-    dims = [40]
+    # optimizers = ['IGL', 'EGL']
+    # disp_name = ['IGL', 'EGL']
+    # dims = [1,2,3,5,10,20,40]
+    # # #dims = [40]
+    # # #
+    # merge_bbo(optimizers=optimizers, disp_name=disp_name, dimension=dims, save_file='egl_baseline_cmp_success.pdf', plot_sum=False, need_merged=False)
+    # # # #merge_bbo(optimizers=optimizers, disp_name=disp_name, dimension=dims, save_file='baseline_cmp_avg_sum.pdf', plot_sum=True)
+    # # #
+    # # # bbo_evaluate_compare(dim=40, index=0, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=15, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=30, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=45, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=60, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=75, prefix='DIM')
+    # # # # bbo_evaluate_compare(dim=40, index=90, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=105, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=120, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=135, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=150, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=165, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=180, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=195, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=210, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=225, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=240, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=255, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=270, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=285, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=300, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=315, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=330, prefix='DIM')
+    # # # bbo_evaluate_compare(dim=40, index=345, prefix='DIM')
+    # # # # bbo_evaluate_compare(dim=40, index=210, prefix='DIM')
+    # # # # bbo_evaluate_compare(dim=40, index=225, prefix='DIM')
+    # # # #
+    # # #
+    # #dims = [1,2,3,5,10,20,40]
+    dims = [784]
     for dim in dims:
-        prefix = 'PAPER_first_order_24_1'
-        alg_name = 'EGL'
-        fig_name = '{} dim {} best observed avg.pdf'.format(prefix,dim)
-        avg_dim_best_observed(dim=dim, save_file=fig_name, alg_name=alg_name, prefix=prefix, with_op=True)
+        prefix = ['RUN_value_24_1_784', 'RUN_first_order_24_1']
+        alg_name = ['IGL', 'EGL']
+        fig_name = '{} dim {} best observed avg.pdf'.format('VAE', dim)
+        avg_dim_best_observed(dim=dim, save_file=fig_name, alg_name_list=alg_name, prefix_list=prefix, with_op=False)
         # fig_name = '{} dim {} dist avg.pdf'.format(prefix, dim)
-        # avg_dim_dist_from_best_x(dim=dim, save_file=fig_name, prefix=prefix)
+    #     # avg_dim_dist_from_best_x(dim=dim, save_file=fig_name, prefix=prefix)
 
-    #visualization(120)
-
-    # # for i in tqdm(range(0, 360, 1)):
-    # #     visualization(i)
+    # #visualization(120)
     #
-    # #treeD_plot_contour(0)
-    # #calc_f0()
-    # #twoD_plot_contour(index)
-    #
+    # # # for i in tqdm(range(0, 360, 1)):
+    # # #     visualization(i)
+    # #
+    # # #treeD_plot_contour(0)
+    # # #calc_f0()
+    # # #twoD_plot_contour(index)
+    # #
+    # filter_mod = 15
     # dim = 784
-    # for i in tqdm(range(0, 360, filter_mod)):
+    # for i in tqdm(range(2, 360, filter_mod)):
     #     compare_problem_baseline(dim, i, budget=150000)

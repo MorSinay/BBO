@@ -41,6 +41,8 @@ parser.add_argument('--algorithm', type=str, default='first_order', help='[first
 boolean_feature('debug', False, 'debug flag')
 boolean_feature('spline', False, 'spline net')
 boolean_feature('hassian', False, 'Use hassian in gradient net')
+boolean_feature('regularization', False, 'regularization')
+boolean_feature('trust-region', True, 'use trust region')
 
 #boolean_feature('vae', False, 'run vae problem')
 # VAE parameters
@@ -55,6 +57,9 @@ parser.add_argument('--vae', type=str, default='gaussian', help='gaussian | unif
 parser.add_argument('--budget', type=int, default=150000, help='Number of steps')
 # parameters
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment')
+parser.add_argument('--spline-set', type=str, default='mor', help='elad | mor')
+parser.add_argument('--initial', type=float, default=0, help='initial start')
+
 
 # #exploration parameters
 parser.add_argument('--epsilon', type=float, default=0.1, help='exploration parameter before behavioral period')
@@ -77,7 +82,7 @@ parser.add_argument('--replay-updates-interval', type=int, default=50, help='Num
 parser.add_argument('--replay-memory-factor', type=int, default=32, help='Replay factor')
 parser.add_argument('--warmup-minibatch', type=int, default=5, help='Warm up batches')
 parser.add_argument('--trust-factor', type=float, default=0.9, help='Warm up factor')
-parser.add_argument('--trust-alg', type=str, default='log', help='log |relu | tanh')
+parser.add_argument('--r-norm-alg', type=str, default='log', help='log |relu | tanh | none')
 parser.add_argument('--epsilon-factor', type=float, default=0.97, help='Epsilon factor')
 parser.add_argument('--learn-iteration', type=int, default=60, help='Learning iteration')
 parser.add_argument('--alpha', type=float, default=0.5, help='moving avg factor')
