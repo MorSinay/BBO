@@ -5,7 +5,7 @@ from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
 
-aux_args = ['--budget=10000', '--architecture=spline']
+aux_args = ['--budget=10000', '--architecture=spline', '--explore=ball']
 
 # images = [52530, 172895, 43849, 32973, 8527, 112953, 13363, 148362, 173380,
 #           24810, 124309, 169689, 27201, 27430, 55602, 163705, 97915, 175273]
@@ -17,7 +17,8 @@ images = [40001, 52530, 172895, 43849, 32973, 8527, 148362, 173380,
           112621, 77850, 145451, 177451, 196575, 165372, 171934, 191893,
           199013, 172359]
 
-ignore = [(40001, 'egl')]
+# ignore = [(40001, 'egl')]
+ignore = []
 
 # return to run_30_fc_org_att
 # images = [112621, 77850, 145451, 177451, 196575, 165372, 171934, 191893,
@@ -26,7 +27,7 @@ ignore = [(40001, 'egl')]
 
 # algorithms = [('--optimize', 'egl'), ('--optimize', 'igl'), ('--baseline', 'cma'), ('--baseline', 'cg')]
 algorithms = [('--optimize', 'egl'), ('--optimize', 'igl')]
-exp_name = 'run_30_spline'
+exp_name = 'run_30_spline_ball'
 num = 0
 # data_path = '/home/mlspeech/elads/data/landmarks/results'
 
