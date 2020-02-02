@@ -7,7 +7,7 @@ import torch.nn as nn
 from collections import defaultdict
 from torchvision.utils import save_image
 from config import args, DirsAndLocksSingleton
-from model_ddpg import DuelNet, PiNet, SplineNet, SplineNet_Elad, MultipleOptimizer
+from model_ddpg import DuelNet, PiNet, SplineNet, MultipleOptimizer
 import math
 import os
 import copy
@@ -23,13 +23,6 @@ class Agent(object):
         self.action_space = args.action_space
         self.env = env
         self.dirs_locks = DirsAndLocksSingleton(exp_name)
-
-        if self.action_space == 784:
-            self.best_op_x = torch.cuda.FloatTensor(self.env.get_initial_solution())
-            self.best_op_f = 0.
-        else:
-            self.best_op_x, self.best_op_f = get_best_solution(self.action_space, self.env.problem_iter)
-            self.best_op_x = torch.FloatTensor(self.best_op_x/5).to(self.device)
 
         self.use_trust_region = args.trust_region
         self.batch = args.batch
@@ -90,14 +83,9 @@ class Agent(object):
         self.pi_net.eval()
 
         self.value_iter = args.learn_iteration
-        if self.algorithm_method in ['first_order', 'second_order']:
+        if self.algorithm_method in ['EGL']:
             if self.spline:
-                if args.spline_set == 'mor':
-                    self.derivative_net = SplineNet(self.device, self.pi_net, output=self.action_space)
-                elif args.spline_set == 'elad':
-                    self.derivative_net = SplineNet_Elad(self.device, self.pi_net, output=self.action_space)
-                else:
-                    raise NotImplementedError
+                self.derivative_net = SplineNet(self.device, self.pi_net, output=self.action_space)
                 self.derivative_net.to(self.device)
                 # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
                 opt_sparse = torch.optim.SparseAdam(self.derivative_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
@@ -110,14 +98,9 @@ class Agent(object):
                 self.optimizer_derivative = torch.optim.Adam(self.derivative_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
             self.derivative_net.eval()
             self.derivative_net_zero = copy.deepcopy(self.derivative_net.state_dict())
-        elif self.algorithm_method == 'value':
+        elif self.algorithm_method == 'IGL':
             if self.spline:
-                if args.spline_set == 'mor':
-                    self.value_net = SplineNet(self.device, self.pi_net, output=1)
-                elif args.spline_set == 'elad':
-                    self.value_net = SplineNet_Elad(self.device, self.pi_net, output=1)
-                else:
-                    raise NotImplementedError
+                self.value_net = SplineNet(self.device, self.pi_net, output=1)
                 self.value_net.to(self.device)
                 # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
                 opt_sparse = torch.optim.SparseAdam(self.value_net.embedding.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-04)
@@ -131,18 +114,6 @@ class Agent(object):
 
             self.value_net.eval()
             self.value_net_zero = copy.deepcopy(self.value_net.state_dict())
-        elif self.algorithm_method == 'anchor':
-            self.derivative_net = DuelNet(self.pi_net, self.action_space)
-            self.derivative_net.to(self.device)
-            self.value_net = DuelNet(self.pi_net, 1)
-            self.value_net.to(self.device)
-            # IT IS IMPORTANT TO ASSIGN MODEL TO CUDA/PARALLEL BEFORE DEFINING OPTIMIZER
-            self.optimizer_derivative = torch.optim.Adam(self.derivative_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-            self.optimizer_value = torch.optim.Adam(self.value_net.parameters(), lr=self.value_lr, eps=1.5e-4, weight_decay=0)
-            self.value_net.eval()
-            self.derivative_net.eval()
-            self.value_net_zero = copy.deepcopy(self.value_net.state_dict())
-            self.derivative_net_zero = copy.deepcopy(self.derivative_net.state_dict())
         else:
             raise NotImplementedError
 
@@ -202,22 +173,14 @@ class Agent(object):
             save_image(self.pi_net.pi.cpu().view(1, 28, 28), path)
 
     def save_checkpoint(self, path, aux=None):
-        if self.algorithm_method in ['first_order', 'second_order']:
+        if self.algorithm_method in ['EGL']:
             state = {'pi_net': self.pi_net.pi.detach(),
                      'derivative_net': self.derivative_net.state_dict(),
                      'optimizer_derivative': self.optimizer_derivative.state_dict(),
                      'optimizer_pi': self.optimizer_pi.state_dict(),
                      'aux': aux}
-        elif self.algorithm_method == 'value':
+        elif self.algorithm_method == 'IGL':
             state = {'pi_net': self.pi_net.pi.detach(),
-                     'value_net': self.value_net.state_dict(),
-                     'optimizer_value': self.optimizer_value.state_dict(),
-                     'optimizer_pi': self.optimizer_pi.state_dict(),
-                     'aux': aux}
-        elif self.algorithm_method == 'anchor':
-            state = {'pi_net': self.pi_net.pi.detach(),
-                     'derivative_net': self.derivative_net.state_dict(),
-                     'optimizer_derivative': self.optimizer_derivative.state_dict(),
                      'value_net': self.value_net.state_dict(),
                      'optimizer_value': self.optimizer_value.state_dict(),
                      'optimizer_pi': self.optimizer_pi.state_dict(),
@@ -233,15 +196,10 @@ class Agent(object):
         state = torch.load(path, map_location="cuda:%d" % self.cuda_id)
         self.pi_net = state['pi_net'].to(self.device)
         self.optimizer_pi.load_state_dict(state['optimizer_pi'])
-        if self.algorithm_method in ['first_order', 'second_order']:
+        if self.algorithm_method in ['EGL']:
             self.derivative_net.load_state_dict(state['derivative_net'])
             self.optimizer_derivative.load_state_dict(state['optimizer_derivative'])
-        elif self.algorithm_method == 'value':
-            self.value_net.load_state_dict(state['value_net'])
-            self.optimizer_value.load_state_dict(state['optimizer_value'])
-        elif self.algorithm_method == 'anchor':
-            self.derivative_net.load_state_dict(state['derivative_net'])
-            self.optimizer_derivative.load_state_dict(state['optimizer_derivative'])
+        elif self.algorithm_method == 'IGL':
             self.value_net.load_state_dict(state['value_net'])
             self.optimizer_value.load_state_dict(state['optimizer_value'])
         else:
@@ -251,10 +209,10 @@ class Agent(object):
         return state['aux']
 
     def reset_net(self):
-        if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
+        if self.algorithm_method in ['EGL']:
             self.derivative_net.load_state_dict(self.derivative_net_zero)
             self.optimizer_derivative.state = defaultdict(dict)
-        if self.algorithm_method in ['value', 'anchor']:
+        if self.algorithm_method in ['IGL']:
             self.value_net.load_state_dict(self.value_net_zero)
             self.optimizer_value.state = defaultdict(dict)
 
@@ -337,7 +295,7 @@ class Agent(object):
     def get_grad(self, grad_step=False):
         self.pi_net.train()
         self.optimizer_pi.zero_grad()
-        if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
+        if self.algorithm_method in ['EGL']:
             self.optimizer_derivative.zero_grad()
             grad = self.derivative_net(self.pi_net.pi).view_as(self.pi_net.pi).detach().clone()
             # replace NaN values with zeros
@@ -362,7 +320,7 @@ class Agent(object):
                 grad = natural_grad #/ self.pi_lr
 
             self.pi_net.grad_update(grad)
-        elif self.algorithm_method == 'value':
+        elif self.algorithm_method == 'IGL':
             self.optimizer_value.zero_grad()
             loss_pi = self.value_net(self.pi_net.pi)
             loss_pi.backward()

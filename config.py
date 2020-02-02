@@ -36,7 +36,7 @@ parser.add_argument('--n-explore', type=int, default=64, help='exploration')
 # strings
 parser.add_argument('--game', type=str, default='bbo', help='bbo | net')
 parser.add_argument('--identifier', type=str, default='debug', help='The name of the model to use')
-parser.add_argument('--algorithm', type=str, default='first_order', help='[first_order | value | second_order]')
+parser.add_argument('--algorithm', type=str, default='EGL', help='[EGL | value | second_order]')
 
 boolean_feature('debug', False, 'debug flag')
 boolean_feature('spline', False, 'spline net')
@@ -57,9 +57,6 @@ parser.add_argument('--vae', type=str, default='gaussian', help='gaussian | unif
 parser.add_argument('--budget', type=int, default=150000, help='Number of steps')
 # parameters
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment')
-parser.add_argument('--spline-set', type=str, default='mor', help='elad | mor')
-parser.add_argument('--initial', type=float, default=0, help='initial start')
-
 
 # #exploration parameters
 parser.add_argument('--epsilon', type=float, default=0.1, help='exploration parameter before behavioral period')

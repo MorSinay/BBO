@@ -129,21 +129,18 @@ class Experiment(object):
             avg_reward = torch.mean(bbo_results['rewards'][-1]).item()
             logger.info("---------------- frame: {} - Problem ID :{} ---------------".format(bbo_results['frame'], self.problem_id))
             logger.info("Problem iter index     :{}\t\tDim: {}\t\tDivergence: {} \t\tno_change: = {}".format(self.iter_index, self.action_space, bbo_results['divergence'], bbo_results['no_change']))
-            if self.algorithm in ['first_order', 'second_order']:
+            if self.algorithm in ['EGL']:
                 logger.info("Statistics: mean_grad = %.3f \t grad norm = %.3f \t avg_reward = %.3f| \t derivative_loss =  %.3f" % (bbo_results['mean_grad'], bbo_results['grad_norm'], avg_reward, bbo_results['derivative_loss']))
-            elif self.algorithm == ['value']:
+            elif self.algorithm == ['IGL']:
                 logger.info("Statistics: value = %.3f \t reward = %.3f \t value_loss =  %.3f|" % (bbo_results['value'], avg_reward, bbo_results['value_loss']))
-            elif self.algorithm == 'anchor':
-                logger.info("Statistics: grad norm = %.3f \t value = %.3f \t avg_reward = %.3f \t derivative_loss =  %.3f \t value_loss =  %.3f|" % (bbo_results['grad_norm'], bbo_results['value'], avg_reward, bbo_results['derivative_loss'], bbo_results['value_loss']))
             logger.info("Best observe  : %.3f \t Pi_evaluate: = %.3f| \tBest_pi_evaluate: = %.3f| \t best_reward: = %.3f" % (bbo_results['best_observed'], bbo_results['reward_pi_evaluate'][-1], bbo_results['best_pi_evaluate'], bbo_results['best_reward']))
-            logger.info("dist_x        : %.3f           \t\t |dist_f: = %.3f|" % (bbo_results['dist_x'], bbo_results['dist_f']))
-            logger.info("trust_region  : in_trust: = %d \t\t |min_sigma: = %.3f \t\t |epsilon: = %.3f" % (bbo_results['in_trust'], bbo_results['min_trust_sigma'], bbo_results['epsilon']))
+            logger.info("trust_region  : min_sigma: = %.3f \t\t |epsilon: = %.3f" % (bbo_results['min_trust_sigma'], bbo_results['epsilon']))
             logger.info("r_norm        : mean: =%.3f    \t\t |sigma: =%.3f" % (bbo_results['r_norm_mean'], bbo_results['r_norm_sigma']))
 
-            if args.debug and self.algorithm in ['value', 'anchor']:
+            if args.debug and self.algorithm in ['IGL']:
                 self.value_vs_f_eval(bbo_results['frame'])
 
-            if args.debug and self.algorithm in ['first_order', 'second_order', 'anchor']:
+            if args.debug and self.algorithm in ['EGL']:
                 self.grad_norm_on_f_eval(bbo_results['frame'])
 
             # log to tensorboard
@@ -152,10 +149,10 @@ class Experiment(object):
                 pi_explore = torch.mean(bbo_results['explore_policies'][-1], dim=0).cpu().numpy()
 
                 self.writer.add_scalar('evaluation/divergence', bbo_results['divergence'], bbo_results['frame'])
-                if self.algorithm in ['value', 'anchor']:
+                if self.algorithm in ['IGL']:
                     self.writer.add_scalars('evaluation/value_reward', {'value': bbo_results['value'], 'reward_pi_evaluate': bbo_results['reward_pi_evaluate'][-1], 'best': bbo_results['best_observed']}, bbo_results['frame'])
                     self.writer.add_scalar('evaluation/value_loss', bbo_results['value_loss'], bbo_results['frame'])
-                if self.algorithm in ['first_order', 'second_order', 'anchor']:
+                if self.algorithm in ['EGL']:
                     self.writer.add_scalar('evaluation/grad_norm', bbo_results['grad_norm'], bbo_results['frame'])
                     self.writer.add_scalar('evaluation/derivative_loss', bbo_results['derivative_loss'], bbo_results['frame'])
                 self.writer.add_scalars('evaluation/pi_evaluate_observe', {'evaluate': bbo_results['reward_pi_evaluate'][-1], 'best': bbo_results['best_observed']}, bbo_results['frame'])

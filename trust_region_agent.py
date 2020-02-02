@@ -31,10 +31,10 @@ class TrustRegionAgent(Agent):
         else:
             self.r_norm = RobustNormalizer(lr=args.robust_scaler_lr)
 
-        if self.algorithm_method == 'first_order':
-            self.value_optimize_method = self.first_order_method_optimize_single_ref
-        elif self.algorithm_method in ['value']:
-            self.value_optimize_method = self.value_method_optimize
+        if self.algorithm_method == 'EGL':
+            self.value_optimize_method = self.EGL_method_optimize_single_ref
+        elif self.algorithm_method in ['IGL']:
+            self.value_optimize_method = self.IGL_method_optimize
         else:
             raise NotImplementedError
 
@@ -81,26 +81,13 @@ class TrustRegionAgent(Agent):
         self.results['grad'] = grad
 
         pi = self.results['policies'][-1]
-        real_pi = self.pi_trust_region.unconstrained_to_real(pi)
-        dist_x = torch.norm(real_pi - self.best_op_x, 2)
-        self.results['dist_x'] = dist_x.detach().item()
 
-        lower, upper = self.pi_trust_region.bounderies()
-        in_trust = (self.best_op_x == torch.min(torch.max(self.best_op_x, lower), upper)).all().item()
-        # for i in range(self.action_space):
-        #     print("index {}: lower bound={}\tupper bound={}\tx={}\tx*={}\tin_bound {}".format(i, lower[i], upper[i], real_pi[i], bst[i], bst[i]<=upper[i] and bst[i]>=lower[i]))
-
-        self.results['in_trust'] = in_trust
-
-        dist_f = self.best_reward - self.best_op_f
-        self.results['dist_f'] = dist_f
-
-        if self.algorithm_method in ['first_order', 'second_order', 'anchor']:
+        if self.algorithm_method in ['EGL']:
             val = torch.norm(self.derivative_net(self.pi_net.pi.detach()).detach(), 2).detach().item()
             self.results['grad_norm'] = val
-        if self.algorithm_method in ['value', 'anchor']:
-            val = self.r_norm.desquash(self.value_net(self.pi_net.pi.detach()).detach().cpu()).item()
-            self.results['value'] = val
+        if self.algorithm_method in ['IGL']:
+            val = self.r_norm.desquash(self.value_net(self.pi_net.pi.detach()).detach()).cpu().item()
+            self.results['IGL'] = val
 
         self.results['mean_grad'] = self.mean_grad.cpu().numpy()
         self.results['divergence'] = self.divergence
@@ -253,55 +240,13 @@ class TrustRegionAgent(Agent):
         self.tensor_replay_reward_norm = self.r_norm(self.tensor_replay_reward)
         self.tensor_replay_policy_norm = self.tensor_replay_policy
 
-        #print("r_norm: frame {} - min {} max {} avg {}".format(self.frame, self.tensor_replay_reward_norm.min(), self.tensor_replay_reward_norm.max(), self.tensor_replay_reward_norm.mean()))
-
         len_replay_buffer = len(self.tensor_replay_reward_norm)
         self.batch = min(self.max_batch, len_replay_buffer)
         minibatches = len_replay_buffer // self.batch
 
         self.value_optimize_method(len_replay_buffer, minibatches, value_iter)
 
-    # def anchor_method_optimize(self, len_replay_buffer, minibatches, value_iter):
-    #     self.value_method_optimize(len_replay_buffer, minibatches)
-    #
-    #     loss = 0
-    #     self.derivative_net.train()
-    #     self.value_net.eval()
-    #     for it in itertools.count():
-    #         shuffle_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch), replace=True)
-    #         for i in range(minibatches):
-    #             samples = shuffle_indexes[i]
-    #             pi_1 = self.tensor_replay_policy_norm[samples]
-    #             pi_tag_1 = self.derivative_net(pi_1)
-    #             pi_2 = pi_1.detach() + torch.randn(self.batch, self.action_space).to(self.device, non_blocking=True)
-    #
-    #             r_1 = self.tensor_replay_reward_norm[samples]
-    #             r_2 = self.value_net(pi_2).squeeze(1).detach()
-    #
-    #             if self.importance_sampling:
-    #                 w = torch.clamp((1 / (torch.norm(pi_2 - pi_1, p=2, dim=1) + 1e-4)).flatten(), 0, 1)
-    #             else:
-    #                 w = 1
-    #
-    #             value = ((pi_2 - pi_1) * pi_tag_1).sum(dim=1)
-    #             target = (r_2 - r_1)
-    #
-    #             self.optimizer_derivative.zero_grad()
-    #             self.optimizer_pi.zero_grad()
-    #             loss_q = (w * self.q_loss(value, target)).mean()
-    #             loss += loss_q.detach().item()
-    #             loss_q.backward()
-    #             self.optimizer_derivative.step()
-    #
-    #         if it >= value_iter:
-    #             break
-    #
-    #     loss /= value_iter
-    #     self.results['derivative_loss'] = loss
-    #     self.derivative_net.eval()
-
-
-    def value_method_optimize(self, len_replay_buffer, minibatches, value_iter):
+    def IGL_method_optimize(self, len_replay_buffer, minibatches, value_iter):
         loss = 0
         self.value_net.train()
         for _ in range(value_iter):
@@ -326,7 +271,7 @@ class TrustRegionAgent(Agent):
         self.results['value_loss'].append(loss)
         self.value_net.eval()
 
-    def first_order_method_optimize_single_ref(self, len_replay_buffer, minibatches, value_iter):
+    def EGL_method_optimize_single_ref(self, len_replay_buffer, minibatches, value_iter):
 
         loss = 0
         self.derivative_net.train()
@@ -370,116 +315,6 @@ class TrustRegionAgent(Agent):
         self.results['derivative_loss'] = loss
         self.derivative_net.eval()
 
-    def second_order_method_optimize_single_ref(self, len_replay_buffer, minibatches, value_iter):
-        loss = 0
-        mid_val = True
-
-        self.derivative_net.train()
-        for _ in range(value_iter):
-            anchor_indexes = np.random.choice(len_replay_buffer, (minibatches, self.batch), replace=False)
-            ref_indexes = np.random.randint(0, self.n_explore, size=(minibatches, self.batch))
-            explore_indexes = anchor_indexes // self.n_explore
-
-            for i, anchor_index in enumerate(anchor_indexes):
-                ref_index = torch.LongTensor(self.n_explore * explore_indexes[i] + ref_indexes[i])
-                r_1 = self.tensor_replay_reward_norm[anchor_index]
-                r_2 = self.tensor_replay_reward_norm[ref_index]
-                pi_1 = self.tensor_replay_policy_norm[anchor_index]
-                pi_2 = self.tensor_replay_policy_norm[ref_index]
-
-                delta_pi = pi_2 - pi_1
-
-                if mid_val:
-                    mid_pi = (pi_1 + pi_2) / 2
-                    mid_pi = autograd.Variable(mid_pi, requires_grad=True)
-                    pi_tag_mid = self.derivative_net(mid_pi)
-                    pi_tag_1 = self.derivative_net(pi_1)
-                    pi_tag_mid_dot_delta = (pi_tag_mid * delta_pi).sum(dim=1)
-                    gradients = autograd.grad(outputs=pi_tag_mid_dot_delta, inputs=mid_pi, grad_outputs=torch.cuda.FloatTensor(pi_tag_mid_dot_delta.size()).fill_(1.),
-                                              create_graph=True, retain_graph=True, only_inputs=True)[0].detach()
-                    second_order = 0.5 * (delta_pi * gradients.detach()).sum(dim=1)
-                else:
-                    pi_1 = autograd.Variable(pi_1, requires_grad=True)
-                    pi_tag_1 = self.derivative_net(pi_1)
-                    pi_tag_1_dot_delta = (pi_tag_1 * delta_pi).sum(dim=1)
-                    gradients = autograd.grad(outputs=pi_tag_1_dot_delta, inputs=pi_1, grad_outputs=torch.cuda.FloatTensor(pi_tag_1_dot_delta.size()).fill_(1.),
-                                              create_graph=True, retain_graph=True, only_inputs=True)[0].detach()
-                    second_order = 0.5 * (delta_pi * gradients.detach()).sum(dim=1)
-
-                if self.importance_sampling:
-                    w = torch.clamp((1 / (torch.norm(pi_2 - pi_1, p=2, dim=1) + 1e-4)).flatten(), 0, 1)
-                else:
-                    w = 1
-
-                value = (delta_pi * pi_tag_1).sum(dim=1)
-                target = (r_2 - r_1) - second_order
-
-                self.optimizer_derivative.zero_grad()
-                self.optimizer_pi.zero_grad()
-                if self.spline:
-                    loss_q = (w * self.q_loss(value, target)).sum()
-                else:
-                    loss_q = (w * self.q_loss(value, target)).mean()
-                loss += loss_q.detach().item()
-                loss_q.backward()
-                self.optimizer_derivative.step()
-
-        loss /= value_iter
-        self.results['derivative_loss'] = loss
-        self.derivative_net.eval()
-
-    def second_order_method_optimize(self, len_replay_buffer, minibatches, value_iter):
-        loss = 0
-        mid_val = True
-
-        self.derivative_net.train()
-        for _ in range(value_iter):
-
-            shuffle_index = np.random.randint(0, self.batch, size=(minibatches,)) + np.arange(0, self.batch * minibatches, self.batch)
-            r_1 = self.tensor_replay_reward_norm[shuffle_index].unsqueeze(1).repeat(1, self.batch)
-            r_2 = self.tensor_replay_reward_norm.view(minibatches, self.batch)
-            pi_1 = self.tensor_replay_policy_norm[shuffle_index].unsqueeze(1).repeat(1, self.batch, 1).reshape(-1,self.action_space)
-            pi_2 = self.tensor_replay_policy_norm.view(minibatches * self.batch, -1)
-            delta_pi = pi_2 - pi_1
-            if mid_val:
-                mid_pi = (pi_1 + pi_2) / 2
-                mid_pi = autograd.Variable(mid_pi, requires_grad=True)
-                pi_tag_mid = self.derivative_net(mid_pi)
-                pi_tag_1 = self.derivative_net(pi_1)
-                pi_tag_mid_dot_delta = (pi_tag_mid * delta_pi).sum(dim=1)
-                gradients = autograd.grad(outputs=pi_tag_mid_dot_delta, inputs=mid_pi, grad_outputs=torch.cuda.FloatTensor(pi_tag_mid_dot_delta.size()).fill_(1.),
-                                          create_graph=True, retain_graph=True, only_inputs=True)[0].detach()
-                second_order = 0.5 * (delta_pi * gradients.detach()).sum(dim=1)
-            else:
-                pi_1 = autograd.Variable(pi_1, requires_grad=True)
-                pi_tag_1 = self.derivative_net(pi_1)
-                pi_tag_1_dot_delta = (pi_tag_1 * delta_pi).sum(dim=1)
-                gradients = autograd.grad(outputs=pi_tag_1_dot_delta, inputs=pi_1, grad_outputs=torch.cuda.FloatTensor(pi_tag_1_dot_delta.size()).fill_(1.),
-                                          create_graph=True, retain_graph=True, only_inputs=True)[0].detach()
-                second_order = 0.5 * (delta_pi * gradients.detach()).sum(dim=1)
-
-            if self.importance_sampling:
-                w = torch.clamp((1 / (torch.norm(pi_2 - pi_1, p=2, dim=1) + 1e-4)).flatten(), 0, 1)
-            else:
-                w = 1
-
-            value = (delta_pi * pi_tag_1).sum(dim=1).flatten()
-            target = (r_2 - r_1).flatten() - second_order
-
-            self.optimizer_derivative.zero_grad()
-            self.optimizer_pi.zero_grad()
-            if self.spline:
-                loss_q = (w * self.q_loss(value, target)).sum()
-            else:
-                loss_q = (w * self.q_loss(value, target)).mean()
-            loss += loss_q.detach().item()
-            loss_q.backward()
-            self.optimizer_derivative.step()
-
-        loss /= value_iter
-        self.results['derivative_loss'] = loss
-        self.derivative_net.eval()
-
     def step_policy(self, policy, to_env=True):
         policy = self.pi_trust_region.unconstrained_to_real(policy)
         if to_env:
@@ -506,7 +341,6 @@ class TrustRegionAgent(Agent):
         self.tensor_replay_reward = torch.cat([self.tensor_replay_reward, rewards])[-self.replay_memory_size:]
         self.tensor_replay_policy = torch.cat([self.tensor_replay_policy, pi_explore])[-self.replay_memory_size:]
 
-        #self.print_robust_norm_params()
         return pi_explore, rewards
 
     def get_evaluation_function(self, policy, target):

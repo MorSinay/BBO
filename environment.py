@@ -66,10 +66,7 @@ class EnvCoco(Env):
         self.reset()
         self.upper_bounds = self.problem.upper_bounds
         self.lower_bounds = self.problem.lower_bounds
-        if args.initial:
-            self.initial_solution = (args.initial/5)*np.ones(shape=self.problem.initial_solution.shape)
-        else:
-            self.initial_solution = self.problem.initial_solution
+        self.initial_solution = self.problem.initial_solution
 
     def get_f0(self):
         return self.problem(self.initial_solution)
