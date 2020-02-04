@@ -45,6 +45,7 @@ class TrustRegionAgent(Agent):
         self.trust_region_con = args.trust_region_con
         self.min_iter = args.min_iter
         self.no_change = 0
+        self.pertub = args.pertub
 
     def update_replay_buffer(self):
 
@@ -271,6 +272,18 @@ class TrustRegionAgent(Agent):
         self.results['value_loss'].append(loss)
         self.value_net.eval()
 
+    def ball_perturb(self, pi, eps):
+
+        n_explore = len(pi)
+
+        x = torch.cuda.FloatTensor(n_explore, self.action_space).normal_()
+        mag = torch.cuda.FloatTensor(n_explore, 1).uniform_()
+
+        x = x / (torch.norm(x, dim=1, keepdim=True) + 1e-8)
+
+        explore = pi + eps * mag * x
+
+        return explore
     def EGL_method_optimize_single_ref(self, len_replay_buffer, minibatches, value_iter):
 
         loss = 0
@@ -286,8 +299,10 @@ class TrustRegionAgent(Agent):
                 r_1 = self.tensor_replay_reward_norm[anchor_index]
                 r_2 = self.tensor_replay_reward_norm[ref_index]
                 pi_1 = self.tensor_replay_policy_norm[anchor_index]
+                pi_1_perturb = self.ball_perturb(pi_1, eps=self.epsilon*self.pertub)
+
                 pi_2 = self.tensor_replay_policy_norm[ref_index]
-                pi_tag_1 = self.derivative_net(pi_1)
+                pi_tag_1 = self.derivative_net(pi_1_perturb)
 
                 if self.importance_sampling:
                     w = torch.clamp((1 / (torch.norm(pi_2 - pi_1, p=2, dim=1) + 1e-4)).flatten(), 0, 1)

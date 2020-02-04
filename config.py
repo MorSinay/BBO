@@ -55,6 +55,8 @@ boolean_feature('importance-sampling', False, "Derivative eval")
 parser.add_argument('--grad-clip', type=float, default=0, help='grad clipping')
 parser.add_argument('--vae', type=str, default='gaussian', help='gaussian | uniform')
 parser.add_argument('--budget', type=int, default=150000, help='Number of steps')
+parser.add_argument('--pertub', type=float, default=0, help='Pertubation')
+
 # parameters
 parser.add_argument('--resume', type=int, default=-1, help='Resume experiment number, set -1 for last experiment')
 
@@ -134,8 +136,12 @@ class Consts(object):
     # color = ['r', 'b', 'g', 'y', 'c', 'm', 'k', 'lime', 'gold', 'slategray', 'indigo', 'maroon', 'plum', 'pink', 'tan', 'khaki', 'silver',
     #          'navy', 'skyblue', 'teal', 'darkkhaki', 'indianred', 'orchid', 'lightgrey', 'dimgrey']
 
-    color = ['r', 'dodgerblue', 'green', 'darkorange', 'mediumpurple', 'peru', 'pink', 'orchid', 'lightslategrey', 'gold', 'turquoise', 'lime', 'slategray', 'indigo', 'maroon', 'plum', 'khaki', 'silver',
+    #color = ['r', 'dodgerblue', 'green', 'darkorange', 'mediumpurple', 'peru', 'pink', 'orchid', 'lightslategrey', 'gold', 'turquoise', 'lime', 'slategray', 'indigo', 'maroon', 'plum', 'khaki', 'silver',
+    #         'navy', 'skyblue', 'teal', 'darkkhaki', 'indianred', 'lightgrey', 'dimgrey']
+
+    color = ['r', 'orchid', 'lightslategrey', 'lime', 'indigo', 'maroon', 'plum', 'khaki', 'silver',
              'navy', 'skyblue', 'teal', 'darkkhaki', 'indianred', 'lightgrey', 'dimgrey']
+
 
 consts = Consts()
 

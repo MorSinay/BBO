@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 
-identifier=$1
-dim=$2
-index=$3
-device=$4
-aux="${@:5}"
+index=$1
+aux="${@:2}"
 
-echo identifier=$identifier device=$device dim=$dim index=$index
+args="--game=CMP --budget=9000 --action-space=2 --problem-index=$index"
 
+CUDA_VISIBLE_DEVICES=1, python main.py --identifier=x --spline --algorithm=EGL $args $aux &
+CUDA_VISIBLE_DEVICES=2, python main.py --identifier=xy --algorithm=EGL $args $aux &
 
-args="--algorithm=first_order --game=CMP --epsilon=0.1 --epsilon-factor=1 --explore=rand"
-
-CUDA_VISIBLE_DEVICES=$device, python main.py --identifier=$identifier --action-space=$dim --problem-index=$index $args $aux &
-
+CUDA_VISIBLE_DEVICES=3, python main.py --identifier=x --spline --algorithm=IGL $args $aux &
+CUDA_VISIBLE_DEVICES=3, python main.py --identifier=xy --algorithm=IGL $args $aux &
