@@ -32,7 +32,7 @@ class TrustRegionAgent(Agent):
             self.r_norm = RobustNormalizer(lr=args.robust_scaler_lr)
 
         if self.algorithm_method == 'EGL':
-            self.value_optimize_method = self.EGL_method_optimize_single_ref
+            self.value_optimize_method = self.EGL_method_optimize
         elif self.algorithm_method in ['IGL']:
             self.value_optimize_method = self.IGL_method_optimize
         else:
@@ -40,7 +40,7 @@ class TrustRegionAgent(Agent):
 
         self.best_pi = self.pi_net.pi.detach().clone()
         self.best_pi_evaluate = self.step_policy(self.best_pi, to_env=False)
-        self.best_reward = self.best_pi_evaluate
+        self.best_reward = self.best_pi_evaluate*torch.cuda.FloatTensor(1)
         self.f0 = self.best_pi_evaluate
         self.trust_region_con = args.trust_region_con
         self.min_iter = args.min_iter
@@ -80,8 +80,6 @@ class TrustRegionAgent(Agent):
         _, grad = self.get_grad()
         grad = grad.cpu().numpy().reshape(1, -1)
         self.results['grad'] = grad
-
-        pi = self.results['policies'][-1]
 
         if self.algorithm_method in ['EGL']:
             val = torch.norm(self.derivative_net(self.pi_net.pi.detach()).detach(), 2).detach().item()
@@ -284,7 +282,8 @@ class TrustRegionAgent(Agent):
         explore = pi + eps * mag * x
 
         return explore
-    def EGL_method_optimize_single_ref(self, len_replay_buffer, minibatches, value_iter):
+
+    def EGL_method_optimize(self, len_replay_buffer, minibatches, value_iter):
 
         loss = 0
         self.derivative_net.train()

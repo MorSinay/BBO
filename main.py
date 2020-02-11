@@ -8,16 +8,12 @@ import os
 import pwd
 import random
 import numpy as np
-from gauss_uniform_vae import VaeProblem, VAE
+from vae import VaeProblem, VAE
 from environment import EnvCoco, EnvVae, EnvOneD
 from collections import defaultdict
-import sys
 import traceback
 
-filter_mod = args.filter
-problems_to_run = range(args.start, 360, filter_mod)
-#problems_to_run = [15, 30, 45, 105, 120, 135, 150, 180, 210]
-#problems_to_run = [105, 120, 135]
+problems_to_run = range(args.start, args.stop, args.filter)
 def set_seed(seed):
     if seed > 0:
         random.seed(seed)

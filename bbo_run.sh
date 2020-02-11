@@ -13,11 +13,12 @@ args="--algorithm=$algorithm --start=3 --identifier=$identifier --game=RUN --res
 #CUDA_VISIBLE_DEVICES=0, python main.py --spline --action-space=1 $args $aux &
 
 
-#CUDA_VISIBLE_DEVICES=0, python main.py --spline --action-space=2 $args $aux &
+CUDA_VISIBLE_DEVICES=2, python main.py --spline --action-space=2 $args $aux &
 #CUDA_VISIBLE_DEVICES=2, python main.py --spline --action-space=3 $args $aux &
 #CUDA_VISIBLE_DEVICES=3, python main.py --spline --action-space=5 $args $aux &
 #CUDA_VISIBLE_DEVICES=0, python main.py --spline --action-space=10 $args $aux &
 #CUDA_VISIBLE_DEVICES=1, python main.py --spline --action-space=20 $args $aux &
+
 #CUDA_VISIBLE_DEVICES=2, python main.py --spline --action-space=40 $args $aux &
 
 

@@ -1,24 +1,17 @@
-import time
 import os
 import sys
 import numpy as np
 import torch
 from tensorboardX import SummaryWriter
 from trust_region_agent import TrustRegionAgent
-#from np_agent_temp import NPAgent
 from config import consts, args, DirsAndLocksSingleton
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 plt.style.use('seaborn-deep')
-from environment import one_d_change_dim
 from logger import logger
 from distutils.dir_util import copy_tree
 import pickle
-import pandas as pd
-from visualize_2d import get_baseline_cmp
-
-import scipy.optimize  # to define the solver to be benchmarked
 
 class Experiment(object):
 
@@ -167,10 +160,10 @@ class Experiment(object):
                         self.writer.add_histogram("evaluation/value_net/%s" % name, param.clone().cpu().data.numpy(), bbo_results['frame'], 'fd')
 
         print("End BBO evaluation")
-        try:
-            self.compare_pi_evaluate()
-        except:
-            pass
+        # try:
+        #     self.compare_pi_evaluate()
+        # except:
+        #     pass
 
         try:
             self.mean_grad_and_divergence()
@@ -290,47 +283,47 @@ class Experiment(object):
 
         plt.close()
 
-    def compare_pi_evaluate(self):
-        optimizer_res = get_baseline_cmp(self.action_space, self.iter_index)
-        min_val = optimizer_res['min_opt'][0]
-        f0 = optimizer_res['f0'][0]
-
-        path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
-        pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'), allow_pickle=True)
-        frame_eval = np.load(os.path.join(path, 'frame_pi_evaluate.npy'), allow_pickle=True)
-        pi_best = np.load(os.path.join(path, 'best_observed.npy'), allow_pickle=True)
-        frame = np.load(os.path.join(path, 'frame.npy'), allow_pickle=True)
-
-        min_val = min(min_val, min(pi_best))
-
-        fig, ax = plt.subplots()
-
-        colors = consts.color
-        #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
-
-        for i, op in enumerate(optimizer_res['fmin']):
-            res = optimizer_res[optimizer_res['fmin'] == op]
-            op_eval = np.array(res['f'].values[0])
-            op_eval = np.clip(op_eval, a_max=f0, a_min=-np.inf)
-            ax.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
-
-        ax.loglog(frame_eval, (pi_eval - min_val)/(f0 - min_val), color=colors[1], label='reward_pi_evaluate')
-        ax.loglog(frame, (pi_best - min_val) / (f0 - min_val), color=colors[2], label='best_observed')
-
-        ax.legend()
-        ax.set_title('alg {} - dim = {} index = {} ----- best vs eval'.format(self.algorithm, self.action_space, self.iter_index))
-        ax.grid(True, which='both')
-
-        ax.set_ylim(bottom=1e-3)
-
-        path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
-        if not os.path.exists(path_dir_fig):
-            os.makedirs(path_dir_fig)
-
-        path_fig = os.path.join(path_dir_fig, 'BestVsEval - dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
-        fig.savefig(path_fig)
-
-        plt.close()
+    # def compare_pi_evaluate(self):
+    #     optimizer_res = get_baseline_cmp(self.action_space, self.iter_index)
+    #     min_val = optimizer_res['min_opt'][0]
+    #     f0 = optimizer_res['f0'][0]
+    #
+    #     path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))
+    #     pi_eval = np.load(os.path.join(path, 'reward_pi_evaluate.npy'), allow_pickle=True)
+    #     frame_eval = np.load(os.path.join(path, 'frame_pi_evaluate.npy'), allow_pickle=True)
+    #     pi_best = np.load(os.path.join(path, 'best_observed.npy'), allow_pickle=True)
+    #     frame = np.load(os.path.join(path, 'frame.npy'), allow_pickle=True)
+    #
+    #     min_val = min(min_val, min(pi_best))
+    #
+    #     fig, ax = plt.subplots()
+    #
+    #     colors = consts.color
+    #     #plt.loglog(np.arange(len(rewards)), (rewards - min_val) / (f0 - min_val), linestyle='None', markersize=1, marker='o', color=colors[2], label='explore')
+    #
+    #     for i, op in enumerate(optimizer_res['fmin']):
+    #         res = optimizer_res[optimizer_res['fmin'] == op]
+    #         op_eval = np.array(res['f'].values[0])
+    #         op_eval = np.clip(op_eval, a_max=f0, a_min=-np.inf)
+    #         ax.loglog(np.arange(len(op_eval)), (op_eval - min_val) / (f0 - min_val), color=colors[3+i], label=op)
+    #
+    #     ax.loglog(frame_eval, (pi_eval - min_val)/(f0 - min_val), color=colors[1], label='reward_pi_evaluate')
+    #     ax.loglog(frame, (pi_best - min_val) / (f0 - min_val), color=colors[2], label='best_observed')
+    #
+    #     ax.legend()
+    #     ax.set_title('alg {} - dim = {} index = {} ----- best vs eval'.format(self.algorithm, self.action_space, self.iter_index))
+    #     ax.grid(True, which='both')
+    #
+    #     ax.set_ylim(bottom=1e-3)
+    #
+    #     path_dir_fig = os.path.join(self.results_dir, str(self.iter_index))
+    #     if not os.path.exists(path_dir_fig):
+    #         os.makedirs(path_dir_fig)
+    #
+    #     path_fig = os.path.join(path_dir_fig, 'BestVsEval - dim = {} index = {}.pdf'.format(self.action_space, self.iter_index))
+    #     fig.savefig(path_fig)
+    #
+    #     plt.close()
 
     def mean_grad_and_divergence(self):
         path = os.path.join(self.dirs_locks.analysis_dir, str(self.iter_index))

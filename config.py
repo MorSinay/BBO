@@ -53,7 +53,7 @@ boolean_feature("load-last-model", False, 'Load the last saved model')
 boolean_feature("tensorboard", False, "Log results to tensorboard")
 boolean_feature('importance-sampling', False, "Derivative eval")
 parser.add_argument('--grad-clip', type=float, default=0, help='grad clipping')
-parser.add_argument('--vae', type=str, default='gaussian', help='gaussian | uniform')
+parser.add_argument('--vae', type=str, default='gaussian', help='gaussian')
 parser.add_argument('--budget', type=int, default=150000, help='Number of steps')
 parser.add_argument('--pertub', type=float, default=0, help='Pertubation')
 
@@ -87,6 +87,7 @@ parser.add_argument('--learn-iteration', type=int, default=60, help='Learning it
 parser.add_argument('--alpha', type=float, default=0.5, help='moving avg factor')
 parser.add_argument('--loss', type=str, default='huber', help='derivative loss huber|mse')
 parser.add_argument('--start', type=int, default=0, help='')
+parser.add_argument('--stop', type=int, default=360, help='')
 parser.add_argument('--filter', type=int, default=15, help='')
 
 

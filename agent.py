@@ -11,7 +11,6 @@ from model_ddpg import DuelNet, PiNet, SplineNet, MultipleOptimizer
 import math
 import os
 import copy
-from visualize_2d import get_best_solution
 import shutil
 
 class Agent(object):
