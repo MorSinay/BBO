@@ -853,7 +853,7 @@ def _3d_plot(index, ax):
     ax.plot_trisurf(x_list[:, 0], x_list[:, 1], f_list, cmap='winter')
     ax.set_xticklabels([])
     ax.set_yticklabels([])
-    ax.set_zticklabels([])
+    # ax.set_zticklabels([])
 
 def _1d_plot(index, ax):
 
@@ -1511,7 +1511,7 @@ if __name__ == '__main__':
     #
     # merge_bbo(optimizers=optimizers, disp_name=disp_name, dimension=dims, save_file='egl_baseline_cmp_success.pdf', plot_sum=False, need_merged=False)
 
-    plot_avg_dim()
+    # plot_avg_dim()
 
     # prefix = ['RUN_value_24_1_spline', 'RUN_first_order_24_1_spline']
     # alg_name = ['IGL', 'EGL']
@@ -1547,12 +1547,12 @@ if __name__ == '__main__':
 
     #
 
-    # prefix_list = ['RUN_value_24_1_spline', 'RUN_first_order_24_1_spline']
-    # alg_name_list = ['IGL', 'EGL']
-    # dims = [2]
-    # for dim in dims:
-    #     save_file = '{} dim {} avg_dim_problem'.format('CMP', dim)
-    #     avg_dim_problem_2d(dim, save_file, alg_name_list, prefix_list, with_op=True)
+    prefix_list = ['RUN_value_24_1_spline', 'RUN_first_order_24_1_spline']
+    alg_name_list = ['IGL', 'EGL']
+    dims = [2]
+    for dim in dims:
+        save_file = '{} dim {} avg_dim_problem'.format('CMP', dim)
+        avg_dim_problem_2d(dim, save_file, alg_name_list, prefix_list, with_op=True)
 
     #
     # dims = [40]

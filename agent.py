@@ -35,9 +35,7 @@ class Agent(object):
         self.algorithm_method = args.algorithm
         self.grad_clip = args.grad_clip
         self.req_lambda = 1e-3
-        self.regularization = args.regularization
         self.divergence = 0
-        self.importance_sampling = args.importance_sampling
         self.best_explore_update = args.best_explore_update
         self.printing_interval = args.printing_interval
         self.analysis_dir = os.path.join(self.dirs_locks.analysis_dir, str(self.problem_index))
@@ -56,7 +54,6 @@ class Agent(object):
         self.epsilon = args.epsilon * math.sqrt(self.action_space)
         self.delta = self.pi_lr
         self.warmup_minibatch = args.warmup_minibatch
-        self.hessian = args.hassian
         self.mean_grad = None
         self.alpha = args.alpha
         self.epsilon_factor = args.epsilon_factor
@@ -299,25 +296,6 @@ class Agent(object):
             grad = self.derivative_net(self.pi_net.pi).view_as(self.pi_net.pi).detach().clone()
             # replace NaN values with zeros
             grad[grad != grad] = 0
-
-            if self.hessian:
-                eps = 1
-                eye = torch.eye(self.action_space, device=self.device)
-
-                hessian = []
-                p_one_hot = torch.eye(self.action_space, device=self.device)
-                for i in range(self.action_space):
-                    p = p_one_hot[i]
-                    self.optimizer_pi.zero_grad()
-                    dp = (p * grad).sum()
-                    dp.backward(retain_graph=True)
-                    hessian.append(self.pi_net.pi.grad)
-
-                hessian = torch.stack(hessian)
-                inv_hessian = torch.inverse(hessian + eps * eye)
-                natural_grad = torch.matmul(inv_hessian, grad)
-                grad = natural_grad #/ self.pi_lr
-
             self.pi_net.grad_update(grad)
         elif self.algorithm_method == 'IGL':
             self.optimizer_value.zero_grad()

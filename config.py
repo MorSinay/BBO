@@ -40,8 +40,6 @@ parser.add_argument('--algorithm', type=str, default='EGL', help='[EGL | value |
 
 boolean_feature('debug', False, 'debug flag')
 boolean_feature('spline', False, 'spline net')
-boolean_feature('hassian', False, 'Use hassian in gradient net')
-boolean_feature('regularization', False, 'regularization')
 boolean_feature('trust-region', True, 'use trust region')
 
 #boolean_feature('vae', False, 'run vae problem')
@@ -51,7 +49,6 @@ parser.add_argument('--latent', type=int, default=10, help='Size of latent space
 # # booleans
 boolean_feature("load-last-model", False, 'Load the last saved model')
 boolean_feature("tensorboard", False, "Log results to tensorboard")
-boolean_feature('importance-sampling', False, "Derivative eval")
 parser.add_argument('--grad-clip', type=float, default=0, help='grad clipping')
 parser.add_argument('--vae', type=str, default='gaussian', help='gaussian')
 parser.add_argument('--budget', type=int, default=150000, help='Number of steps')
@@ -63,7 +60,6 @@ parser.add_argument('--resume', type=int, default=-1, help='Resume experiment nu
 # #exploration parameters
 parser.add_argument('--epsilon', type=float, default=0.1, help='exploration parameter before behavioral period')
 parser.add_argument('--cone-angle', type=float, default=2, help='cone angle - default pi/3')
-parser.add_argument('--norm', type=str, default='robust_scaler', help='normalization option - min_max | mean | mean_std')
 parser.add_argument('--explore', type=str, default='ball', help='exploration option - ball | cone | rand')
 boolean_feature("best-explore-update", True, 'move to the best value of exploration')
 parser.add_argument('--trust-region-con', type=int, default=10, help='Trust Region Condition')
@@ -77,7 +73,6 @@ parser.add_argument('--cuda-default', type=int, default=0, help='Default GPU')
 #
 # #train parameters
 parser.add_argument('--printing-interval', type=int, default=50, help='Number of exploration steps between printing results')
-parser.add_argument('--replay-updates-interval', type=int, default=50, help='Number of training iterations between q-target updates')
 parser.add_argument('--replay-memory-factor', type=int, default=32, help='Replay factor')
 parser.add_argument('--warmup-minibatch', type=int, default=5, help='Warm up batches')
 parser.add_argument('--trust-factor', type=float, default=0.9, help='Warm up factor')
@@ -100,7 +95,6 @@ parser.add_argument('--value-lr', type=float, default=1e-3, help='value learning
 parser.add_argument('--action-space', type=int, default=10, help='Problem dimension')
 parser.add_argument('--layer', type=int, default=256, help='Value hidden layer size')
 parser.add_argument('--seed', type=int, default=0, help='Set seed')
-parser.add_argument('--exploration', type=str, default='GRAD', help='GRAD|UNIFORM')
 
 # distributional learner
 

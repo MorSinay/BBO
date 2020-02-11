@@ -303,23 +303,15 @@ class TrustRegionAgent(Agent):
                 pi_2 = self.tensor_replay_policy_norm[ref_index]
                 pi_tag_1 = self.derivative_net(pi_1_perturb)
 
-                if self.importance_sampling:
-                    w = torch.clamp((1 / (torch.norm(pi_2 - pi_1, p=2, dim=1) + 1e-4)).flatten(), 0, 1)
-                else:
-                    w = 1
-
                 value = ((pi_2 - pi_1) * pi_tag_1).sum(dim=1)
                 target = (r_2 - r_1)
 
                 self.optimizer_derivative.zero_grad()
                 self.optimizer_pi.zero_grad()
                 if self.spline:
-                    loss_q = (w * self.q_loss(value, target)).sum()
+                    loss_q = self.q_loss(value, target).sum()
                 else:
-                    loss_q = (w * self.q_loss(value, target)).mean()
-
-                if self.regularization:
-                    loss_q += self.req_lambda*(torch.norm(pi_tag_1, p=2, dim=1)**2).mean()
+                    loss_q = self.q_loss(value, target).mean()
 
                 loss += loss_q.detach().item()
                 loss_q.backward()
